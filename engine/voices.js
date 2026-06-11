@@ -195,6 +195,17 @@ var TD_VOICES = (function () {
     ["Buenas — though the Bureau prefers 'good day'.", "You walk like someone with an appointment underground.", "The harbour is prettier than the brochure admits."],
     ["I keep to the streets; the streets keep their counsel.", "The red-lit place is closed; everyone asks, no one is told.", "Dance is also a kind of route knowledge, no?"], RX_MIX);
 
+  // the two WARRING gift shops by the dungeon gate (Brooklyn touts at war)
+  SPECS.gift1 = flavorSpec("Ye Olde Dungeon Gifte", "gift-shop tout", "brooklyn",
+    ["Welcome to the GENUINE article — accept no substitutes, especially the one next door.", "Authentic, certified, municipally adjacent. Step right in.", "You want a real souvenir, not whatever they are peddling at number two."],
+    ["That shop next door? A tourist trap. We are the original.", "Our snow globes contain real dungeon dust. Allegedly. Definitely.", "Number two would not know an artefact if it bit them — which it might."], RX_BKLN);
+  SPECS.gift2 = flavorSpec("Authentic Dungeon Souvenirs", "gift-shop tout", "brooklyn",
+    ["The REAL souvenirs are HERE — that other place is a trap for the unwary.", "Step in, friend, away from the knockoffs next door.", "One shop in this town is honest. You are standing in it."],
+    ["Ye Olde whatever? Established last Tuesday. We are the genuine article.", "Our certificates of authenticity are themselves authentic.", "Do not buy a 'genuine' anything from number one. I beg you."], RX_BKLN);
+  // proximity barks the two shops trade when the visitor is near both (used in play)
+  SPECS.gift1.barks = ["Do not listen to number two — those are knockoffs!", "GENUINE artefacts here, not that imported nonsense next door!", "We were here FIRST, whatever their sign says!"];
+  SPECS.gift2.barks = ["Number one sells gravel in a jar — come see the REAL thing!", "Authentic! Certified! Unlike SOME shops on this strip!", "Their 'olde' is spelled with an extra e and a lie!"];
+
   // dungeon cast — reserved voices, NO lines yet (canon arrives as design data)
   var DUNGEON_CAST = ["janitor", "elevator_operator", "oracle", "bookie"];
   DUNGEON_CAST.forEach(function (id) { SPECS[id] = { name: id, role: "dungeon NPC", accent: "mixed", placeholder: true, bible: { register: "TBD", rhythm: "TBD", tic: "TBD", neverSays: [] }, lines: {} }; });

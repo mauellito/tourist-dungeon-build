@@ -55,7 +55,12 @@ var TD_GAME = (function () {
     tim: { title: "Tim's Tour Guide", glyph: "G", act: "tim", counter: "the desk", sign: ["TIM'S TOUR GUIDE", "Hints sold here. (Closed.)"] },
     tattoo: { title: "The Tattoo Parlor", glyph: "Z", act: "flavor", counter: "the table", sign: ["THE TATTOO PARLOR", "Permanent souvenirs of a temporary visit."] },
     boat: { title: "Boat Rental", glyph: "Y", act: "boat", counter: "the dock desk", sign: ["BOAT RENTAL", "Rent a boat. The boat goes where the boat goes."] },
-    redshop: { title: "the Red Light Shop", glyph: "x", act: "flavor", counter: "the curtained counter", sign: ["THE RED LIGHT SHOP", "Discreet sundries for the discerning visitor. The Bureau files it under 'sundry'."] }
+    redshop: { title: "the Red Light Shop", glyph: "x", act: "flavor", counter: "the curtained counter", sign: ["THE RED LIGHT SHOP", "Discreet sundries for the discerning visitor. The Bureau files it under 'sundry'."] },
+    chinese: { title: "the Golden Turnstile", glyph: "N", act: "food", counter: "the takeout window", sign: ["THE GOLDEN TURNSTILE", "Takeout. Fast, municipal, faintly suspicious of you."] },
+    clamshack: { title: "the Clam Shack", glyph: "F", act: "food", counter: "the shucking counter", sign: ["THE CLAM SHACK", "Fried, by the water, no questions asked."] },
+    gift1: { title: "Ye Olde Dungeon Gifte", glyph: "1", act: "flavor", counter: "the till", sign: ["YE OLDE DUNGEON GIFTE", "Genuine artefacts, genuinely. Ignore the shop next door."] },
+    gift2: { title: "Authentic Dungeon Souvenirs", glyph: "2", act: "flavor", counter: "the till", sign: ["AUTHENTIC DUNGEON SOUVENIRS", "The REAL souvenirs. That other place is a tourist trap."] },
+    empty: { title: "An Empty Room", glyph: ".", act: null, counter: null, sign: ["—", "Dust, and the suggestion of former purpose."] }
   };
   // which voice keeps each place (accent map): posh / brooklyn / pastoral / plainspoken / mixed
   var KEEPER = {
@@ -63,7 +68,8 @@ var TD_GAME = (function () {
     saloon: "keeper_brooklyn", bodega: "keeper_brooklyn", boat: "keeper_brooklyn", redshop: "keeper_brooklyn",
     bank: "keeper_posh", church: "keeper_pastoral",
     blacksmith: "keeper_plain", motel: "keeper_plain", barber: "keeper_plain",
-    tim: "keeper_mixed", tattoo: "keeper_mixed", restaurant: "keeper_mixed", coffee: "coffee"
+    tim: "keeper_mixed", tattoo: "keeper_mixed", restaurant: "keeper_mixed", coffee: "coffee",
+    chinese: "keeper_mixed", clamshack: "keeper_brooklyn", gift1: "gift1", gift2: "gift2"
   };
 
   function create(world, opts) {
@@ -260,6 +266,16 @@ var TD_GAME = (function () {
       // --- the red-light district (alleys) ---
       bld(10, 35, "redshop", "x", "the Red Light Shop", "redlight");
       bld(9, 30, "redlit", "Q", "the Quay's End", "redlight");
+      // --- the tourist strip: two WARRING gift shops flanking the gate ---
+      bld(28, 5, "gift1", "1", "Ye Olde Dungeon Gifte", "tourist-strip");
+      bld(34, 5, "gift2", "2", "Authentic Dungeon Souvenirs", "tourist-strip");
+      // --- scattered eateries (never a food court) ---
+      bld(51, 11, "chinese", "N", "the Golden Turnstile (takeout)", "civic");
+      bld(33, 33, "clamshack", "F", "the Clam Shack", "waterfront");
+      // --- filler buildings (varied; locked or empty stubs, no content yet) ---
+      bld(16, 5, "locked", "h", "a shuttered townhouse", "tourist-strip");
+      bld(49, 8, "locked", "h", "a boarded-up shop", "main");
+      bld(6, 33, "empty", "w", "a harbour warehouse", "waterfront");
       // gates
       doors[key(26, 33)].gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
       doors[key(31, 5)].gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
@@ -273,7 +289,7 @@ var TD_GAME = (function () {
       var g = blank();
       carve(g, 8, 3, 32, 13);
       var doors = {}, features = {};
-      features[key(20, 5)] = { type: "counter", glyph: "$", label: spec.counter, act: spec.act };
+      if (spec.counter) features[key(20, 5)] = { type: "counter", glyph: "$", label: spec.counter, act: spec.act };   // empty stubs have no counter
       doors[key(20, 14)] = { to: "TOWN", glyph: "<", label: "the way out, back to the harbour" };
       return { id: id, title: spec.title, sign: spec.sign, grid: g, doors: doors, features: features, spawn: { x: 20, y: 12 } };
     }
@@ -532,6 +548,7 @@ var TD_GAME = (function () {
       if (to === "DUNGEON") { act("gate"); return; }                  // enterDungeon + line
       if (to === "TOWN") { placeId = "TOWN"; player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y }; logMsg("You step back out into the harbour."); return; }
       if (to === "redlit") { senses("A red lamp, a velvet rope, and a card: “Closed for renovations.” The Quay's End keeps its counsel.", "seen", "OBJ"); return; }   // exterior only
+      if (to === "locked") { logMsg("The door is locked; no one answers. (A stub, for now.)"); return; }   // filler stub
       returnTile = { x: player.x, y: player.y };                       // come back where we entered
       placeId = to; player = { x: places[to].spawn.x, y: places[to].spawn.y };
       logMsg((places[to].sign || []).join("  —  "));
