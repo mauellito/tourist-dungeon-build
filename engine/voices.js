@@ -154,6 +154,47 @@ var TD_VOICES = (function () {
     }
   };
 
+  // ----- archetype keepers (flavor budget) for the wider town, by accent map -
+  function flavorSpec(name, role, accent, greeting, smalltalk, reactions) {
+    return { name: name, role: role, accent: accent, flavor: true,
+      bible: { register: accent + " keeper", rhythm: "brief, in character", tic: "stays in register", neverSays: [] },
+      lines: { greeting: greeting, smalltalk: smalltalk, reaction: reactions } };
+  }
+  var RX_POSH = { comfortable: [["One sees you keep yourself. One approves, naturally.", "OBJ"]], starving: [["You look quite faint; do see someone about a meal.", "OBJ"]], wounded: [["You are marked; how very out-of-doors of you.", "OBJ"]], famous: [["Your face is familiar, in the way a recurring expense is.", "OBJ"]] };
+  var RX_BKLN = { comfortable: [["Look at you, all done up. Slumming, I respect it.", "OBJ"]], starving: [["You are running on empty, friend. Eat something real.", "OBJ"]], wounded: [["You are bleeding on my floor. Mind the floor.", "OBJ"]], famous: [["I know that face. You keep turning up. Bold.", "OBJ"]] };
+  var RX_PAST = { comfortable: [["You are well-kept, child; see that the keeping is not all.", "OBJ"]], starving: [["You hunger; come, none here are turned away empty.", "OBJ"]], wounded: [["You are wounded; rest, and be mended in due season.", "OBJ"]], famous: [["You have died and returned; the door is open to such, also.", "OBJ"]] };
+  var RX_PLAIN = { comfortable: [["You clean up nice. Won't last down there.", "OBJ"]], starving: [["You look half-starved. Eat before you work.", "OBJ"]], wounded: [["You're banged up. Sit before you fall.", "OBJ"]], famous: [["Seen you around. More than once, seems like.", "OBJ"]] };
+  var RX_MIX = { comfortable: [["You carry yourself well. The dungeon does not care.", "OBJ"]], starving: [["You should eat. Plainly stated.", "OBJ"]], wounded: [["You are hurt. Mind it.", "OBJ"]], famous: [["You are becoming a regular feature. Noted.", "OBJ"]] };
+
+  SPECS.keeper_posh = flavorSpec("a posh keeper", "keeper", "posh",
+    ["Do come in; one is delighted, within reason.", "You have the look of an account worth opening.", "Mind the marble; it minds you back."],
+    ["We are discreet, which is the whole of the service.", "The harbour view costs extra, as views do.", "One does not discuss the red-lit end of the quay."], RX_POSH);
+  SPECS.keeper_brooklyn = flavorSpec("a Brooklyn keeper", "keeper", "brooklyn",
+    ["Hey, come in, the door is the door.", "There you are. Took you long enough.", "Whaddya need — and I say that with affection."],
+    ["This block runs on favours and the favours run on me.", "The posh places upstreet would not give you the time.", "Everything is negotiable except the closing time."], RX_BKLN);
+  SPECS.keeper_pastoral = flavorSpec("the parson", "keeper", "pastoral",
+    ["Peace to you, traveller; come in from the commute.", "Enter, and be still a moment.", "The door is open; it is always open."],
+    ["The island across the water keeps its own sabbath, and keeps it from us.", "We mind the living and we mind the lately-living.", "Rest is a kind of prayer, and you look prayerful."], RX_PAST);
+  SPECS.keeper_plain = flavorSpec("the smith", "keeper", "plainspoken",
+    ["Door is open. Mind the heat.", "You need something made or mended.", "Speak plain, I work plain."],
+    ["I make what holds and I do not make promises.", "Town is small. Word travels faster than you do.", "Honest tools, honest prices, honest dirt."], RX_PLAIN);
+  SPECS.keeper_mixed = flavorSpec("the proprietor", "keeper", "mixed",
+    ["Welcome. Such as it is.", "Come in, the sign says open and the sign rarely lies.", "Browse. Or do not. The shelves are patient."],
+    ["A little of everything, none of it the canon.", "The Bureau lists us under 'sundry'.", "We keep odd hours and odder stock."], RX_MIX);
+  SPECS.coffee = flavorSpec("the Coffee Shop", "barista", "mixed",
+    ["Morning — it is always morning, somewhere on the menu.", "Welcome to the only honest stimulant in town.", "We open early, on the days that have a morning."],
+    ["The roast is municipal-dark, which is darker than it sounds.", "A cup here is a meal, legally, on a technicality.", "We do not do the foam art; the foam does itself."], RX_MIX);
+  // townsfolk walkers (flavor)
+  SPECS.nuns = flavorSpec("a pair of nuns", "townsfolk", "pastoral",
+    ["Bless you, traveller; mind the deeper doors.", "Peace, and a steady commute to you.", "We walk to the water and back; it settles the soul."],
+    ["The island is in plain sight and plainly not for us.", "We pray for the lately-discontinued; the list is long.", "Charity first, curiosity second, the Bureau a distant third."], RX_PAST);
+  SPECS.farmers = flavorSpec("a farmer", "townsfolk", "plainspoken",
+    ["Morning. Or whatever it is down here.", "Mind yourself in that dungeon, friend.", "Cart is empty; market was thin."],
+    ["Soil up top, stone down below. I prefer the soil.", "Prices at the Bodega are a crime and a convenience.", "I do not go past the turnstile. I am not paid enough."], RX_PLAIN);
+  SPECS.senorita = flavorSpec("a señorita", "townsfolk", "mixed",
+    ["Buenas — though the Bureau prefers 'good day'.", "You walk like someone with an appointment underground.", "The harbour is prettier than the brochure admits."],
+    ["I keep to the streets; the streets keep their counsel.", "The red-lit place is closed; everyone asks, no one is told.", "Dance is also a kind of route knowledge, no?"], RX_MIX);
+
   // dungeon cast — reserved voices, NO lines yet (canon arrives as design data)
   var DUNGEON_CAST = ["janitor", "elevator_operator", "oracle", "bookie"];
   DUNGEON_CAST.forEach(function (id) { SPECS[id] = { name: id, role: "dungeon NPC", accent: "mixed", placeholder: true, bible: { register: "TBD", rhythm: "TBD", tic: "TBD", neverSays: [] }, lines: {} }; });

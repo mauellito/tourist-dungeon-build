@@ -77,6 +77,8 @@ F.onload = function(){
   function floorNeighbor(){ var v=view(),p=v.player,ds=[['right',1,0],['left',-1,0],['up',0,-1],['down',0,1]];
     for(var i=0;i<ds.length;i++){ var nx=p.x+ds[i][1],ny=p.y+ds[i][2],k=nx+','+ny;
       if(v.grid[ny]&&v.grid[ny][nx]==='.'&&!(v.doors&&v.doors[k])&&!(v.plain&&v.plain[k])) return {dir:ds[i][0],x:nx,y:ny}; } return null; }
+  function findDoor(to){ var d=view().doors||{}; for(var k in d){ if(d[k].to===to){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
+  function findCounter(){ var f=view().features||{}; for(var k in f){ if(f[k].act && f[k].act!=='lookout'){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   try {
     // ============================ MOVEMENT + DIAGONALS ====================
     var p0=view().player; press('ur'); var p1=view().player;
@@ -101,15 +103,15 @@ F.onload = function(){
     ok('Enter buys a carryable hot dog', (view().inventory||[]).some(function(i){return i.name==='a hot dog';}));
     win.__TD_SIM()._setVendor(5,18);   // park him out of the rest of the route
 
-    // ============================ DOORS: BUMP vs COMMIT (town) ============
-    var bd=goAdjacent(8,7); press(bd); var vb=view();
+    // ============== DOORS: BUMP vs COMMIT (town; layout-agnostic) =========
+    var kioskXY=findDoor('kiosk'); var bd=goAdjacent(kioskXY[0],kioskXY[1]); press(bd); var vb=view();
     ok('bumping a building does NOT enter it (still town)', vb.phase==='town');
     ok('the bump reveals an Enter prompt', /Enter/.test(vb.lastEvent||''));
     pk('Enter'); var vin=view();
     ok('Enter enters the Kiosk interior', vin.phase==='interior' && /Kiosk/.test(vin.title));
 
     // ============== PURCHASE IS A CONVERSATION (contact -> Enter) =========
-    var cd=goAdjacent(20,5); press(cd); var vcounter=view();
+    var cXY=findCounter(); var cd=goAdjacent(cXY[0],cXY[1]); press(cd); var vcounter=view();
     ok('bumping the counter does NOT buy — it opens a conversation',
        vcounter.ticket==null && vcounter.phase==='interior');
     ok('the clerk pitches with a clear offer line', /Enter to accept/.test(vcounter.lastEvent||''));
@@ -119,10 +121,10 @@ F.onload = function(){
     ok('the ticket is carried as an inspectable inventory item',
        (view().inventory||[]).some(function(it){return it.kind==='ticket';}));
 
-    var ed=goAdjacent(20,14); press(ed); pk('Enter');
+    var exitXY=findDoor('TOWN'); var ed=goAdjacent(exitXY[0],exitXY[1]); press(ed); pk('Enter');
     ok('leaving the interior returns to the harbour', view().phase==='town');
 
-    var gd=goAdjacent(32,14); press(gd);
+    var gateXY=findDoor('DUNGEON'); var gd=goAdjacent(gateXY[0],gateXY[1]); press(gd);
     ok('bumping the dungeon gate does not descend on contact', view().phase==='town');
     pk('Enter');
     ok('Enter at the gate (ticket in hand) descends into the dungeon', view().phase==='dungeon');

@@ -221,7 +221,7 @@ function TD_GAME_TESTS() {
   // ------------------------------------- THE HOT DOG VENDOR (Round 6) -------
   test("the vendor is a conversation: bump pitches in his voice, only Enter buys", function () {
     var g = game();
-    g._setVendor(21, 11);                                 // park him beside the spawn (frozen)
+    var pl = g._player(); g._setVendor(pl.x + 1, pl.y);   // park him beside the spawn (frozen)
     var r = g.move("right");                              // bump the cart
     assert(r.bumpedVendor, "bumping the cart begins a conversation, not a sale");
     eq(g._inventory().filter(function (i) { return i.name === "a hot dog"; }).length, 0, "no hot dog changes hands on contact");
@@ -238,6 +238,45 @@ function TD_GAME_TESTS() {
     var seen = {}, n = 0, l;
     while ((l = vb.say("pitch"))) { assert(!seen[l.text], "no repeat"); assert(l.ch === "senses" && l.obj, "channelled"); seen[l.text] = 1; if (++n > 20) break; }
     assert(n >= 4, "at least 4 pitch variants");
+  });
+
+  // ------------------------------------- HARBOUR TOWN (Round 7) -------------
+  test("town layout: every building door is reachable from spawn", function () {
+    var g = game(); var v = g.view();
+    var Wv = v.w, Hv = v.h, grid = v.grid, sp = v.player;
+    function flo(x, y) { return y >= 0 && x >= 0 && y < Hv && x < Wv && grid[y][x] === "."; }
+    var seen = {}, q = [[sp.x, sp.y]]; seen[sp.x + "," + sp.y] = 1;
+    var DV = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    while (q.length) { var c = q.shift(); DV.forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && flo(nx, ny)) { seen[k] = 1; q.push([nx, ny]); } }); }
+    var doors = v.doors || {}, bad = [];
+    Object.keys(doors).forEach(function (k) { if (!seen[k]) bad.push(k + "->" + doors[k].to); });
+    eq(bad.length, 0, "all doors reachable from spawn; unreachable: " + bad.join(", "));
+    assert(Object.keys(doors).length >= 14, "the town has its full cast of buildings (" + Object.keys(doors).length + ")");
+  });
+
+  test("the harbour rail carries the island sightline (012)", function () {
+    var g = game(); var feats = g.view().features || {}, rail = null;
+    Object.keys(feats).forEach(function (k) { if (feats[k].act === "lookout") rail = feats[k]; });
+    assert(rail && /monastery|graveyard|cannot be reached/.test(rail.text), "the rail shows the island, plainly off-limits (012)");
+  });
+
+  test("every named building has a voice-specced keeper on the accent map", function () {
+    var g = game(); var K = g._keepers(), ACC = ["brooklyn", "posh", "pastoral", "plainspoken", "mixed"];
+    Object.keys(K).forEach(function (b) {
+      var s = TD_VOICES.byId(K[b]);
+      assert(s && !s.placeholder, b + ": has a real keeper voice (" + K[b] + ")");
+      assert(ACC.indexOf(s.accent) >= 0, b + ": keeper accent on the map (" + s.accent + ")");
+    });
+  });
+
+  test("townsfolk walk the streets and never trap or sit on the player", function () {
+    var g = game(); var v = g.view();
+    assert(v.grid[v.player.y][v.player.x] === ".", "spawn is on floor");
+    assert(v.creatures.length >= 2, "two or three walkers are out (" + v.creatures.length + ")");
+    v.creatures.forEach(function (c) { assert(v.grid[c.y][c.x] === ".", "a walker stands on floor"); });
+    g._freezeVendor(false);
+    for (var i = 0; i < 80; i++) g.move(i % 2 ? "left" : "right");
+    g.view().creatures.forEach(function (c) { assert(!(c.x === g._player().x && c.y === g._player().y), "no walker ever sits on the player"); });
   });
 
   var pass = results.filter(function (r) { return r.ok; }).length;

@@ -270,6 +270,7 @@
   function draw() {
     var vw = sim.view();
     checkBarks(vw);   // the Bureau may add a line before we render the log
+    if (cv.width !== vw.w * TS || cv.height !== vw.h * TS) { cv.width = vw.w * TS; cv.height = vw.h * TS; }  // the town is larger than the dungeon
     var vis = new Set(vw.visible), exp = new Set(vw.explored);
     ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
@@ -665,7 +666,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v11 · voices & vendor", BUILD = "b198a25";
+  var VERSION = "play-map v12 · harbour town", BUILD = "87c7cc3";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

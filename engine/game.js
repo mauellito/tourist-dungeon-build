@@ -26,7 +26,7 @@ var TD_GAME = (function () {
     "011": { ch: "OBJ", t: "Behind the cold and rat-less wall, a stair ascends to serve them all." },
     "012": { ch: "OBJ", t: "Across the water the monastery and the graveyard sit in plain view, and just as plainly cannot be reached from here." }
   };
-  var W = 41, H = 23;
+  var W = 49, H = 25;   // the harbour town (larger than the 41x23 dungeon)
   var DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], ul: [-1, -1], ur: [1, -1], dl: [-1, 1], dr: [1, 1] };
   function key(x, y) { return x + "," + y; }
   function cheby(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); }
@@ -42,7 +42,27 @@ var TD_GAME = (function () {
     spa: { title: "The Spa", glyph: "P", act: "spa", counter: "the treatment table",
       sign: ["THE SPA", "Emerge improved. Emerge, regrettably, announced."] },
     tavern: { title: "The Rusty Anchor", glyph: "T", act: "food", counter: "the bar",
-      sign: ["THE RUSTY ANCHOR", "Dim, sticky, and unimpressed by you — which is the entire point."] }
+      sign: ["THE RUSTY ANCHOR", "Dim, sticky, and unimpressed by you — which is the entire point."] },
+    saloon: { title: "The Saloon", glyph: "S", act: "food", counter: "the long bar", sign: ["THE SALOON", "Swinging doors, municipal whiskey, a piano nobody admits to playing."] },
+    restaurant: { title: "The Restaurant", glyph: "E", act: "food", counter: "the table", sign: ["THE RESTAURANT", "Prix fixe, prix steep. The fish is local, allegedly."] },
+    coffee: { title: "The Coffee Shop", glyph: "O", act: "food", counter: "the counter", sign: ["THE COFFEE SHOP", "Opens early, on the days that have a morning."] },
+    bodega: { title: "The Bodega", glyph: "D", act: "food", counter: "the register", sign: ["THE BODEGA", "Everything, a little dear, all hours."] },
+    motel: { title: "The Motel", glyph: "M", act: "rest", counter: "the front desk", sign: ["THE MOTEL", "Vacancy. Always vacancy."] },
+    bank: { title: "The Bank", glyph: "B", act: "flavor", counter: "the teller window", sign: ["THE BANK", "Your deposits are safe, in the municipal sense of safe."] },
+    blacksmith: { title: "The Blacksmith", glyph: "L", act: "flavor", counter: "the anvil", sign: ["THE BLACKSMITH", "Honest tools. No promises."] },
+    barber: { title: "The Barber", glyph: "R", act: "flavor", counter: "the chair", sign: ["THE BARBER", "A trim, a shave, and the news you did not ask for."] },
+    church: { title: "The Church", glyph: "C", act: "blessing", counter: "the rail", sign: ["THE CHURCH", "Open to the living and, by appointment, the lately-living."] },
+    tim: { title: "Tim's Tour Guide", glyph: "G", act: "tim", counter: "the desk", sign: ["TIM'S TOUR GUIDE", "Hints sold here. (Closed.)"] },
+    tattoo: { title: "The Tattoo Parlor", glyph: "Z", act: "flavor", counter: "the table", sign: ["THE TATTOO PARLOR", "Permanent souvenirs of a temporary visit."] },
+    boat: { title: "Boat Rental", glyph: "Y", act: "boat", counter: "the dock desk", sign: ["BOAT RENTAL", "Rent a boat. The boat goes where the boat goes."] }
+  };
+  // which voice keeps each place (accent map): posh / brooklyn / pastoral / plainspoken / mixed
+  var KEEPER = {
+    kiosk: "kiosk", agency: "agency", hotel: "hotel", spa: "spa", tavern: "keeper_brooklyn",
+    saloon: "keeper_brooklyn", bodega: "keeper_brooklyn", boat: "keeper_brooklyn",
+    bank: "keeper_posh", church: "keeper_pastoral",
+    blacksmith: "keeper_plain", motel: "keeper_plain", barber: "keeper_plain",
+    tim: "keeper_mixed", tattoo: "keeper_mixed", restaurant: "keeper_mixed", coffee: "coffee"
   };
 
   function create(world, opts) {
@@ -56,7 +76,7 @@ var TD_GAME = (function () {
     });
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
-    var invOpen, invSel, look, sensedWater, vendor, pendingVendor;
+    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, townsfolk;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
@@ -69,7 +89,12 @@ var TD_GAME = (function () {
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
-      vendor = { x: 12, y: 12, frozen: false };          // the mobile hot dog vendor, on his route
+      vendor = { x: 24, y: 14, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true };   // mobile
+      townsfolk = [                                       // wandering flavor NPCs; the town breathes
+        { id: "nuns", voiceId: "nuns", x: 20, y: 12, glyph: "n", name: "a pair of nuns", frozen: false },
+        { id: "farmers", voiceId: "farmers", x: 28, y: 14, glyph: "f", name: "a farmer", frozen: false },
+        { id: "senorita", voiceId: "senorita", x: 24, y: 18, glyph: "s", name: "a señorita", frozen: false }
+      ];
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
@@ -147,6 +172,16 @@ var TD_GAME = (function () {
         case "gate":
           if (!character.ticket) { logMsg("The gate does not open for the unticketed."); break; }
           enterDungeon(); logMsg("You present your ticket; the turnstile sighs and lets you by."); break;
+        case "rest":
+          restore(meters.hpMax, 0, meters.satiationMax); logMsg("You take a cheap room at the Motel and wake, unimproved but rested."); break;
+        case "blessing":
+          logMsg("You receive a blessing. It costs nothing and is worth, the parson notes, exactly that — and also everything."); break;
+        case "tim":
+          logMsg("Tim's hint desk is shuttered. A note reads: “Back when the route is ready.”"); break;   // hints DEFERRED
+        case "boat":
+          logMsg("The clerk nods at the island offshore. “Rentals resume when the tide and the Bureau agree.”"); break;   // goes nowhere yet (FLAG)
+        case "flavor":
+          logMsg("You browse. Nothing changes hands today, which is its own kind of transaction."); break;
       }
     }
     function restore(hp, fat, sat) { meters.hp = hp; meters.fatigue = fat; meters.satiation = sat; }
@@ -162,26 +197,37 @@ var TD_GAME = (function () {
       Object.keys(INTERIORS).forEach(function (id) { places[id] = buildInterior(id); });
     }
 
+    // The harbour town — a main-street spine: the DUNGEON GATE at the top, the
+    // HARBOUR along the bottom, buildings facing the street in pairs, the Rusty
+    // Anchor and Boat Rental at the water, and the red-lit Quay's End (exterior
+    // only). Everything opens onto an open plaza, so every door is reachable.
     function buildTown() {
       var g = blank();
-      carve(g, 4, 3, 36, 19);                 // the streets
-      fill(g, 4, 1, 36, 2, "~");              // the harbour (water, scenery)
+      carve(g, 3, 2, 45, 22);                  // the streets / plaza (open => reachable)
+      fill(g, 3, 23, 45, 24, "~");             // the harbour, curving along the bottom
       var doors = {}, features = {};
-      function building(x0, y0, x1, y1, dx, dy, to, glyph, name) {
-        fill(g, x0, y0, x1, y1, "#");
-        doors[key(dx, dy)] = { to: to, glyph: glyph, label: name };
-      }
-      building(6, 4, 10, 6, 8, 7, "kiosk", "K", "the Admission Kiosk");
-      building(14, 4, 19, 6, 16, 7, "agency", "A", "the Tour Agency");
-      building(23, 4, 28, 6, 25, 7, "hotel", "H", "the Gilded Kraken Hotel");
-      building(32, 4, 36, 6, 34, 7, "spa", "P", "the Spa");
-      building(6, 15, 11, 18, 8, 14, "tavern", "T", "the Rusty Anchor");
-      building(30, 15, 35, 18, 32, 14, "DUNGEON", ">", "the Dungeon Gate");
-      // doorman gate on the tavern; ticket gate on the dungeon gate
-      doors[key(8, 14)].gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
-      doors[key(32, 14)].gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
-      features[key(20, 3)] = { type: "lookout", glyph: "~", label: "harbour rail", text: SIG["012"].t, act: "lookout" };
-      return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 20, y: 11 } };
+      function bld(x0, y0, x1, y1, dx, dy, to, glyph, name) { fill(g, x0, y0, x1, y1, "#"); g[dy][dx] = "."; doors[key(dx, dy)] = { to: to, glyph: glyph, label: name }; }
+      bld(22, 2, 26, 3, 24, 4, "DUNGEON", ">", "the Dungeon Gate");
+      // left column | right column (paired, descending the spine)
+      bld(4, 3, 8, 5, 6, 6, "saloon", "S", "the Saloon");          bld(40, 3, 44, 5, 42, 6, "hotel", "H", "the Gilded Kraken Hotel");
+      bld(4, 7, 8, 9, 6, 10, "motel", "M", "the Motel");           bld(40, 7, 44, 9, 42, 10, "tim", "G", "Tim's Tour Guide");
+      bld(4, 11, 8, 13, 6, 14, "bank", "B", "the Bank");           bld(40, 11, 44, 13, 42, 14, "blacksmith", "L", "the Blacksmith");
+      bld(4, 15, 8, 17, 6, 18, "barber", "R", "the Barber");       bld(40, 15, 44, 17, 42, 18, "spa", "P", "the Spa");
+      // the inner street / shops side
+      bld(12, 3, 16, 5, 14, 6, "kiosk", "K", "the Admission Kiosk");   bld(32, 3, 36, 5, 34, 6, "agency", "A", "the Tour Agency");
+      bld(12, 7, 16, 9, 14, 10, "coffee", "O", "the Coffee Shop");     bld(32, 7, 36, 9, 34, 10, "restaurant", "E", "the Restaurant");
+      bld(12, 11, 16, 13, 14, 14, "bodega", "D", "the Bodega");        bld(32, 11, 36, 13, 34, 14, "tattoo", "Z", "the Tattoo Parlor");
+      bld(12, 15, 16, 17, 14, 18, "church", "C", "the Church");
+      // the waterfront row
+      bld(6, 19, 11, 21, 8, 22, "tavern", "T", "the Rusty Anchor");
+      bld(20, 19, 25, 21, 22, 22, "boat", "Y", "Boat Rental");
+      bld(34, 19, 39, 21, 37, 22, "redlit", "Q", "the Quay's End");
+      // the doorman gate (Rusty Anchor) and the ticket gate (Dungeon Gate)
+      doors[key(8, 22)].gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
+      doors[key(24, 4)].gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
+      // the harbour rail: the island offshore, in plain sight and plainly off-limits (012)
+      features[key(28, 22)] = { type: "lookout", glyph: "≈", label: "harbour rail", text: SIG["012"].t, act: "lookout" };
+      return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 24, y: 12 } };
     }
 
     function buildInterior(id) {
@@ -250,14 +296,27 @@ var TD_GAME = (function () {
       var P = cur();
       var nx = player.x + DIRS[dir][0], ny = player.y + DIRS[dir][1];
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) return { moved: false };
-      // the mobile hot dog vendor: contact begins the conversation (only Enter buys)
-      if (placeId === "TOWN" && vendor && nx === vendor.x && ny === vendor.y) {
-        pendingDoor = null; pendingCounter = null; pendingVendor = true;
-        var vb = voice("vendor");
-        if (!speak(vb, "greeting")) logMsg("The vendor waves you over to the cart.");
-        speak(vb, "pitch"); speak(vb, "reaction", playerState());
-        logMsg("Buy a hot dog? — Enter to accept; step away to decline.");
-        return { moved: false, bumpedVendor: true, event: lastEvent };
+      // a townsfolk NPC (vendor or walker): contact begins the conversation
+      if (placeId === "TOWN") {
+        var npcList = npcs();
+        for (var ni = 0; ni < npcList.length; ni++) {
+          var npc = npcList[ni];
+          if (nx !== npc.x || ny !== npc.y) continue;
+          pendingDoor = null; pendingCounter = null;
+          if (npc.isVendor) {                              // the hot dog vendor — only Enter buys
+            pendingVendor = true;
+            var vb = voice("vendor");
+            if (!speak(vb, "greeting")) logMsg("The vendor waves you over to the cart.");
+            speak(vb, "pitch"); speak(vb, "reaction", playerState());
+            logMsg("Buy a hot dog? — Enter to accept; step away to decline.");
+            return { moved: false, bumpedVendor: true, event: lastEvent };
+          }
+          pendingVendor = false;                           // a walker — they just talk
+          var vt = voice(npc.voiceId);
+          if (!speak(vt, "greeting")) logMsg(npc.name + " nods at you.");
+          speak(vt, "smalltalk"); speak(vt, "reaction", playerState());
+          return { moved: false, bumpedNpc: true, event: lastEvent };
+        }
       }
       var d = P.doors[key(nx, ny)];
       if (d) { pendingCounter = null; pendingVendor = false; pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
@@ -276,7 +335,7 @@ var TD_GAME = (function () {
       if (P.grid[ny][nx] !== ".") return { moved: false };
       player.x = nx; player.y = ny; pendingDoor = null; pendingCounter = null; pendingVendor = false; lastEvent = null;
       shared.turn += 1;
-      vendorStep();
+      walkersStep();
       // the senses emitter (town): the harbour makes itself heard near the water
       var nearW = waterAdjacent(P, nx, ny);
       if (nearW && !sensedWater) senses("Down at the quay the water laps at the stone, patient and cold.", "heard", "OBJ");
@@ -290,16 +349,22 @@ var TD_GAME = (function () {
       }
       return false;
     }
-    // the vendor wanders the streets turn-by-turn (frozen during tests)
-    function vendorStep() {
-      if (!vendor || vendor.frozen || placeId !== "TOWN") return;
-      var T = places.TOWN, opts = [], ds = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-      for (var i = 0; i < ds.length; i++) {
-        var x = vendor.x + ds[i][0], y = vendor.y + ds[i][1];
-        if (x < 0 || y < 0 || x >= W || y >= H) continue;
-        if (T.grid[y][x] === "." && !T.doors[key(x, y)] && !T.features[key(x, y)] && !(x === player.x && y === player.y)) opts.push({ x: x, y: y });
-      }
-      if (opts.length) { var p = opts[Math.floor(Math.random() * opts.length)]; vendor.x = p.x; vendor.y = p.y; }
+    // the vendor + townsfolk wander the streets turn-by-turn (frozen during tests)
+    function npcs() { if (placeId !== "TOWN") return []; return (vendor ? [vendor] : []).concat(townsfolk || []); }
+    function occupied(list, self, x, y) { for (var i = 0; i < list.length; i++) if (list[i] !== self && list[i].x === x && list[i].y === y) return true; return false; }
+    function walkersStep() {
+      if (placeId !== "TOWN") return;
+      var T = places.TOWN, list = npcs(), ds = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+      list.forEach(function (npc) {
+        if (npc.frozen) return;
+        var opts = [];
+        for (var i = 0; i < ds.length; i++) {
+          var x = npc.x + ds[i][0], y = npc.y + ds[i][1];
+          if (x < 0 || y < 0 || x >= W || y >= H) continue;
+          if (T.grid[y][x] === "." && !T.doors[key(x, y)] && !T.features[key(x, y)] && !(x === player.x && y === player.y) && !occupied(list, npc, x, y)) opts.push({ x: x, y: y });
+        }
+        if (opts.length) { var p = opts[Math.floor(Math.random() * opts.length)]; npc.x = p.x; npc.y = p.y; }
+      });
     }
     function buyHotDog() {
       shared.inventory.push(makeHotDog());
@@ -428,9 +493,11 @@ var TD_GAME = (function () {
     function transition(to, doorPos) {
       if (to === "DUNGEON") { act("gate"); return; }                  // enterDungeon + line
       if (to === "TOWN") { placeId = "TOWN"; player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y }; logMsg("You step back out into the harbour."); return; }
+      if (to === "redlit") { senses("A red lamp, a velvet rope, and a card: “Closed for renovations.” The Quay's End keeps its counsel.", "seen", "OBJ"); return; }   // exterior only
       returnTile = { x: player.x, y: player.y };                       // come back where we entered
       placeId = to; player = { x: places[to].spawn.x, y: places[to].spawn.y };
       logMsg((places[to].sign || []).join("  —  "));
+      var vb = voice(KEEPER[to]); if (vb) { speak(vb, "greeting"); speak(vb, "reaction", playerState()); }   // the keeper speaks
     }
 
     function afterDungeon() {
@@ -450,7 +517,7 @@ var TD_GAME = (function () {
         grid: P.grid.map(function (r) { return r.join(""); }),
         doors: P.doors, features: P.features, items: {}, plain: {},
         player: { x: player.x, y: player.y },
-        creatures: (placeId === "TOWN" && vendor) ? [{ x: vendor.x, y: vendor.y, kind: "vendor", glyph: "v", name: "the hot dog vendor", hp: 1, maxHp: 1, dmg: 0 }] : [],
+        creatures: npcs().map(function (n) { return { x: n.x, y: n.y, kind: "vendor", glyph: n.glyph, name: n.name, hp: 1, maxHp: 1, dmg: 0 }; }),
         events: [],
         explored: explored, visible: explored,
         level: 0, title: P.title, meters: meters, ticket: character.ticket,
@@ -517,9 +584,10 @@ var TD_GAME = (function () {
       _pendingCounter: function () { return pendingCounter ? pendingCounter.act : null; },
       _pendingVendor: function () { return pendingVendor; },
       _vendor: function () { return vendor; },
-      _setVendor: function (x, y) { vendor = { x: x, y: y, frozen: true }; return vendor; },
-      _freezeVendor: function (b) { if (vendor) vendor.frozen = !!b; },
+      _setVendor: function (x, y) { vendor = { x: x, y: y, frozen: true, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true }; return vendor; },
+      _freezeVendor: function (b) { if (vendor) vendor.frozen = !!b; (townsfolk || []).forEach(function (n) { n.frozen = !!b; }); },
       _voice: function (id) { return voice(id); },
+      _keepers: function () { return KEEPER; },
       _playerState: function () { return playerState(); },
       _hunger: function () { return TD_MAP.hungerStage(meters); },
       _inventory: function () { return shared.inventory; },
