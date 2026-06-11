@@ -385,7 +385,7 @@
     var m = vw.meters || {}, hg = vw.hunger || { stage: "—", critical: false };
     var hpCol = m.hp < 0.25 * m.hpMax ? P.dangerHigh : m.hp < 0.5 * m.hpMax ? P.dangerMed : "#2f6d33";
     var ftCol = m.fatigue > 80 ? P.dangerHigh : m.fatigue > 55 ? P.dangerMed : "#7a5c3a";
-    var place = vw.phase === "dungeon" ? ("Level " + vw.level) : (vw.phase === "town" ? "The Harbour" : "Indoors");
+    var place = vw.phase === "dungeon" ? ("Level " + vw.level) : (vw.phase === "town" ? (vw.title || "The Harbour") : "Indoors");
     dossierEl.innerHTML =
       bar("HP", m.hp, m.hpMax, hpCol, true) +
       bar("Fatigue", m.fatigue, m.fatigueMax, ftCol, false) +
@@ -695,7 +695,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v15 · harbour town", BUILD = "13f6b12";
+  var VERSION = "play-map v16 · harbour town", BUILD = "b27646e";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

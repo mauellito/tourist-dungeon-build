@@ -26,7 +26,13 @@ var TD_GAME = (function () {
     "011": { ch: "OBJ", t: "Behind the cold and rat-less wall, a stair ascends to serve them all." },
     "012": { ch: "OBJ", t: "Across the water the monastery and the graveyard sit in plain view, and just as plainly cannot be reached from here." }
   };
-  var W = 64, H = 40;   // the harbour town — a sprawl (the dungeon stays 41x23)
+  var W = 48, H = 28;   // one harbour-town SCREEN (the dungeon keeps its own dims)
+  // the town is a graph of screen-sized places, connected by streets that
+  // continue at the edges. Spine GATE->MAIN->MARKET->HARBOUR; REDLIGHT hangs off
+  // MARKET/HARBOUR by the narrowing. Spelling law: HARBOUR (with the U).
+  var SCREEN_IDS = ["GATE", "MAIN", "MARKET", "REDLIGHT", "HARBOUR"];
+  var START_SCREEN = "GATE";
+  function isTownScreen(id) { return SCREEN_IDS.indexOf(id) >= 0; }
   var DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], ul: [-1, -1], ur: [1, -1], dl: [-1, 1], dr: [1, 1] };
   function key(x, y) { return x + "," + y; }
   function cheby(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); }
@@ -72,26 +78,10 @@ var TD_GAME = (function () {
     chinese: "keeper_mixed", clamshack: "keeper_brooklyn", gift1: "gift1", gift2: "gift2"
   };
 
-  // named errand destinations (all are STREET/PLAZA tiles in the fixed town map)
-  var DEST = {
-    dock: { x: 30, y: 33 }, warehouse: { x: 7, y: 33 }, tavern: { x: 27, y: 33 },
-    rail: { x: 31, y: 36 }, alley: { x: 8, y: 28 }, plaza: { x: 31, y: 10 },
-    church: { x: 43, y: 24 }, shops: { x: 12, y: 18 }, main: { x: 31, y: 14 },
-    "strip-a": { x: 28, y: 6 }, "strip-b": { x: 34, y: 6 }, giftshops: { x: 31, y: 7 }
-  };
-  // destination pools per actor TYPE — the errand loop draws from these
-  var POOLS = {
-    townsfolk: ["shops", "plaza", "church", "home"],
-    nuns: ["church", "plaza", "main"],
-    dockworker: ["dock", "warehouse", "tavern"],
-    sailor: ["tavern", "rail", "alley"],
-    shopper: ["shops", "plaza", "giftshops"],
-    visitor: ["giftshops", "plaza", "strip-a", "strip-b"],
-    vendor: ["strip-a", "strip-b", "plaza", "giftshops"]
-  };
-  // the guard's fixed patrol route: main street, plaza, tourist strip, a pass by
-  // the red-light archway (atmospheric only — no reactions, no crime system)
-  var GUARD_ROUTE = ["main", "plaza", "strip-a", "alley", "main"];
+  // Errands are now SCREEN-LOCAL (v16): a non-route actor heads for a random
+  // street cell of its own screen, dwells, repeats; a route actor (the guard)
+  // cycles a fixed list of waypoint tiles. (Named cross-town destination pools
+  // were retired with the single-screen town — see FLAG in the wrap-up.)
 
   function create(world, opts) {
     opts = opts || {};
@@ -104,7 +94,7 @@ var TD_GAME = (function () {
     });
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
-    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, townsfolk, sensedGarden, crowd, pendingExit, exitReturn, left;
+    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, pendingExit, exitReturn, left, returnScreen;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
@@ -112,22 +102,13 @@ var TD_GAME = (function () {
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
-      placeId = "TOWN"; dungeon = null; dead = false; won = false;
+      placeId = START_SCREEN; dungeon = null; dead = false; won = false; returnScreen = START_SCREEN;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
-      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; sensedGarden = false; pendingExit = false; exitReturn = null; left = false;
+      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; pendingExit = false; exitReturn = null; left = false;
       buildPlaces();
-      player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
-      // every actor runs on the energy scheduler: it gains its SPEED in energy
-      // each player town-turn and acts whenever energy >= 100 (ADOM-style).
-      vendor = { id: "vendor", x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true, type: "vendor", home: { x: 31, y: 7 }, speed: 90, energy: 0, acts: 0 };
-      townsfolk = [                                       // key walkers on the errand loop
-        { id: "nuns", voiceId: "nuns", x: 44, y: 24, glyph: "n", name: "a pair of nuns", frozen: false, type: "nuns", home: { x: 44, y: 24 }, speed: 70, energy: 0, acts: 0 },
-        { id: "farmers", voiceId: "farmers", x: 19, y: 25, glyph: "f", name: "a farmer", frozen: false, type: "townsfolk", home: { x: 19, y: 25 }, speed: 90, energy: 0, acts: 0 },
-        { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false, type: "townsfolk", home: { x: 31, y: 30 }, speed: 90, energy: 0, acts: 0 },
-        { id: "guard1", voiceId: "guard", x: 31, y: 14, glyph: "G", name: "a Bureau patrol", frozen: false, type: "guard", route: GUARD_ROUTE, home: { x: 31, y: 14 }, speed: 100, energy: 0, acts: 0 }
-      ];
-      crowd = [];
-      spawnPopulation();                                  // the filler crowd + the school troop
+      player = { x: places[START_SCREEN].spawn.x, y: places[START_SCREEN].spawn.y };
+      vendor = null;
+      spawnPopulation();                                  // per-screen actors: walkers, crowd, troop
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
@@ -242,117 +223,138 @@ var TD_GAME = (function () {
 
     function buildPlaces() {
       places = {};
-      places.TOWN = buildTown();
+      buildGate(); buildMain(); buildMarket(); buildRedlight(); buildHarbour();
       Object.keys(INTERIORS).forEach(function (id) { places[id] = buildInterior(id); });
     }
 
-    // The harbour town — a SPRAWL. Street hierarchy is town law (TOWN LAW):
-    // 4-wide MAIN streets form a T (vertical stem to the harbour + a top cross
-    // bar); 3-wide SECONDARY streets branch off; the red-light district is
-    // 2-wide alleys plus a 1-wide one. Width signals respectability. The harbour
-    // is the front door (cheap near the water, quality rising inland). Buildings
-    // face the streets; the island folds into the harbour rail (012).
-    function buildTown() {
-      var g = blank();
-      var streets = [], districts = {};
-      function street(id, district, x0, y0, x1, y1) {
-        carve(g, x0, y0, x1, y1);
-        streets.push({ id: id, district: district, width: Math.min(x1 - x0 + 1, y1 - y0 + 1), rect: [x0, y0, x1, y1] });
-      }
-      function zone(name, x0, y0, x1, y1) { districts[name] = { rect: [x0, y0, x1, y1], doors: [] }; }
-      // --- the T: 4-wide main streets ---
-      street("main-bar", "main", 6, 5, 57, 8);        // the cross bar (top)
-      street("main-stem", "main", 30, 5, 33, 37);     // the stem, down to the harbour
-      // --- 3-wide secondary streets ---
-      street("sec-west", "shops", 11, 8, 13, 26);
-      street("sec-east", "civic", 50, 8, 52, 28);
-      street("sec-mid", "shops", 8, 24, 52, 26);       // the mid cross
-      street("dock-st", "waterfront", 6, 32, 57, 34);  // the docks road (cheap, by the water)
-      // --- the red-light district: the streets PINCH as you approach (Novigrad) ---
-      street("red-approach", "redlight", 8, 26, 9, 32);   // 2-wide, narrowing down
-      street("red-alley", "redlight", 8, 34, 15, 35);     // 2-wide
-      street("red-slit", "redlight", 12, 35, 12, 37);     // a 1-wide alley
-      // the harbour, curving along the bottom
-      fill(g, 3, 38, 60, 39, "~");
-      // the fountain plaza where the T crosses (open square; the fountain lands in R3)
-      carve(g, 26, 9, 37, 15);
-
-      zone("main", 6, 2, 57, 8); zone("tourist-strip", 18, 2, 46, 5);
-      zone("shops", 8, 9, 26, 26); zone("waterfront", 6, 30, 57, 37); zone("redlight", 6, 26, 16, 37);
-
-      var doors = {}, features = {};
-      function bld(dx, dy, to, glyph, name, district) { doors[key(dx, dy)] = { to: to, glyph: glyph, label: name }; if (districts[district]) districts[district].doors.push(key(dx, dy)); }
-
-      // --- main street (posh, inland/top): gate + hotel + bank + spa + saloon ---
-      bld(31, 5, "DUNGEON", ">", "the Dungeon Gate", "main");
-      bld(24, 5, "bank", "B", "the Bank", "main");
-      bld(38, 5, "hotel", "H", "the Gilded Kraken Hotel", "main");
-      bld(46, 5, "spa", "P", "the Spa", "main");
-      bld(10, 5, "saloon", "S", "the Saloon", "tourist-strip");
-      bld(53, 5, "tim", "G", "Tim's Tour Guide", "main");
-      // --- shops district (around the plaza / the west secondary) ---
-      bld(12, 12, "kiosk", "K", "the Admission Kiosk", "shops");
-      bld(12, 16, "agency", "A", "the Tour Agency", "shops");
-      bld(35, 12, "coffee", "O", "the Coffee Shop", "shops");
-      bld(20, 25, "barber", "R", "the Barber", "shops");
-      // --- civic / east secondary ---
-      bld(51, 14, "restaurant", "E", "the Restaurant", "civic");
-      bld(51, 20, "tattoo", "Z", "the Tattoo Parlor", "civic");
-      bld(51, 25, "blacksmith", "L", "the Blacksmith", "civic");
-      bld(44, 25, "church", "C", "the Church", "civic");
-      // --- waterfront (cheap, by the water): motel at the edge, boat, the Anchor, bodega ---
-      bld(53, 33, "motel", "M", "the Motel", "waterfront");
-      bld(40, 33, "boat", "Y", "Boat Rental", "waterfront");
-      bld(26, 33, "tavern", "T", "the Rusty Anchor", "waterfront");
-      bld(15, 33, "bodega", "D", "the Bodega", "redlight");
-      // --- the red-light district (alleys) ---
-      bld(10, 35, "redshop", "x", "the Red Light Shop", "redlight");
-      bld(9, 30, "redlit", "Q", "the Quay's End", "redlight");
-      // --- the tourist strip: two WARRING gift shops flanking the gate ---
-      bld(28, 5, "gift1", "1", "Ye Olde Dungeon Gifte", "tourist-strip");
-      bld(34, 5, "gift2", "2", "Authentic Dungeon Souvenirs", "tourist-strip");
-      // --- scattered eateries (never a food court) ---
-      bld(51, 11, "chinese", "N", "the Golden Turnstile (takeout)", "civic");
-      bld(33, 33, "clamshack", "F", "the Clam Shack", "waterfront");
-      // --- filler buildings (varied; locked or empty stubs, no content yet) ---
-      bld(16, 5, "locked", "h", "a shuttered townhouse", "tourist-strip");
-      bld(49, 8, "locked", "h", "a boarded-up shop", "main");
-      bld(6, 33, "empty", "w", "a harbour warehouse", "waterfront");
-      // gates
-      doors[key(26, 33)].gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
-      doors[key(31, 5)].gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
-      // the harbour rail: the island offshore, in plain sight and plainly off-limits (012)
-      features[key(31, 37)] = { type: "lookout", glyph: "≈", label: "harbour rail", text: SIG["012"].t, act: "lookout" };
-
-      // --- OPEN SPACE: a fountain, a public garden, a stable, a dead-end view ---
-      g[12][31] = "~"; g[12][32] = "~"; g[13][31] = "~"; g[13][32] = "~";        // the fountain (you walk around it)
-      features[key(31, 11)] = { type: "view", glyph: "≈", col: "water", label: "the fountain plaza", text: "The fountain mutters to itself, municipal and content. Coins glint in it, unclaimed.", act: "look" };
-      carve(g, 40, 9, 47, 14);                                                   // the public garden, off the bar
-      ["41,10", "45,11", "43,13", "46,9"].forEach(function (t) { var p = t.split(","); g[+p[1]][+p[0]] = "t"; });   // trees
-      features[key(43, 12)] = { type: "view", glyph: "t", col: "nature", label: "the public garden", text: "A square of deliberate green: a bench, two trees, and a sign forbidding the obvious.", act: "look" };
-      bld(57, 33, "empty", "u", "the Stable", "waterfront");                     // a stable on the road out of town
-      carve(g, 57, 34, 57, 37);                                                  // a dead-end down to the water
-      features[key(57, 37)] = { type: "view", glyph: "=", col: "signal", label: "a quiet railing", text: "A railing, a bench, the harbour breathing below. The island sits offshore, indifferent. The wrong turn was the right one.", act: "look" };
-      // the red-light archway — you feel the threshold (Clock Town)
-      features[key(8, 27)] = { type: "view", glyph: "∩", col: "redlight", label: "the red-light archway", text: "An arch of dim red glass. Past it the streets pinch and the lamps go pink. You are somewhere else now.", act: "look" };
-      [key(10, 35), key(9, 30), key(15, 33)].forEach(function (kk) { if (doors[kk]) doors[kk].red = true; });   // red-tinted doors
-
-      // --- THE CURIOSITY (Dragon Quest): a hidden garden behind the church,
-      // found by a curious detour, telegraphed by a draft (secret grammar law) ---
-      carve(g, 45, 28, 48, 30); g[27][46] = ".";                                 // the gap + the pocket garden
-      features[key(46, 29)] = { type: "shrine", glyph: "¶", col: "nature", label: "a forgotten shrine", text: "Behind the church, out of the Bureau's sightline: a small shrine, two candles, and a quiet you may keep.", act: "shrine" };
-
-      // --- THE ROAD OUT OF TOWN (past the motel) + the EXIT tile (leaving ends the game) ---
-      carve(g, 58, 33, 61, 34);
-      features[key(58, 33)] = { type: "view", glyph: "=", col: "signal", label: "the road out of town", text: "Past the motel the road leaves the harbour behind, and the town simply stops. The Bureau posts a sign and a shrug.", act: "look" };
-      var exitTile = { x: 61, y: 33 };
-      // --- HORIZON LANDMARKS (promise, not content): visible, unreachable, covetous ---
-      features[key(6, 6)] = { type: "view", glyph: "▲", col: "signal", label: "a castle on a far hill", text: "On a far hill a castle keeps its own counsel and its own portcullis. The Bureau notes it is 'not currently on the itinerary'.", act: "look" };
-      features[key(57, 6)] = { type: "view", glyph: "▲", col: "signal", label: "a monastery in the hills", text: "A monastery folds into the hills, bells and all, serenely beyond the turnstile. You may look; looking is free.", act: "look" };
-      features[key(9, 34)] = { type: "view", glyph: "○", col: "signal", label: "a cave mouth in the distance", text: "Across the water a cave mouth yawns, dark and promising and entirely off the map. The Bureau covets it on your behalf.", act: "look" };
-
-      return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 31, y: 20 }, exit: exitTile, meta: { streets: streets, districts: districts } };
+    // ---- town-screen construction helpers --------------------------------
+    function newScreen(id, title) {
+      return { id: id, title: title, grid: blank(), doors: {}, features: {}, occupants: [], actors: [], exits: {}, cells: [], spawn: { x: 23, y: 14 }, meta: { id: id, streets: [], districts: {}, gift: null }, screen: true };
     }
+    function scStreet(s, sid, district, x0, y0, x1, y1) { carve(s.grid, x0, y0, x1, y1); s.meta.streets.push({ id: sid, district: district, width: Math.min(x1 - x0 + 1, y1 - y0 + 1), rect: [x0, y0, x1, y1] }); }
+    function scZone(s, name, x0, y0, x1, y1) { s.meta.districts[name] = { rect: [x0, y0, x1, y1], doors: [] }; }
+    function scDoor(s, dx, dy, to, glyph, name, district) { var d = { to: to, glyph: glyph, label: name }; s.doors[key(dx, dy)] = d; if (s.meta.districts[district]) s.meta.districts[district].doors.push(key(dx, dy)); return d; }
+    function scExit(s, x, y, to, ex, ey) { s.exits[key(x, y)] = { to: to, ex: ex, ey: ey }; }
+    function scFeat(s, x, y, o) { s.features[key(x, y)] = o; }
+    function scOpen(s, x0, y0, x1, y1) { carve(s.grid, x0, y0, x1, y1); }   // an open square (carved, not a street)
+    function scCells(s) { s.cells = []; for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (s.grid[y][x] === "." && !s.doors[key(x, y)] && !s.features[key(x, y)]) s.cells.push({ x: x, y: y }); }
+    function lk(label, glyph, col, text) { return { type: "view", glyph: glyph, col: col, label: label, text: text, act: "look" }; }
+
+    // GATE — the dungeon gate + tourist strip + the two warring gift shops + the
+    // Admission Kiosk (ruled: buy admission at the gate). Spawn screen.
+    function buildGate() {
+      var s = newScreen("GATE", "The Dungeon Gate");
+      scStreet(s, "gate-ave", "main", 22, 2, 25, 27);        // 4-wide avenue
+      scStreet(s, "strip-bar", "tourist-strip", 8, 4, 39, 7); // 4-wide tourist strip
+      scZone(s, "main", 20, 1, 27, 27); scZone(s, "tourist-strip", 8, 2, 39, 8);
+      var gd = scDoor(s, 23, 2, "DUNGEON", ">", "the Dungeon Gate", "main");
+      gd.gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
+      scDoor(s, 14, 4, "kiosk", "K", "the Admission Kiosk", "tourist-strip");
+      scDoor(s, 20, 4, "gift1", "1", "Ye Olde Dungeon Gifte", "tourist-strip");
+      scDoor(s, 27, 4, "gift2", "2", "Authentic Dungeon Souvenirs", "tourist-strip");
+      scDoor(s, 33, 4, "locked", "h", "a shuttered ticket booth", "tourist-strip");
+      s.meta.gift = { a: { x: 20, y: 4 }, b: { x: 27, y: 4 } };
+      [22, 23, 24, 25].forEach(function (x) { scExit(s, x, 27, "MAIN", x, 1); });   // south -> MAIN
+      s.spawn = { x: 23, y: 20 };
+      scCells(s); places.GATE = s;
+    }
+
+    // MAIN — the ONLY symmetric screen: a 4-wide stately avenue, buildings
+    // mirrored about the axis. Hotel, Bank, Tim's, Blacksmith, Saloon, Spa.
+    function buildMain() {
+      var s = newScreen("MAIN", "Main Street");
+      scStreet(s, "main-ave", "main", 22, 0, 25, 27);        // 4-wide, full height
+      scStreet(s, "main-wb", "main", 8, 12, 22, 14);         // west branch
+      scStreet(s, "main-eb", "main", 25, 12, 39, 14);        // east branch (mirror)
+      scZone(s, "main", 4, 0, 43, 27);
+      scDoor(s, 14, 12, "hotel", "H", "the Gilded Kraken Hotel", "main");
+      scDoor(s, 33, 12, "bank", "B", "the Bank", "main");
+      scDoor(s, 14, 14, "saloon", "S", "the Saloon", "main");
+      scDoor(s, 33, 14, "spa", "P", "the Spa", "main");
+      scDoor(s, 10, 13, "tim", "G", "Tim's Tour Guide", "main");
+      scDoor(s, 37, 13, "blacksmith", "L", "the Blacksmith", "main");
+      [22, 23, 24, 25].forEach(function (x) { scExit(s, x, 0, "GATE", x, 26); scExit(s, x, 27, "MARKET", Math.min(x, 24), 1); });
+      s.spawn = { x: 23, y: 6 };
+      scCells(s); places.MAIN = s;
+    }
+
+    // MARKET — asymmetric warren around the fountain plaza: a 3-wide avenue, a
+    // west cross street pinching 3->2 toward the red-light archway, the plaza on
+    // the east, the curiosity shrine behind the church. A dead-end with a sign.
+    function buildMarket() {
+      var s = newScreen("MARKET", "The Market");
+      scStreet(s, "mk-ave", "market", 22, 0, 24, 27);        // 3-wide avenue, full height
+      scStreet(s, "mk-cross", "shops", 3, 11, 24, 13);       // 3-wide west cross (asymmetric)
+      scStreet(s, "mk-arch", "redlight", 0, 12, 6, 13);      // 2-wide approach to REDLIGHT (the 3->2 pinch)
+      scStreet(s, "mk-eb", "civic", 24, 6, 38, 8);           // 3-wide east branch to the plaza
+      scStreet(s, "mk-dead", "civic", 36, 8, 37, 14);        // a 2-wide dead-end off the plaza
+      scOpen(s, 30, 5, 38, 11);                              // the fountain plaza (open square, not a street)
+      scZone(s, "shops", 2, 0, 21, 27); scZone(s, "civic", 25, 0, 43, 27);
+      scDoor(s, 6, 11, "agency", "A", "the Tour Agency", "shops");
+      scDoor(s, 12, 13, "barber", "R", "the Barber", "shops");
+      scDoor(s, 18, 13, "tattoo", "Z", "the Tattoo Parlor", "shops");
+      scDoor(s, 31, 5, "coffee", "O", "the Coffee Shop", "civic");
+      scDoor(s, 30, 10, "chinese", "N", "the Golden Turnstile (takeout)", "civic");
+      scDoor(s, 36, 10, "restaurant", "E", "the Restaurant", "civic");
+      scDoor(s, 23, 19, "church", "C", "the Church", "civic");
+      s.grid[7][33] = "~"; s.grid[7][34] = "~"; s.grid[8][33] = "~"; s.grid[8][34] = "~";   // the fountain
+      scFeat(s, 32, 6, lk("the fountain plaza", "≈", "water", "The fountain mutters to itself, municipal and content. Coins glint in it, unclaimed."));
+      scFeat(s, 37, 14, { type: "shrine", glyph: "¶", col: "nature", label: "a forgotten shrine", text: "Down a dead-end off the plaza, out of the Bureau's sightline: a small shrine, two candles, and a quiet you may keep.", act: "shrine" });
+      [22, 23, 24].forEach(function (x) { scExit(s, x, 0, "MAIN", x, 26); scExit(s, x, 27, "HARBOUR", x, 1); });
+      scExit(s, 0, 12, "REDLIGHT", 46, 10); scExit(s, 0, 13, "REDLIGHT", 46, 11);   // west arch -> REDLIGHT
+      s.spawn = { x: 23, y: 3 };
+      scCells(s); places.MARKET = s;
+    }
+
+    // REDLIGHT — a narrow warren: 2-wide lanes and a 1-wide slit (the visible
+    // 2->1 pinch), the red-glass archway, two dead-ends. Bodega, Red Light Shop,
+    // Quay's End (exterior). Hangs off MARKET (east arch) and HARBOUR (south).
+    function buildRedlight() {
+      var s = newScreen("REDLIGHT", "The Red-Light Lanes");
+      scStreet(s, "rl-cross", "redlight", 10, 10, 47, 11);   // 2-wide lane, reaches east edge
+      scStreet(s, "rl-south", "redlight", 10, 11, 11, 27);   // 2-wide lane down to HARBOUR
+      scStreet(s, "rl-slit", "redlight", 28, 6, 28, 10);     // 1-wide slit up to a dead-end (the pinch)
+      scStreet(s, "rl-dead", "redlight", 40, 11, 41, 18);    // 2-wide dead-end
+      scZone(s, "redlight", 4, 4, 47, 27);
+      scDoor(s, 15, 11, "bodega", "D", "the Bodega", "redlight");
+      scDoor(s, 22, 11, "redshop", "x", "the Red Light Shop", "redlight");
+      scDoor(s, 34, 11, "redlit", "Q", "the Quay's End", "redlight");
+      [key(15, 11), key(22, 11), key(34, 11)].forEach(function (k) { if (s.doors[k]) s.doors[k].red = true; });
+      scFeat(s, 45, 10, lk("the red-light archway", "∩", "redlight", "An arch of dim red glass. Past it the streets pinch and the lamps go pink. You are somewhere else now."));
+      scExit(s, 47, 10, "MARKET", 1, 12); scExit(s, 47, 11, "MARKET", 1, 13);   // east arch -> MARKET
+      scExit(s, 10, 27, "HARBOUR", 1, 18); scExit(s, 11, 27, "HARBOUR", 2, 18); // south -> HARBOUR
+      s.spawn = { x: 44, y: 11 };
+      scCells(s); places.REDLIGHT = s;
+    }
+
+    // HARBOUR — the waterfront: a real band of open water, the rail + island
+    // (012), Rusty Anchor, Boat Rental, Motel, Clam Shack; the road out of town
+    // (the exit prompt lives here). Top -> MARKET; west -> REDLIGHT.
+    function buildHarbour() {
+      var s = newScreen("HARBOUR", "The Harbour");
+      scStreet(s, "hb-ave", "waterfront", 22, 0, 25, 18);    // 4-wide down from MARKET
+      scStreet(s, "hb-dock", "waterfront", 0, 18, 46, 20);   // 3-wide dock road, reaches west edge
+      scZone(s, "waterfront", 0, 14, 46, 27);
+      fill(s.grid, 2, 23, 45, 26, "~");                       // the open water band
+      scDoor(s, 8, 18, "tavern", "T", "the Rusty Anchor", "waterfront");
+      scDoor(s, 12, 18, "boat", "Y", "Boat Rental", "waterfront");
+      scDoor(s, 16, 18, "empty", "w", "a harbour warehouse", "waterfront");
+      scDoor(s, 30, 18, "motel", "M", "the Motel", "waterfront");
+      scDoor(s, 35, 18, "clamshack", "F", "the Clam Shack", "waterfront");
+      var td = s.doors[key(8, 18)]; td.gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
+      scFeat(s, 23, 21, { type: "lookout", glyph: "≈", label: "harbour rail", text: SIG["012"].t, act: "lookout" });
+      scFeat(s, 41, 19, lk("the road out of town", "=", "signal", "Past the motel the road leaves the harbour behind, and the town simply stops. The Bureau posts a sign and a shrug."));
+      scFeat(s, 4, 17, lk("a castle on a far hill", "▲", "signal", "On a far hill a castle keeps its own counsel and its own portcullis. The Bureau notes it is 'not currently on the itinerary'."));
+      scFeat(s, 43, 17, lk("a monastery in the hills", "▲", "signal", "A monastery folds into the hills, bells and all, serenely beyond the turnstile. You may look; looking is free."));
+      scFeat(s, 40, 17, lk("a cave mouth across the water", "○", "signal", "Across the water a cave mouth yawns, dark and promising and entirely off the map. The Bureau covets it on your behalf."));
+      s.exit = { x: 46, y: 19 };                              // the road-out tile (leaving ends the game)
+      s.grid[19][46] = ".";                                   // ensure the exit tile is walkable
+      [22, 23, 24, 25].forEach(function (x) { scExit(s, x, 0, "MARKET", Math.min(x, 24), 26); });
+      scExit(s, 0, 18, "REDLIGHT", 10, 26); scExit(s, 0, 19, "REDLIGHT", 11, 26);
+      s.spawn = { x: 23, y: 3 };
+      scCells(s); places.HARBOUR = s;
+    }
+
 
     function occupantName(spec) {
       if (spec.act === "hotel" || spec.act === "rest") return "a hotel guest";
@@ -438,8 +440,13 @@ var TD_GAME = (function () {
       var P = cur();
       var nx = player.x + DIRS[dir][0], ny = player.y + DIRS[dir][1];
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) return { moved: false };
+      // EDGE EXIT: stepping onto a boundary street tile continues to the next screen
+      if (isTownScreen(placeId)) {
+        var ex = P.exits && P.exits[key(nx, ny)];
+        if (ex) { screenStep(ex); return { moved: true, screen: ex.to }; }
+      }
       // a townsfolk NPC (vendor or walker): contact begins the conversation
-      if (placeId === "TOWN") {
+      if (isTownScreen(placeId)) {
         var npcList = npcs();
         for (var ni = 0; ni < npcList.length; ni++) {
           var npc = npcList[ni];
@@ -458,7 +465,7 @@ var TD_GAME = (function () {
         }
       }
       // inside an establishment: occupants can be talked to as well
-      if (placeId !== "TOWN" && placeId !== "DUNGEON") {
+      if (!isTownScreen(placeId) && placeId !== "DUNGEON") {
         var occs = (cur().occupants) || [];
         for (var oj = 0; oj < occs.length; oj++) { var o = occs[oj]; if (nx === o.x && ny === o.y) { pendingCounter = null; talkTo(o); return { moved: false, bumpedNpc: true, event: lastEvent }; } }
       }
@@ -489,10 +496,14 @@ var TD_GAME = (function () {
       var nearW = waterAdjacent(P, nx, ny);
       if (nearW && !sensedWater) senses("Down at the quay the water laps at the stone, patient and cold.", "heard", "OBJ");
       sensedWater = nearW;
-      // secret grammar: the hidden church garden is telegraphed by a draft
-      if (!sensedGarden && Math.max(Math.abs(nx - 46), Math.abs(ny - 27)) <= 1) { senses("A cool draft slips from behind the church — there is a way around.", "heard", "OBJ"); sensedGarden = true; }
       maybeGiftDuel(); maybeAmbientBark();
       return { moved: true };
+    }
+    // an edge transition: step off one screen, arrive on the matching street tile
+    function screenStep(ex) {
+      placeId = ex.to; player = { x: ex.ex, y: ex.ey };
+      pendingDoor = null; pendingCounter = null; pendingVendor = false; sensedWater = false;
+      shared.turn += 1;
     }
     function waterAdjacent(P, x, y) {
       for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
@@ -503,7 +514,7 @@ var TD_GAME = (function () {
     }
     // the town actors run on an ENERGY SCHEDULER (ADOM-style): each player
     // town-turn every actor gains its SPEED in energy and acts (once per 100).
-    function npcs() { if (placeId !== "TOWN") return []; return (vendor ? [vendor] : []).concat(townsfolk || []).concat(crowd || []); }
+    function npcs() { return isTownScreen(placeId) ? (cur().actors || []) : []; }   // actors are screen-local (v16)
     function occupied(list, self, x, y) { for (var i = 0; i < list.length; i++) if (list[i] !== self && list[i].x === x && list[i].y === y) return true; return false; }
     // an NPC-walkable exterior tile: a STREET/PLAZA floor tile, not a door, not a
     // feature, not water/trees, not the player, not another actor.
@@ -528,10 +539,9 @@ var TD_GAME = (function () {
       return null;
     }
     function pickErrand(npc) {
-      if (npc.route) { npc.wp = ((npc.wp == null ? -1 : npc.wp) + 1) % npc.route.length; return DEST[npc.route[npc.wp]] || npc.home; }   // guard + chaperone cycle a fixed route
-      var pool = POOLS[npc.type] || ["home"];
-      var name = pool[Math.floor(Math.random() * pool.length)];
-      return name === "home" ? npc.home : (DEST[name] || npc.home);
+      if (npc.route && npc.route.length) { npc.wp = ((npc.wp == null ? -1 : npc.wp) + 1) % npc.route.length; return npc.route[npc.wp]; }   // route = list of {x,y} waypoints on this screen
+      var cells = cur().cells || [];                       // else a random street cell of this screen
+      return cells.length ? cells[Math.floor(Math.random() * cells.length)] : npc.home;
     }
     function nearestStreetAdj(T, lx, ly, fx, fy) {
       var ds = [[0, -1], [0, 1], [-1, 0], [1, 0]], best = null, bd = 1e9;
@@ -568,8 +578,8 @@ var TD_GAME = (function () {
       else { npc.path = null; }                            // blocked by another actor — re-path next turn
     }
     function walkersStep() {                              // the scheduler (one player turn)
-      if (placeId !== "TOWN") return;
-      var T = places.TOWN, list = npcs();
+      if (!isTownScreen(placeId)) return;
+      var T = cur(), list = npcs();
       list.forEach(function (npc) {
         if (npc.frozen) return;
         npc.energy = (npc.energy || 0) + (npc.speed || 100);
@@ -577,29 +587,40 @@ var TD_GAME = (function () {
         while (npc.energy >= 100 && guard++ < 4) { actorStep(npc, T, list); npc.energy -= 100; npc.acts = (npc.acts || 0) + 1; }   // each 100 energy = one action (move or dwell)
       });
     }
-    // --- POPULATION: the filler crowd, sized to feel busy, by district -------
+    // --- POPULATION: per-screen actors (v16). Waterfront skews dock/sailor;
+    // main skews townsfolk; the strip skews visitors; the troop seats on MARKET.
     function spawnPopulation() {
-      var T = places.TOWN, D = T.meta.districts;
-      function freeIn(zone) { var r = zone.rect, out = []; for (var y = r[1]; y <= r[3]; y++) for (var x = r[0]; x <= r[2]; x++) if (streetTile(T, x, y)) out.push({ x: x, y: y }); return out; }
-      function take(a) { return a.length ? a.splice(Math.floor(Math.random() * a.length), 1)[0] : null; }
-      function add(type, glyph, name, voiceId, speed, tiles, n, extra) {
-        for (var i = 0; i < n; i++) { var t = take(tiles); if (!t) break; var a = { id: type + "_" + crowd.length, type: type, glyph: glyph, name: name, voiceId: voiceId, speed: speed, energy: 0, acts: 0, x: t.x, y: t.y, home: { x: t.x, y: t.y }, frozen: false, barksUsed: {} }; if (extra) for (var k in extra) a[k] = extra[k]; crowd.push(a); }
-      }
-      var water = freeIn(D.waterfront), main = freeIn(D.main), strip = freeIn(D["tourist-strip"]), shops = freeIn(D.shops);
-      add("dockworker", "w", "a dock worker", "dockworker", 90, water, 5);
-      add("sailor", "j", "a drunk sailor", "sailor", 60, water, 3, { wobble: true });
-      add("townsfolk", "c", "a townsperson", "shopper", 90, main, 4);
-      add("shopper", "p", "a shopper", "shopper", 90, shops, 3);
-      add("visitor", "i", "a visitor", "visitor", 90, strip, 4);
-      add("guard", "G", "a Bureau patrol", "guard", 100, main, 1, { route: GUARD_ROUTE });
-      // Salty Pete — a named regular promoted from the sailor pool (at the Anchor)
-      if (streetTile(T, 28, 33)) crowd.push({ id: "salty", type: "sailor", voiceId: "salty", glyph: "j", name: "Salty Pete", speed: 60, energy: 0, acts: 0, x: 28, y: 33, home: { x: 28, y: 33 }, frozen: false, barksUsed: {}, wobble: true });
-      spawnTroop();
+      vendor = null;
+      var pools = {}; SCREEN_IDS.forEach(function (id) { pools[id] = places[id].cells.slice(); });
+      function take(id) { var p = pools[id]; return p.length ? p.splice(Math.floor(Math.random() * p.length), 1)[0] : places[id].spawn; }
+      function spawn(id, a) { var t = take(id); a.x = t.x; a.y = t.y; a.home = { x: t.x, y: t.y }; a.energy = 0; a.acts = 0; a.frozen = false; a.barksUsed = {}; places[id].actors.push(a); return a; }
+      function many(id, n, type, glyph, name, voiceId, speed, extra) { for (var i = 0; i < n; i++) { var a = { id: type + "_" + id + "_" + i, type: type, glyph: glyph, name: name, voiceId: voiceId, speed: speed }; if (extra) for (var k in extra) a[k] = extra[k]; spawn(id, a); } }
+      function route(id, names) { return names.map(function (p) { return { x: p[0], y: p[1] }; }); }
+      // GATE — the vendor works the strip; visitors gawp
+      vendor = spawn("GATE", { id: "vendor", type: "vendor", glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true, speed: 90 });
+      many("GATE", 4, "visitor", "i", "a visitor", "visitor", 90);
+      // MAIN — a Bureau patrol on a fixed route + townsfolk
+      spawn("MAIN", { id: "guard1", type: "guard", glyph: "G", name: "a Bureau patrol", voiceId: "guard", speed: 100, route: route("MAIN", [[23, 2], [23, 14], [14, 13], [33, 13], [23, 26]]) });
+      many("MAIN", 3, "townsfolk", "c", "a townsperson", "shopper", 90);
+      // MARKET — nuns, farmer, senorita, shoppers, a patrol pass, and the troop
+      spawn("MARKET", { id: "nuns", type: "nuns", glyph: "n", name: "a pair of nuns", voiceId: "nuns", speed: 70 });
+      spawn("MARKET", { id: "farmers", type: "townsfolk", glyph: "f", name: "a farmer", voiceId: "farmers", speed: 90 });
+      spawn("MARKET", { id: "senorita", type: "townsfolk", glyph: "s", name: "a señorita", voiceId: "senorita", speed: 90 });
+      many("MARKET", 4, "shopper", "p", "a shopper", "shopper", 90);
+      spawn("MARKET", { id: "guard2", type: "guard", glyph: "G", name: "a Bureau patrol", voiceId: "guard", speed: 100, route: route("MARKET", [[23, 3], [23, 14], [12, 12], [33, 8], [2, 12]]) });
+      spawnTroop("MARKET");
+      // HARBOUR — dock workers, drunk sailors, Salty Pete the named regular
+      many("HARBOUR", 5, "dockworker", "w", "a dock worker", "dockworker", 90);
+      many("HARBOUR", 3, "sailor", "j", "a drunk sailor", "sailor", 60, { wobble: true });
+      spawn("HARBOUR", { id: "salty", type: "sailor", glyph: "j", name: "Salty Pete", voiceId: "salty", speed: 60, wobble: true });
+      // REDLIGHT — a couple of furtive lowlifes
+      many("REDLIGHT", 2, "shopper", "p", "a furtive shopper", "lowlife", 90);
     }
-    function spawnTroop() {                                // the school trip troop (kids + chaperone)
-      var T = places.TOWN, cx = 31, cy = streetTile(T, 31, 8) ? 8 : 7;
-      crowd.push({ id: "chaperone", type: "chaperone", glyph: "C", name: "a Bureau chaperone", voiceId: "chaperone", speed: 90, energy: 0, acts: 0, x: cx, y: cy, route: ["plaza", "giftshops", "rail"], home: { x: cx, y: cy }, frozen: false, barksUsed: {} });
-      for (var i = 0; i < 5; i++) crowd.push({ id: "kid_" + i, type: "kid", glyph: "k", name: "a school kid", voiceId: "kids", speed: 130, energy: 0, acts: 0, x: cx, y: cy, follow: "chaperone", home: { x: cx, y: cy }, frozen: false, barksUsed: {} });
+    function spawnTroop(scrId) {                            // the school trip troop (MARKET-local, v16)
+      var s = places[scrId], cx = s.spawn.x, cy = s.spawn.y;
+      var wp = s.cells.slice(0, 16).filter(function (_, i) { return i % 4 === 0; }).slice(0, 4);
+      s.actors.push({ id: "chaperone", type: "chaperone", glyph: "C", name: "a Bureau chaperone", voiceId: "chaperone", speed: 90, energy: 0, acts: 0, x: cx, y: cy, route: wp.length ? wp : null, home: { x: cx, y: cy }, frozen: false, barksUsed: {} });
+      for (var i = 0; i < 5; i++) s.actors.push({ id: "kid_" + i, type: "kid", glyph: "k", name: "a school kid", voiceId: "kids", speed: 130, energy: 0, acts: 0, x: cx, y: cy, follow: "chaperone", home: { x: cx, y: cy }, frozen: false, barksUsed: {} });
     }
     // ambient barks: a passing crowd member occasionally speaks (never a stop)
     function maybeAmbientBark() {
@@ -612,8 +633,9 @@ var TD_GAME = (function () {
     }
     // the two gift shops trade dueling barks when the visitor is near both
     function maybeGiftDuel() {
-      if (placeId !== "TOWN" || typeof TD_VOICES === "undefined") return;
-      if (cheby(player, { x: 28, y: 5 }) > 5 || cheby(player, { x: 34, y: 5 }) > 5) return;
+      if (!isTownScreen(placeId) || typeof TD_VOICES === "undefined") return;
+      var gift = cur().meta && cur().meta.gift; if (!gift) return;     // only the screen that holds both shops
+      if (cheby(player, gift.a) > 5 || cheby(player, gift.b) > 5) return;
       session.giftDuel = session.giftDuel || { t: -99, used1: {}, used2: {} };
       var s = session.giftDuel;
       if (shared.turn - s.t < 4) return;                  // rate-limited; sparing
@@ -749,11 +771,11 @@ var TD_GAME = (function () {
     }
 
     function transition(to, doorPos) {
-      if (to === "DUNGEON") { act("gate"); return; }                  // enterDungeon + line
-      if (to === "TOWN") { placeId = "TOWN"; player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y }; logMsg("You step back out into the harbour."); return; }
+      if (to === "DUNGEON") { returnScreen = placeId; act("gate"); return; }                  // enterDungeon + line
+      if (to === "TOWN") { placeId = returnScreen; player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: places[returnScreen].spawn.x, y: places[returnScreen].spawn.y }; logMsg("You step back out into the harbour."); return; }
       if (to === "redlit") { senses("A red lamp, a velvet rope, and a card: “Closed for renovations.” The Quay's End keeps its counsel.", "seen", "OBJ"); return; }   // exterior only
       if (to === "locked") { logMsg("The door is locked; no one answers. (A stub, for now.)"); return; }   // filler stub
-      returnTile = { x: player.x, y: player.y };                       // come back where we entered
+      returnTile = { x: player.x, y: player.y }; returnScreen = isTownScreen(placeId) ? placeId : returnScreen;   // come back to this screen, where we entered
       placeId = to; player = { x: places[to].spawn.x, y: places[to].spawn.y };
       logMsg((places[to].sign || []).join("  —  "));
       var vb = voice(KEEPER[to]); if (vb) { speak(vb, "greeting"); speak(vb, "reaction", playerState()); }   // the keeper speaks
@@ -770,13 +792,14 @@ var TD_GAME = (function () {
       var P = cur();
       var explored = [];
       for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) explored.push(key(x, y));
-      var disc = (placeId === "TOWN") ? fieldNotes() : (P.sign || []).slice();
+      var town = isTownScreen(placeId);
+      var disc = town ? fieldNotes() : (P.sign || []).slice();
       return {
-        phase: placeId === "TOWN" ? "town" : "interior", w: W, h: H,
+        phase: town ? "town" : "interior", w: W, h: H, screen: placeId,
         grid: P.grid.map(function (r) { return r.join(""); }),
         doors: P.doors, features: P.features, items: {}, plain: {},
         player: { x: player.x, y: player.y },
-        creatures: placeId === "TOWN"
+        creatures: town
           ? npcs().map(function (n) { return { x: n.x, y: n.y, kind: "npc", glyph: n.glyph, name: n.name, hp: 1, maxHp: 1, dmg: 0, friendly: true }; })
           : (P.occupants || []).slice(),
         events: [],
@@ -843,7 +866,7 @@ var TD_GAME = (function () {
       SIG: SIG, brassTarget: brassTarget,
       _interact: function (type) { lastEvent = null; act(type); return { event: lastEvent, phase: placeId === "DUNGEON" ? "dungeon" : "town" }; },
       _meters: function () { return meters; }, _character: function () { return character; },
-      _phase: function () { return placeId === "DUNGEON" ? "dungeon" : (placeId === "TOWN" ? "town" : "interior"); },
+      _phase: function () { return placeId === "DUNGEON" ? "dungeon" : (isTownScreen(placeId) ? "town" : "interior"); },
       _place: function () { return placeId; }, _player: function () { return player; },
       _dungeon: function () { return dungeon; },
       _shared: function () { return shared; },
@@ -851,15 +874,18 @@ var TD_GAME = (function () {
       _pendingCounter: function () { return pendingCounter ? pendingCounter.act : null; },
       _pendingVendor: function () { return pendingVendor; },
       _vendor: function () { return vendor; },
-      _setVendor: function (x, y) { vendor = { x: x, y: y, frozen: true, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true }; return vendor; },
-      _freezeVendor: function (b) { if (vendor) vendor.frozen = !!b; (townsfolk || []).forEach(function (n) { n.frozen = !!b; }); (crowd || []).forEach(function (n) { n.frozen = !!b; }); },
+      _setVendor: function (x, y) { vendor = { id: "vendor", x: x, y: y, frozen: true, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true, type: "vendor", home: { x: x, y: y }, energy: 0, acts: 0 }; if (isTownScreen(placeId)) cur().actors.push(vendor); return vendor; },
+      _freezeVendor: function (b) { SCREEN_IDS.forEach(function (id) { (places[id].actors || []).forEach(function (n) { n.frozen = !!b; }); }); },
       _actors: function () { return npcs(); },
-      _addActor: function (a) { a.energy = a.energy || 0; a.acts = a.acts || 0; if (typeof a.speed !== "number") a.speed = 100; crowd.push(a); return a; },
+      _addActor: function (a) { a.energy = a.energy || 0; a.acts = a.acts || 0; if (typeof a.speed !== "number") a.speed = 100; if (a.frozen == null) a.frozen = false; (isTownScreen(placeId) ? cur().actors : []).push(a); return a; },
+      _clearActors: function () { if (isTownScreen(placeId)) cur().actors.length = 0; if (vendor && isTownScreen(placeId)) vendor = null; return isTownScreen(placeId) ? cur().actors : []; },
       _step: function () { walkersStep(); },
       _voice: function (id) { return voice(id); },
       _keepers: function () { return KEEPER; },
-      _townMeta: function () { return places.TOWN.meta; },
-      _exitTile: function () { return places.TOWN.exit; },
+      _screens: function () { return SCREEN_IDS.map(function (id) { return places[id]; }); },
+      _screenMeta: function (id) { return places[id || placeId].meta; },
+      _townMeta: function () { return cur().meta; },
+      _exitTile: function () { return places.HARBOUR.exit; },
       _occupantsOf: function (id) { return (places[id] || {}).occupants || []; },
       _talk: function (npc) { talkTo(npc); return lastEvent; },
       _pendingExit: function () { return !!pendingExit; },
