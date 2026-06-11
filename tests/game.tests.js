@@ -414,6 +414,15 @@ function TD_GAME_TESTS() {
     assert(sens.some(function (m) { return /castle/i.test(m.text) && m.kind === "seen"; }), "looking at the castle emits a senses/seen line");
   });
 
+  // ----------------------------------- BARK DISCIPLINE (v14 R5) ------------
+  test("barks ride the senses channel and never trigger a critical --more-- stop", function () {
+    var g = game(); g._freezeVendor(true);
+    for (var i = 0; i < 30; i++) { g._warp(31, 6); g.wait(); }   // provoke the gift duel
+    var barks = g._shared().messages.filter(function (m) { return /Gifte|Authentic Dungeon Souvenirs/.test(m.text); });
+    assert(barks.length >= 1, "some barks fired");
+    assert(barks.every(function (m) { return m.ch === "senses" && !m.urgent; }), "every bark is senses and never urgent");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

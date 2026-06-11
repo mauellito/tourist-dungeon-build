@@ -126,6 +126,21 @@ function TD_UI_TESTS() {
   });
 
   // =================================================== THREATS ===============
+  test("friendly townsfolk are filtered out of the threats list (v14 roster)", function () {
+    var v = { creatures: [{ x: 1, y: 1, name: "a nun", glyph: "n", hp: 1, maxHp: 1, dmg: 0, friendly: true }, { x: 2, y: 2, name: "a patient lurker", glyph: "L", kind: "lurker", hp: 45, maxHp: 45, dmg: 16 }] };
+    var t = TD_UI.threats(v);
+    eq(t.length, 1, "only the hostile creature is a threat");
+    eq(t[0].name, "a patient lurker");
+  });
+
+  test("the extended palette adds single-meaning hues (npc / redlight / nature), all distinct", function () {
+    var P = TD_UI.PALETTE, extra = ["npc", "redlight", "nature", "senses"];
+    extra.forEach(function (k) {
+      assert(typeof P[k] === "string" && /^#/.test(P[k]), k + " is a defined colour");
+      TD_UI.CATEGORY_KEYS.forEach(function (c) { assert(P[k] !== P[c], k + " must not reuse the " + c + " hue"); });
+    });
+  });
+
   test("the threat list mirrors the creatures in view, with danger by bite", function () {
     var v = baseView({ x: 3, y: 3 }, false, {
       creatures: [
