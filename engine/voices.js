@@ -236,6 +236,95 @@ var TD_VOICES = (function () {
     ["My feet hurt.", "That sailor smells funny.", "I want a hot dog."], RX_MIX);
   SPECS.kids.barks = ["Are we there yet?!", "I saw a monster, I SAW one!", "Can we get souvenirs?"];
 
+  // ===========================================================================
+  // CONTACT DIALOGUE POOLS (v15): every NPC type can be talked to. GREETINGS
+  // fire on first contact; CHAT on subsequent contacts (no-repeat, then recycle).
+  // Separate from the ambient `barks`. Resolution: named spec -> type pool ->
+  // GENERIC (so no NPC is ever mute). Accent law: cadence + idiom only.
+  // ===========================================================================
+  var GENERIC = { greetings: ["They give you a nod."], chat: ["They have nothing much to add."] };
+  function setPool(id, accent, greetings, chat) {
+    if (!SPECS[id]) SPECS[id] = { name: id, role: "townsperson", accent: accent, contactOnly: true, bible: { register: accent + " local", rhythm: "brief", tic: "", neverSays: [] }, lines: {} };
+    SPECS[id].accent = SPECS[id].accent || accent;
+    SPECS[id].greetings = greetings; SPECS[id].chat = chat;
+  }
+
+  // DOCK WORKERS — Brooklyn; cargo, backs, foremen, the morning boat
+  setPool("dockworker", "brooklyn",
+    ["Mind the ropes, friend.", "You lost? The dock is no place to be lost.", "Cargo waits for nobody, least of all you.", "Step lively or step aside."],
+    ["The morning boat came in heavy; my back will hear about it for a week.", "The foreman counts crates like they are his children, and likes them better.", "Half this cargo goes straight to the gift shops — genuine artefacts, my eye.", ["Twelve hours on the dock and the Bureau still wants a form in triplicate.", "OBJ"], "You see that island out past the rail? We load for everywhere but there.", "A crate came in once that hummed. We did not open it. We are not paid to open it.", "The red end of the quay gets its deliveries after dark. We do not ask."]);
+  // DRUNK SAILORS — Brooklyn, beer-loose; tall tales, complaints, sentiment
+  setPool("sailor", "brooklyn",
+    ["Heyyy. Buy a man a drink?", "There he is, dry land's finest.", "You got the look of someone with stories. I got better ones.", "Sit, sit — the Anchor's just there."],
+    [["I have seen that island up close. Closer than the Bureau likes. There is a bell that rings itself.", "SUBJ"], ["Under the quay — under it — there is a thing the size of a barge that breathes once an hour. I felt the dock lift.", "SUBJ"], ["A kraken took my second-best hat off the Rusty Anchor's own roof. Ask the doorman; he will deny it, the coward.", "SUBJ"], "The sea is honest. The town is not. The fountain is just a puddle that got ambitious.", "I had a girl in every port and a debt in every other.", "Solid ground keeps moving on me; I blame the town, not the beer.", "Those gift shops would sell you the sea in a jar and call it genuine."]);
+  // VENDORS / LOWLIFES base — Brooklyn, always selling or sizing you up
+  setPool("lowlife", "brooklyn",
+    ["Psst. Over here. Yeah, you.", "You look like a man who knows a deal.", "I am not selling anything. I am offering an opportunity.", "Keep your voice down and your wallet handy."],
+    ["The Quay's End is 'closed for renovations'. It has been closed for renovations since before the renovations.", "Everything genuine in this town is in a jar with a label. Trust the jar, not the label.", "The guards walk a route you could set a clock by. I have set a clock by it.", "A dungeon ticket gets you in. Getting out, now — that is the part they undersell.", "The castle on the hill? Nobody goes up. Nobody comes down. Draw your own conclusion.", "I knew a fella went into that cave on the horizon. Came back rich. Came back wrong, too."]);
+  // SHOPPERS / TOWNSFOLK / DINERS — plain local register; gossip, prices, the catch
+  setPool("townsfolk", "plainspoken",
+    ["Afternoon.", "Busy today, with the school lot in.", "You are not from here. It shows, kindly.", "Mind how you go."],
+    ["Prices at the Bodega are a scandal and a convenience both.", "Somebody was seen leaving the Quay's End at dawn. Sideways. Polite, but sideways.", "The two gift shops are at it again — one of them is a fraud and I will not say which, in public.", "The catch was thin this morning; the Clam Shack will be dear by noon.", "That school troop has been round the fountain three times. Lost, or thorough.", "They say the monastery in the hills takes visitors. They say a lot of things.", ["The dungeon takes more than it gives back, by my count of the funerals.", "OBJ"]]);
+  setPool("shopper", "plainspoken",
+    ["So many shops, so little sense.", "I am only browsing, truly.", "Have you seen the prices? Sit down first.", "One does not visit this town; one is itemised."],
+    ["The bodega has everything and charges for the privilege of finding it.", "Both gift shops swear the other is the knockoff. They cannot both be right; I suspect neither is.", "I came for one souvenir and the fountain ate my afternoon.", "A genuine artefact, they said. Genuine what, they did not say.", "The spa makes you smell expensive, which the doorman at the Anchor holds against you.", "I would buy from the cave-mouth man if the cave-mouth man existed."]);
+  setPool("diner", "plainspoken",
+    ["Pull up a chair, there is room.", "The fish is local, allegedly.", "Eat before the dungeon, not after; trust me.", "They sat me by the window; I can see the whole feud from here."],
+    ["The Clam Shack fries anything that washes up, no questions, and that is the appeal.", "The two gift shops shout across the street all through lunch; it is the entertainment.", "Coffee opens early on the days that have a morning, which is not all of them.", "Saw the school kids try to order at the bar. The chaperone nearly fainted.", "The catch came off the morning boat; the dock men look like they regret it.", "The island sits out there at dinner like a guest who will not be invited."]);
+  // VISITORS — plain/eager tourist
+  setPool("visitor", "plainspoken",
+    ["Is THIS the dungeon? It is smaller than the brochure.", "Where does one get a ticket, exactly?", "Which gift shop is the real one? Quickly, we have a schedule.", "We are doing the whole town by lunch."],
+    ["The brochure promised more graveyard. I feel slightly cheated, in a premium way.", "Both gift shops told me the other is a tourist trap. I bought from neither, on principle.", "We threw a coin in the fountain; the Bureau, I am told, keeps the coins.", "A guided package, you know. We are conducted. It is the only way to tour.", "Is the island included? It looks included. It is RIGHT THERE.", "The castle on the hill is not on the itinerary, which only makes me want it."]);
+  // GUARDS — clipped procedural; atmospheric, never menacing
+  setPool("guard", "mixed",
+    ["In order. Carry on.", "Noted. Move along, pleasantly.", "Bureau patrol. Nothing is, by definition, happening.", "Keep to the lit streets, if you would."],
+    ["A quiet beat is a successful beat. This is a successful beat.", "The red-light end is somebody else's paperwork, thankfully.", "Order is mostly a matter of signage, in my experience.", "The gift-shop dispute is noted, monitored, and beneath intervention.", "The fountain is municipal property; coins in it are the Bureau's, technically.", "The dungeon gate is not my jurisdiction. Cheerfully not my jurisdiction."]);
+  // KIDS — awe, dares, are-we-there-yet, confident misinformation
+  setPool("kids", "mixed",
+    ["Are we there yet?", "I can see the ISLAND! Is it a pirate island?", "Are you a dungeon person? You look like a dungeon person.", "Dare you to touch the red door. DARE you."],
+    ["My brother says the dungeon has a dragon that does TAXES. That is the scary part, he says.", "The fountain has a fish in it the size of a BUS, I saw it, basically.", "The castle is where they keep the BAD tourists. The chaperone said. Probably.", "That sailor has fought a kraken nine times and LOST every time and that is so cool.", "The cave on the hill goes all the way to the OTHER side of the world. Fact.", "We are not allowed in the dungeon because last time a kid bought too many souvenirs."]);
+  // SEÑORITA — warm, formal courtesy (idiom + rhythm only)
+  setPool("senorita", "mixed",
+    ["Good day to you, and a kinder one than the weather promises.", "You walk like a person with an appointment underground.", "Welcome, traveller; the harbour flatters those who arrive by water.", "A moment of your time is a small, civilised theft."],
+    ["The harbour is prettier than the brochure permits it to be.", "I keep to the streets; the streets, in turn, keep their counsel.", "The red-lit end is closed, they say; everyone asks, no one is told.", "Two shops, one street, and a war over a single adjective. It is almost tender.", "The fountain at dusk is the one honest mirror in this town.", "Should you go down to the dungeon, go fed. The Bureau does not pack lunches."]);
+  // INTERIOR: HOTEL GUESTS / SPA / BANK — posh; complain beautifully about nothing
+  setPool("guest", "posh",
+    ["Oh — one did not see you there; one rarely does.", "Is one expected to make conversation? How rustic.", "You have the harbour about you. The smell, I mean.", "Do sit, if the chairs here permit a person of standing to sit."],
+    ["The pillows are adequate, which from the Gilded Kraken is an insult.", "The gulls, my dear, begin at FIVE. The Bureau will hear about the gulls.", "The view of the harbour is, if anything, too maritime. All that water.", "I am told there is a dungeon. I am told a great many distressing things.", "The fountain is charming in the way small municipal gestures are charming.", "Those gift shops shriek at one another like fishwives, which I find I rather enjoy."]);
+  // INTERIOR: SALOON / ANCHOR REGULARS — Brooklyn dive
+  setPool("regular", "brooklyn",
+    ["You buying or sitting? Either is fine.", "New face. New faces buy the first round.", "Park it. The stool is the only thing in here that judges you.", "We do not do conversation. We do proximity."],
+    ["The doorman turned away a man for smelling like the SPA. That is policy I respect.", "Everything down at the dock comes through here eventually, including the dock men.", "That sailor's kraken story gets a tentacle longer every telling.", "The two gift shops? Both fronts. For what, ask a quieter table.", "The dungeon takes the regulars one by one; we keep their stools warm a while.", "The Quay's End sends a man over sometimes. We do not ask his name."]);
+
+  // KEY WALKERS — named specs (override the type pool)
+  setPool("nuns", "pastoral",
+    ["Peace to you, traveller.", "Bless you, and mind the deeper doors.", "Come, walk a step with us toward the water.", "Grace finds the lost more easily than the map does."],
+    ["We walk to the fountain and back; it settles the soul better than the spa.", "The island sits in plain sight and plainly not for us; we pray for it anyway.", "We pray for the lately-discontinued of the dungeon; the list is long, child.", "The two gift shops feud; we forgive them both, which annoys them equally.", "The monastery in the hills keeps a stricter rule than ours, and a finer view.", ["Go fed and go gently, if you must go down at all.", "OBJ"]]);
+  setPool("farmers", "plainspoken",
+    ["Morning. Or whatever the harbour calls it.", "Mind yourself in that dungeon, friend.", "Cart's empty; market was thin.", "You buying or just looking honest?"],
+    ["Soil up top, stone down below. I keep to the soil.", "Prices at the Bodega are a crime; I sell to them anyway, the hypocrite I am.", "I do not go past the turnstile. I am not paid enough, nor stupid enough.", "The morning boat brought salt air and bad backs to the dock men.", "Saw the school troop trample the public garden. The Bureau will bill the school.", "Rain's coming off the island side; it always does."]);
+  setPool("chaperone", "municipal",   // PROTECTED REGISTER — Bureau entities only
+    ["This way, visitor — and in single file; the Bureau prefers a line.", "Eyes front, hands to yourselves, questions at the end.", "We are AHEAD of schedule, which the Bureau distrusts on principle.", "Do not engage the vendor; the vendor is not on the itinerary."],
+    ["On your left, the fountain; we do not climb the fountain, do we, children.", "The gift shops are a lesson in commerce, and in litigation.", "No, we are not going IN the dungeon. That is a permission slip nobody signed.", "The island is a designated Point of Interest, viewable, non-visitable, per regulation.", "Count off — one, two, where is three. Three is always at the hot dog cart.", "The castle is private; the monastery is closed; the cave is a rumour. Enjoy them all from here."]);
+  setPool("vendor", "brooklyn",       // expanded in R3
+    ["Hey, hey — the cart finds the hungry. That is a guarantee.", "There he is, a visitor with the good sense to stand near me.", "Permit eleven-and-three-quarters, fully municipal, step right up.", "You just walked into the best decision of your afternoon."],
+    ["A dog from me climbs you a full rung up the hunger ladder; that is policy.", "The posh places will not feed you real food even if you bled for it.", "This cart has seen more of this town than the mayor, and tips better.", "Those two gift shops feud; I sell to both their customers, neutral as Switzerland.", "Permit eleven-and-three-quarters covers the cart, the route, and a third of the fountain.", "You going down the dungeon? Eat first. Future-you sends thanks."]);
+  setPool("gift1", "brooklyn",        // expanded in R3 (feud)
+    ["Welcome to the GENUINE article — accept no substitutes, especially next door.", "Authentic, certified, municipally adjacent. Step in.", "You want a real souvenir, not whatever number two is peddling.", "We were here FIRST, whatever their sign claims."],
+    ["That shop next door is a tourist trap with delusions; we are the original.", "Our snow globes hold real dungeon dust. Theirs hold the harbour, settled.", "Number two would not know an artefact if it bit them, which it might.", "The fountain coins go to the Bureau; our prices go to a better cause: me.", "Ask the dock men whose crates are genuine. Ours. Theirs hum suspiciously.", "The island in a jar — we have that. Number two has the JAR, empty."]);
+  setPool("gift2", "brooklyn",        // expanded in R3 (feud)
+    ["The REAL souvenirs are HERE — that other place is a trap for the unwary.", "Step in, friend, away from the knockoffs next door.", "One shop in this town is honest, and you are standing in it.", "Do not buy a 'genuine' anything from number one; I beg you."],
+    ["Ye Olde whatever was established last Tuesday; we are the genuine article.", "Their certificates of authenticity are forged; ours are forged BETTER.", "Number one sells gravel in a jar and calls it dungeon dust; come see real gravel.", "The fountain feud, the gift feud — this town runs on rivalry and we are winning ours.", "The dock men deliver to us first; that is not a coincidence, that is quality.", "Buy here and the island is practically included. Practically."]);
+
+  // ---- contact-dialogue resolver: named spec -> type pool -> GENERIC --------
+  function dialogue(voiceId, type) {
+    function pool(id, key) { var s = SPECS[id]; return (s && s[key] && s[key].length) ? s[key] : null; }
+    return {
+      greetings: pool(voiceId, "greetings") || pool(type, "greetings") || GENERIC.greetings,
+      chat: pool(voiceId, "chat") || pool(type, "chat") || GENERIC.chat
+    };
+  }
+
   // dungeon cast — reserved voices, NO lines yet (canon arrives as design data)
   var DUNGEON_CAST = ["janitor", "elevator_operator", "oracle", "bookie"];
   DUNGEON_CAST.forEach(function (id) { SPECS[id] = { name: id, role: "dungeon NPC", accent: "mixed", placeholder: true, bible: { register: "TBD", rhythm: "TBD", tic: "TBD", neverSays: [] }, lines: {} }; });
@@ -281,7 +370,7 @@ var TD_VOICES = (function () {
   }
 
   function byId(id) { return SPECS[id] || null; }
-  return { SPECS: SPECS, DUNGEON_CAST: DUNGEON_CAST, box: box, byId: byId, _trig: TRIG, _expand: expand };
+  return { SPECS: SPECS, DUNGEON_CAST: DUNGEON_CAST, box: box, byId: byId, dialogue: dialogue, _trig: TRIG, _expand: expand };
 })();
 
 if (typeof module !== "undefined" && module.exports) { module.exports = TD_VOICES; }

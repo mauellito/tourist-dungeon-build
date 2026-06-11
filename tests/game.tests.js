@@ -423,6 +423,30 @@ function TD_GAME_TESTS() {
     assert(barks.every(function (m) { return m.ch === "senses" && !m.urgent; }), "every bark is senses and never urgent");
   });
 
+  // ----------------------------------- EVERYONE TALKS (v15 R1) -------------
+  test("no NPC is mute: every actor and interior occupant resolves to a non-empty pool", function () {
+    var g = game();
+    function ck(n) { var d = TD_VOICES.dialogue(n.voiceId, n.type); assert(d.greetings.length > 0 && d.chat.length > 0, (n.name || n.voiceId) + " has a non-empty dialogue pool"); }
+    g._actors().forEach(ck);
+    ["hotel", "restaurant", "coffee", "bodega", "saloon", "bank", "church", "spa", "tavern", "tim", "tattoo", "boat", "blacksmith", "barber", "motel", "redshop", "chinese", "clamshack", "gift1", "gift2", "agency", "kiosk"].forEach(function (id) { g._occupantsOf(id).forEach(ck); });
+  });
+
+  test("contact dialogue: greet first, then chat no-repeat within a pass, then recycle", function () {
+    var g = game(); g._freezeVendor(true);
+    var npc = g._addActor({ id: "talker", type: "townsfolk", voiceId: "townsfolk", glyph: "c", name: "a townsperson", x: g._player().x + 1, y: g._player().y, speed: 0, frozen: true });
+    function bump() { var b = g._shared().messages.length; g.move("right"); var m = g._shared().messages.slice(b).filter(function (x) { return /townsperson/i.test(x.text); }); return m.length ? m[m.length - 1] : null; }
+    var first = bump(); assert(first && first.ch === "senses", "first contact greets on the senses channel");
+    var chat = TD_VOICES.dialogue("townsfolk", "townsfolk").chat, seen = {};
+    for (var i = 0; i < chat.length; i++) { var l = bump(); assert(l, "chat line " + i + " present"); assert(!seen[l.text], "no repeat within a pass: " + l.text); seen[l.text] = 1; }
+    var recycled = bump(); assert(recycled, "after exhaustion the pool recycles, never goes mute");
+  });
+
+  test("a named NPC spec overrides the type pool", function () {
+    var named = TD_VOICES.dialogue("vendor", "townsfolk"), type = TD_VOICES.dialogue("townsfolk", "townsfolk");
+    assert(/cart|permit/i.test(named.greetings.join(" ")), "the named vendor pool is used, not the townsfolk type pool");
+    assert(!/cart|permit/i.test(type.greetings.join(" ")), "the type pool is distinct");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

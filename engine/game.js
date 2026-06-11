@@ -157,6 +157,20 @@ var TD_GAME = (function () {
       var l = vb.say(trigger, state); if (!l) return false;
       senses(l.text, l.kind || "said", l.obj); return true;
     }
+    function cap(s) { return String(s).charAt(0).toUpperCase() + String(s).slice(1); }
+    // CONTACT DIALOGUE (v15): first contact greets, further contacts chat
+    // (no-repeat, then recycle). Resolution: named spec -> type pool -> generic.
+    function pickLine(pool, used) { for (var i = 0; i < pool.length; i++) { var t = (typeof pool[i] === "string") ? pool[i] : pool[i][0]; if (!used[t]) { used[t] = 1; return pool[i]; } } return null; }
+    function talkTo(npc) {
+      if (typeof TD_VOICES === "undefined") { logMsg(cap(npc.name) + " gives you a nod."); return; }
+      var d = TD_VOICES.dialogue(npc.voiceId, npc.type);
+      npc.contact = npc.contact || { greeted: false, used: {} };
+      var c = npc.contact, pool = c.greeted ? d.chat : d.greetings;
+      c.greeted = true;
+      var line = pickLine(pool, c.used);
+      if (!line) { c.used = {}; line = pickLine(pool, c.used); }   // exhausted -> recycle
+      if (line) { var t = (typeof line === "string") ? line : line[0], obj = (typeof line === "string") ? "SUBJ" : line[1]; senses(cap(npc.name) + ": “" + t + "”", "said", obj); }
+    }
     // the most salient player state, for NPC reactions
     function playerState() {
       var hg = TD_MAP.hungerStage(meters);
@@ -342,9 +356,15 @@ var TD_GAME = (function () {
 
     function occupantName(spec) {
       if (spec.act === "hotel" || spec.act === "rest") return "a hotel guest";
-      if (spec.act === "food") return "a diner";
+      if (spec.act === "food") return /Rusty Anchor|Saloon/.test(spec.title) ? "a regular" : "a diner";
       if (spec.act === "spa") return "a spa client";
       return "a browsing customer";
+    }
+    function occupantType(spec) {
+      if (/Bank|Gilded Kraken|Spa|Motel/.test(spec.title)) return "guest";
+      if (/Rusty Anchor|Saloon/.test(spec.title)) return "regular";
+      if (spec.act === "food") return "diner";
+      return "townsfolk";
     }
     function buildInterior(id) {
       var spec = INTERIORS[id];
@@ -356,8 +376,8 @@ var TD_GAME = (function () {
       // every enterable establishment has 2-4 occupants (stationary patrons)
       var occupants = [];
       if (spec.counter) {
-        var n = 2 + (id.length % 3), oxs = [11, 15, 25, 29], onm = occupantName(spec);
-        for (var i = 0; i < n; i++) occupants.push({ x: oxs[i % oxs.length], y: 8 + (i % 3), glyph: "o", name: onm, friendly: true, hp: 1, maxHp: 1, dmg: 0 });
+        var n = 2 + (id.length % 3), oxs = [11, 15, 25, 29], onm = occupantName(spec), oty = occupantType(spec);
+        for (var i = 0; i < n; i++) occupants.push({ x: oxs[i % oxs.length], y: 8 + (i % 3), glyph: "o", name: onm, type: oty, voiceId: oty, friendly: true, hp: 1, maxHp: 1, dmg: 0 });
       }
       return { id: id, title: spec.title, sign: spec.sign, grid: g, doors: doors, features: features, occupants: occupants, spawn: { x: 20, y: 12 } };
     }
@@ -433,12 +453,14 @@ var TD_GAME = (function () {
             logMsg("Buy a hot dog? — Enter to accept; step away to decline.");
             return { moved: false, bumpedVendor: true, event: lastEvent };
           }
-          pendingVendor = false;                           // a walker — they just talk
-          var vt = voice(npc.voiceId);
-          if (!speak(vt, "greeting")) logMsg(npc.name + " nods at you.");
-          speak(vt, "smalltalk"); speak(vt, "reaction", playerState());
+          pendingVendor = false; talkTo(npc);              // a walker — contact begins a chat
           return { moved: false, bumpedNpc: true, event: lastEvent };
         }
+      }
+      // inside an establishment: occupants can be talked to as well
+      if (placeId !== "TOWN" && placeId !== "DUNGEON") {
+        var occs = (cur().occupants) || [];
+        for (var oj = 0; oj < occs.length; oj++) { var o = occs[oj]; if (nx === o.x && ny === o.y) { pendingCounter = null; talkTo(o); return { moved: false, bumpedNpc: true, event: lastEvent }; } }
       }
       var d = P.doors[key(nx, ny)];
       if (d) { pendingCounter = null; pendingVendor = false; pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
@@ -836,6 +858,8 @@ var TD_GAME = (function () {
       _keepers: function () { return KEEPER; },
       _townMeta: function () { return places.TOWN.meta; },
       _exitTile: function () { return places.TOWN.exit; },
+      _occupantsOf: function (id) { return (places[id] || {}).occupants || []; },
+      _talk: function (npc) { talkTo(npc); return lastEvent; },
       _pendingExit: function () { return !!pendingExit; },
       _warp: function (x, y) { player = { x: x, y: y }; return view(); },
       _playerState: function () { return playerState(); },
