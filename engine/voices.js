@@ -316,6 +316,23 @@ var TD_VOICES = (function () {
     ["The REAL souvenirs are HERE — that other place is a trap for the unwary.", "Step in, friend, away from the knockoffs next door.", "One shop in this town is honest, and you are standing in it.", "Do not buy a 'genuine' anything from number one; I beg you."],
     ["Ye Olde whatever was established last Tuesday; we are the genuine article.", "Their certificates of authenticity are forged; ours are forged BETTER.", "Number one sells gravel in a jar and calls it dungeon dust; come see real gravel.", "The fountain feud, the gift feud — this town runs on rivalry and we are winning ours.", "The dock men deliver to us first; that is not a coincidence, that is quality.", "Buy here and the island is practically included. Practically."]);
 
+  // TIM (Tim's Tour Guide) — hustler warmth, always one map short of useful
+  setPool("tim", "mixed",
+    ["Tim's Tour Guide — Tim's the name, the guide's the game.", "Friend! You look like a person who could use a map.", "I have got a map for that. I have got a map for everything. Mostly.", "Step in, step in, mind the other maps."],
+    ["This map is current as of a Tuesday. A good Tuesday.", "The dungeon? I can get you to the door. The door is the easy part.", "Hints are, ah, temporarily shuttered. Regulatory. You understand.", "Both gift shops are crooks; I deal only in information, which is honest crookery.", "I had a map to the island once. Sold it. Regret it daily.", "The castle, the monastery, the cave — I have maps to all three; none of them work, collector's items."]);
+  // SALTY PETE — a drunk sailor promoted to named Rusty Anchor regular
+  setPool("salty", "brooklyn",
+    ["Salty's the name, and yeah, before you ask, it stuck.", "Pull up a stool; the Anchor's buying — it is not, but pull up anyway.", "I have been a regular here since before the harbour had water. Roughly.", "New blood at the Anchor — the doorman let you in? Bold of him."],
+    [["I told the kraken story to those school kids; the chaperone has not forgiven me.", "SUBJ"], ["The thing under the quay is real; I have a hat to prove it, except I do not have the hat.", "SUBJ"], "The doorman and I have an understanding: he ignores me, I ignore the bill.", "I have watched that island for forty years; it has watched me back for forty-one.", "Went down the dungeon once, came back up — that is the whole of the story and the miracle of it.", "The Quay's End sends a fella over some nights; we do not learn his name, he likes it that way."]);
+  // CONCIERGE / HOTEL — posh, extended; keeps the anchor line
+  setPool("hotel", "posh",
+    ["A room, dear? Of course there is a room.", "You have the look of someone who would rather be lying down.", "The Gilded Kraken; mind the name, mind the prices.", "Come in out of the plot, dear."],
+    [["Nothing down there worth roughing it for, dear.", "SUBJ"], "The pillows are changed daily; the gulls, alas, are not.", "The Rusty Anchor? We do not speak of the Rusty Anchor.", "The dungeon is a phase, dear; the suite is forever, or until checkout.", "Comfort precedes you everywhere, including, regrettably, the doorman's nose.", "The harbour view is included; the appreciation of it is extra."]);
+  // DOORMAN — the Rusty Anchor, barely speaks
+  setPool("doorman", "brooklyn",
+    ["Yeah.", "We are open. Do not make it a thing.", "You drinking, or looking?", "Door is behind you if the answer is neither."],
+    ["The hotel upstairs hates us; it is mutual and load-bearing.", "Salty's kraken story is forty percent kraken, sixty percent Salty.", "You smell like the spa, I turn you away. Policy. I like policy.", "The Quay's End sends a man over; he drinks alone, we let him.", "The dungeon thins the regulars; we keep their stools a respectful while.", "Quiet is the special. It is always the special."]);
+
   // ---- contact-dialogue resolver: named spec -> type pool -> GENERIC --------
   function dialogue(voiceId, type) {
     function pool(id, key) { var s = SPECS[id]; return (s && s[key] && s[key].length) ? s[key] : null; }

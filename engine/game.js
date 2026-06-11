@@ -68,7 +68,7 @@ var TD_GAME = (function () {
     saloon: "keeper_brooklyn", bodega: "keeper_brooklyn", boat: "keeper_brooklyn", redshop: "keeper_brooklyn",
     bank: "keeper_posh", church: "keeper_pastoral",
     blacksmith: "keeper_plain", motel: "keeper_plain", barber: "keeper_plain",
-    tim: "keeper_mixed", tattoo: "keeper_mixed", restaurant: "keeper_mixed", coffee: "coffee",
+    tim: "tim", tattoo: "keeper_mixed", restaurant: "keeper_mixed", coffee: "coffee",
     chinese: "keeper_mixed", clamshack: "keeper_brooklyn", gift1: "gift1", gift2: "gift2"
   };
 
@@ -592,6 +592,8 @@ var TD_GAME = (function () {
       add("shopper", "p", "a shopper", "shopper", 90, shops, 3);
       add("visitor", "i", "a visitor", "visitor", 90, strip, 4);
       add("guard", "G", "a Bureau patrol", "guard", 100, main, 1, { route: GUARD_ROUTE });
+      // Salty Pete — a named regular promoted from the sailor pool (at the Anchor)
+      if (streetTile(T, 28, 33)) crowd.push({ id: "salty", type: "sailor", voiceId: "salty", glyph: "j", name: "Salty Pete", speed: 60, energy: 0, acts: 0, x: 28, y: 33, home: { x: 28, y: 33 }, frozen: false, barksUsed: {}, wobble: true });
       spawnTroop();
     }
     function spawnTroop() {                                // the school trip troop (kids + chaperone)
