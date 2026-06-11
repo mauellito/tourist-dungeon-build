@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tourist Dungeon — A Tourist's Guide to the Dungeon (P1)</title>
+<style>
+  :root { --ink:#1c1a17; --paper:#f4efe6; --faint:#6b645a; --rule:#c9bfae; --accent:#7a5c3a; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background:var(--paper); color:var(--ink);
+    font-family: "Georgia","Iowan Old Style",serif; line-height:1.5; }
+  #wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 80px; }
+  header.brand { border-bottom: 2px solid var(--ink); padding-bottom:6px; margin-bottom:4px; }
+  header.brand h1 { font-size: 20px; margin:0; letter-spacing:0.5px; }
+  header.brand .sub { font-size: 12px; color:var(--faint); font-style:italic; }
+  .where { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--accent); margin:18px 0 2px; }
+  h2.scene { font-size:17px; margin:0 0 10px; }
+  .lines p { margin: 0 0 9px; }
+  .obj  { }
+  .subj { font-style: italic; color:#3a3631; }
+  .subj::before { content:"“"; } .subj::after { content:"”"; }
+  .note { font-size:13px; color:var(--faint); border-left:2px solid var(--rule); padding-left:8px; }
+  .plaque { font-style:italic; white-space:pre-line; border:1px solid var(--rule); background:#efe7d7; padding:8px 10px; }
+  .options { margin-top:16px; display:flex; flex-direction:column; gap:8px; }
+  button.opt { text-align:left; font-family:inherit; font-size:15px; cursor:pointer;
+    background:#fbf8f1; border:1px solid var(--rule); border-radius:4px; padding:9px 12px; color:var(--ink); }
+  button.opt:hover { background:#fff; border-color:var(--accent); }
+  .pm { border:2px solid var(--ink); padding:16px 18px; margin-top:8px; background:#fbf8f1; }
+  .pm .head { font-size:12px; letter-spacing:2px; text-transform:uppercase; }
+  .pm .ttl { font-size:18px; margin:2px 0 12px; font-variant:small-caps; }
+  .pm .cause { margin:0 0 12px; }
+  .pm .doors { margin:0 0 10px; }
+  .pm .doors li { margin-bottom:7px; }
+  .pm .crumb { font-style:italic; color:var(--accent); margin:8px 0; }
+  .pm .foot { font-size:13px; color:var(--faint); border-top:1px solid var(--rule); padding-top:8px; margin-top:10px; }
+  #debug { position:fixed; right:0; top:0; bottom:0; width:340px; overflow:auto;
+    background:#15130f; color:#cfe3b0; font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:50; }
+  #debug h3 { color:#fff; margin:0 0 6px; font-size:12px; }
+  #debug pre { white-space:pre-wrap; word-break:break-word; margin:0; }
+  .hint { position:fixed; right:8px; bottom:6px; font-size:11px; color:var(--faint); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header class="brand">
+    <h1>THE DUNGEON</h1>
+    <div class="sub">A Tourist's Guide to the Dungeon — Bureau-Approved Visitor Instrument (P1)</div>
+  </header>
+  <div id="app"></div>
+</div>
+<aside id="debug"><h3>OPERATOR DEBUG (~ to hide)</h3><pre id="debugBody"></pre></aside>
+<div class="hint">press <b>~</b> for operator debug</div>
+
+<!-- ============================================================= -->
+<!--  GAME CORE — pure logic, no DOM. Extracted verbatim by tests. -->
+<!-- ============================================================= -->
+<script id="td-core">
+/* ===TD_CORE_START=== */
+"use strict";
+
+// ---- SIGNAL INVENTORY (the 12). OBJ lines are always factually true in-world;
+//      SUBJ lines are gut/marketing and may mislead. ------------------------
+var SIGNALS = {
+  "001": { id:"001", channel:"OBJ",  text:"Valid in Guided Zones" },
+  "002": { id:"002", channel:"SUBJ", text:"this pass gets you everywhere worth going!" },
+  "003": { id:"003", channel:"OBJ",  text:"Standard Admission — all areas" },
+  "004": { id:"004", channel:"OBJ",  text:"This ticket is not valid beyond this point." },
+  "005": { id:"005", channel:"OBJ",  text:"You smell like the Gilded Kraken. Not your kind of place." },
+  "006": { id:"006", channel:"SUBJ", text:"Nothing down there worth roughing it for, dear." },
+  "007": { id:"007", channel:"OBJ",  text:"You leave with soft hands and a perfume that announces you before you arrive." },
+  "008": { id:"008", channel:"OBJ",  text:"A cold draft slides from a seam in the wall." },
+  "009": { id:"009", channel:"SUBJ", text:"Probably rats in the wall." },
+  "010": { id:"010", channel:"OBJ",  text:"Behind you the door settles into its frame with a click. It will not open from this side." },
+  "011": { id:"011", channel:"OBJ",  text:"Behind the cold and rat-less wall,\na stair ascends to serve them all." },
+  "012": { id:"012", channel:"OBJ",  text:"Across the water the monastery and the graveyard sit in plain view, and just as plainly cannot be reached from here." }
+};
+
+function sig(id){ var s = SIGNALS[id]; return { text:s.text, sig:id, channel:s.channel }; }
+function plain(text){ return { text:text }; }
+function note(text){ return { text:text, channel:"NOTE" }; }
+function plaque(text){ return { text:text, channel:"PLAQUE" }; }
+
+// ---- death / win helpers --------------------------------------------------
+function die(state, cause){ state.outcome = "dead"; state.cause = cause; }
+
+function anyLevel1(state){
+  var hit = false;
+  state.visited.forEach(function(id){ if (id.indexOf("d1") === 0) hit = true; });
+  return hit;
+}
+
+// ---- THE WORLD: town + four levels. Node-map; options are pure functions
+//      of state so gates (ticket, comfort, one-way) resolve consistently. ---
+var NODES = {
+
+  // ----------------------------- TOWN -----------------------------
+  harbor: {
+    id:"harbor", level:0, title:"The Harbor",
+    lines:function(state, session){
+      var L = [];
+      if (session.knowledge.size){
+        L.push(note("Field notes, carried from the visitors who came before you:"));
+        session.knowledge.forEach(function(k){ L.push(note("• " + k)); });
+      }
+      L.push(plain("The town clings to the harbor like a barnacle that has learned to sell postcards. Somewhere below it, the Dungeon waits, municipally."));
+      L.push(sig("012"));
+      return L;
+    },
+    options:function(state){
+      var o = [
+        { id:"to_agency", label:"Visit the Tour Agency.", to:"agency" },
+        { id:"to_kiosk",  label:"Visit the Admission Kiosk.", to:"kiosk" },
+        { id:"to_hotel",  label:"Check in at the Gilded Kraken (a hotel night).", to:"hotel" },
+        { id:"to_spa",    label:"Visit the spa.", to:"spa" },
+        { id:"to_anchor", label:"Try the door of the Rusty Anchor.", to:"rusty_anchor" },
+        { id:"to_gate",   label:"Go down to the dungeon gate.", to:"gate" }
+      ];
+      return o;
+    }
+  },
+
+  agency: {
+    id:"agency", level:0, title:"The Tour Agency",
+    lines:function(state){
+      var L = [ plain("A clerk in a too-bright sash beams at you from behind a counter of brochures.") ];
+      L.push(sig("002"));
+      L.push(plain("Pinned beside the till, in a smaller and more honest hand, a notice:"));
+      L.push(sig("001"));
+      if (state.ticket) L.push(note("You already hold admission. The clerk's enthusiasm does not refund."));
+      return L;
+    },
+    options:function(state){
+      var o = [];
+      if (!state.ticket) o.push({ id:"buy_agency", label:"Buy the Guided Package.", to:"harbor",
+        tags:["bought_agency"], effect:function(s){ s.ticket="agency"; } });
+      o.push({ id:"back", label:"Back to the harbor.", to:"harbor" });
+      return o;
+    }
+  },
+
+  kiosk: {
+    id:"kiosk", level:0, title:"The Admission Kiosk",
+    lines:function(state){
+      var L = [ plain("An unattended kiosk. A slot, a lever, and a roll of grey tickets. The ticket reads, in full:") ];
+      L.push(sig("003"));
+      if (state.ticket) L.push(note("You already hold admission."));
+      return L;
+    },
+    options:function(state){
+      var o = [];
+      if (!state.ticket) o.push({ id:"buy_standard", label:"Tear off a Standard Admission.", to:"harbor",
+        tags:["bought_standard"], effect:function(s){ s.ticket="standard"; } });
+      o.push({ id:"back", label:"Back to the harbor.", to:"harbor" });
+      return o;
+    }
+  },
+
+  hotel: {
+    id:"hotel", level:0, title:"The Gilded Kraken",
+    lines:function(){
+      return [
+        plain("The concierge regards your luggage, which is to say your lack of it."),
+        sig("006"),
+        plain("The bed is soft enough to file a complaint about. You would recover quickly here.")
+      ];
+    },
+    options:function(){
+      return [
+        { id:"stay_hotel", label:"Take the night. (Recover; you will feel wonderfully restored.)", to:"harbor",
+          tags:["hotel"], effect:function(s){ s.comfort += 2; s.rested = true; } },
+        { id:"back", label:"Decline and return to the harbor.", to:"harbor" }
+      ];
+    }
+  },
+
+  spa: {
+    id:"spa", level:0, title:"The Spa",
+    lines:function(){
+      return [
+        plain("Warm towels. Cucumber water. A flute, somewhere, being played at you."),
+        plain("You emerge visibly improved and faintly scented."),
+        sig("007")
+      ];
+    },
+    options:function(){
+      return [
+        { id:"visit_spa", label:"Take the full treatment. (Recover a little; smell expensive.)", to:"harbor",
+          tags:["spa"], effect:function(s){ s.comfort += 1; s.perfumed = true; } },
+        { id:"back", label:"Back to the harbor.", to:"harbor" }
+      ];
+    }
+  },
+
+  rusty_anchor: {
+    id:"rusty_anchor", level:0, title:"The Rusty Anchor",
+    lines:function(state){
+      if (state.comfort >= 2) return [
+        plain("A doorman the size of a small weather system looks you up and down, and down."),
+        sig("005")
+      ];
+      return [
+        plain("A doorman the size of a small weather system looks you over and loses interest, which here is a welcome."),
+        plain("Inside it is dim and sticky and nobody is impressed by you. It is the most relaxing place in town.")
+      ];
+    },
+    options:function(state){
+      if (state.comfort >= 2) return [
+        { id:"anchor_leave", label:"Pocket your dignity and leave. (You are not admitted.)", to:"harbor",
+          tags:["anchor_rejected"], effect:function(s){ s.flags.add("anchor_rejected"); } }
+      ];
+      return [
+        { id:"anchor_drink", label:"Have a quiet drink and leave.", to:"harbor",
+          tags:["anchor_admitted"], effect:function(s){ s.flags.add("anchor_admitted"); } }
+      ];
+    }
+  },
+
+  gate: {
+    id:"gate", level:0, title:"The Dungeon Gate",
+    lines:function(state){
+      if (!state.ticket) return [ plain("The turnstile considers you, finds no ticket, and does not move. The gate does not open for the unticketed.") ];
+      return [ plain("The turnstile reads your ticket, sighs in the way of municipal machinery, and lets you by.") ];
+    },
+    options:function(state){
+      if (!state.ticket) return [ { id:"back", label:"Back to the harbor to sort out a ticket.", to:"harbor" } ];
+      return [
+        { id:"descend", label:"Step through, onto the first level.", to:"d1_landing", effect:function(s){ s.flags.add("entered_dungeon"); } },
+        { id:"back", label:"Not yet — back to the harbor.", to:"harbor" }
+      ];
+    }
+  },
+
+  // ----------------------------- LEVEL 1 -----------------------------
+  d1_landing: {
+    id:"d1_landing", level:1, title:"Level 1 — The Receiving Corridor",
+    lines:function(){ return [ plain("Stone, damp, and the particular gloom of a place that has read your booking and is unimpressed. A bronze plaque catches what little light there is.") ]; },
+    options:function(){ return [
+      { id:"plaque", label:"Examine the bronze plaque.", to:"d1_plaque" },
+      { id:"inward", label:"Follow the corridor inward.", to:"d1_fork" }
+    ]; }
+  },
+  d1_plaque: {
+    id:"d1_plaque", level:1, title:"Level 1 — The Plaque",
+    lines:function(){ return [ plain("The plaque is old, and rhymes, which old plaques do when they want remembering:"), plaque(SIGNALS["011"].text) ]; },
+    options:function(){ return [
+      { id:"note_it", label:"Commit it to memory and move on.", to:"d1_fork",
+        effect:function(s){ s.flags.add("plaque_examined"); } }
+    ]; }
+  },
+  d1_fork: {
+    id:"d1_fork", level:1, title:"Level 1 — The Fork",
+    lines:function(){ return [ plain("The corridor divides. One way is a low passage where something audibly shuffles. The other is a broad stair going down.") ]; },
+    options:function(){ return [
+      { id:"low", label:"Take the low passage (something shuffles there).", to:"d1_hazard" },
+      { id:"stair", label:"Take the broad stair down.", to:"d1_mainstair" }
+    ]; }
+  },
+  d1_hazard: {
+    id:"d1_hazard", level:1, title:"Level 1 — The Low Passage",
+    lines:function(){ return [ plain("A nocuous thing, low and patient, occupies the passage. It has every appearance of being declinable.") ]; },
+    options:function(){ return [
+      { id:"press", label:"Stride past it; you have somewhere to be.", tags:["careless"],
+        effect:function(s){ die(s, "The visitor strode past a creature it had every opportunity to decline, and was, characteristically, discontinued."); } },
+      { id:"evade", label:"Give it a wide berth along the cold wall and slip by.", to:"d1_mainstair", tags:["evade"] },
+      { id:"retreat", label:"Edge back to the fork.", to:"d1_fork", tags:["evade"] }
+    ]; }
+  },
+  d1_mainstair: {
+    id:"d1_mainstair", level:1, title:"Level 1 — The Broad Stair",
+    lines:function(){ return [ plain("A broad stair descends into the second level. A door at its foot stands open — for now.") ]; },
+    options:function(){ return [
+      { id:"descend", label:"Descend the broad stair.", to:"d2_landing", tags:["descend"],
+        effect:function(s){ s.flags.add("oneway_closed"); } },
+      { id:"back", label:"Step back up into the level.", to:"d1_fork" }
+    ]; }
+  },
+  // sealed pocket on Level 1 — reachable ONLY from the Level 2 draft wall
+  d1_pocket: {
+    id:"d1_pocket", level:1, title:"Level 1 — A Sealed Chamber (the maps forget it)",
+    lines:function(){ return [
+      plain("The hidden stair lets you up into a chamber the corridor never offered. It is small, dry, and entirely off the official route — a pocket of Level 1 that can only be reached from below."),
+      plain("On a ledge sits one unglamorous souvenir, unusually heavy. The plaque downstairs told the truth: rat-less, and served by a stair.")
+    ]; },
+    options:function(){ return [
+      { id:"take", label:"Pocket the heavy little souvenir and climb back down.", to:"d2_draftwall",
+        effect:function(s){ s.flags.add("found_pocket"); s.trinkets = (s.trinkets||0) + 1; } }
+    ]; }
+  },
+
+  // ----------------------------- LEVEL 2 -----------------------------
+  d2_landing: {
+    id:"d2_landing", level:2, title:"Level 2 — The Lower Landing",
+    lines:function(state){
+      var L = [];
+      if (state.flags.has("oneway_closed")) L.push(sig("010"));
+      L.push(plain("The second level is wider and less polite. A corridor leads off toward a faint, persistent cold; another runs dry and dark."));
+      return L;
+    },
+    options:function(){ return [
+      { id:"cold", label:"Follow the corridor toward the cold.", to:"d2_draftwall" },
+      { id:"dry",  label:"Take the dry, dark corridor.", to:"d2_hazard" }
+    ]; }
+  },
+  d2_draftwall: {
+    id:"d2_draftwall", level:2, title:"Level 2 — The Cold Seam",
+    lines:function(){ return [ sig("008"), sig("009") ]; },
+    options:function(){ return [
+      { id:"investigate", label:"Ignore the gut, work your fingers into the seam.", to:"d1_pocket",
+        tags:["investigate_draft"], effect:function(s){ s.flags.add("hidden_stair"); } },
+      { id:"dismiss", label:"“Probably rats.” Carry on down the level.", to:"d2_hazard", tags:["dismiss"] }
+    ]; }
+  },
+  d2_hazard: {
+    id:"d2_hazard", level:2, title:"Level 2 — The Dark Run",
+    lines:function(){ return [ plain("Something larger moves in the dark run. It is not patient like the last one. It is hungry like the next one.") ]; },
+    options:function(){ return [
+      { id:"press", label:"Push straight through into the dark.", tags:["careless"],
+        effect:function(s){ die(s, "The visitor pressed into the dark of the second level, against all available advice, and was rendered inert."); } },
+      { id:"evade", label:"Wait, read its pace, and pass behind it.", to:"d2_stair", tags:["evade"] }
+    ]; }
+  },
+  d2_stair: {
+    id:"d2_stair", level:2, title:"Level 2 — The Stair Down",
+    lines:function(){ return [ plain("A narrower stair takes you toward the third level.") ]; },
+    options:function(){ return [ { id:"descend", label:"Descend to the third level.", to:"d3_landing" } ]; }
+  },
+
+  // ----------------------------- LEVEL 3 -----------------------------
+  d3_landing: {
+    id:"d3_landing", level:3, title:"Level 3 — The Long Gallery",
+    lines:function(){ return [ plain("A long gallery, and on the stair ahead a feeble, domitable creature blocks the way — more nuisance than nemesis.") ]; },
+    options:function(){ return [
+      { id:"fight", label:"Put down the feeble thing and step over it.", to:"d3_stair",
+        effect:function(s){ s.kills += 1; } },
+      { id:"rush",  label:"Bolt past everything, head down.", to:"d3_hazard" }
+    ]; }
+  },
+  d3_hazard: {
+    id:"d3_hazard", level:3, title:"Level 3 — The Blind Turn",
+    lines:function(){ return [ plain("Head down, you take a blind turn at speed. Something formidable is standing in it, and you have given it the initiative.") ]; },
+    options:function(){ return [
+      { id:"press", label:"Commit; you are already moving.", tags:["careless"],
+        effect:function(s){ die(s, "The visitor hurried, on the third level, into a thing it had not troubled to look at, and was brought to a full and final stop."); } },
+      { id:"evade", label:"Drop, freeze, and let it pass.", to:"d3_stair", tags:["evade"] }
+    ]; }
+  },
+  d3_stair: {
+    id:"d3_stair", level:3, title:"Level 3 — The Last Stair",
+    lines:function(){ return [ plain("The last stair down. The air below is colder and somehow more bureaucratic.") ]; },
+    options:function(){ return [ { id:"descend", label:"Descend to the fourth level.", to:"d4_landing" } ]; }
+  },
+
+  // ----------------------------- LEVEL 4 -----------------------------
+  d4_landing: {
+    id:"d4_landing", level:4, title:"Level 4 — The Antechamber",
+    lines:function(){ return [ plain("A low antechamber. Ahead, a Brass Door, official and enormous, set with a slot for a ticket. Off to one side, something paces in the dark, waiting for the under-prepared.") ]; },
+    options:function(){ return [
+      { id:"brass", label:"Present your ticket at the Brass Door.", to:"d4_brass" },
+      { id:"lurker", label:"Investigate the pacing thing in the dark.", to:"d4_hazard" }
+    ]; }
+  },
+  d4_brass: {
+    id:"d4_brass", level:4, title:"Level 4 — The Brass Door",
+    lines:function(state){
+      if (state.ticket === "standard") return [
+        plain("The Brass Door reads your Standard Admission, finds it exactly as described, and swings open."),
+        plain("Beyond it the air is older.")
+      ];
+      // agency (or, defensively, anything not standard) is refused
+      return [ plain("The Brass Door reads your Guided Package, and a small brass plate illuminates:"), sig("004") ];
+    },
+    options:function(state){
+      if (state.ticket === "standard") return [
+        { id:"pass", label:"Pass through the Brass Door.", to:"d4_beyond", tags:["brass_pass"],
+          effect:function(s){ s.flags.add("brass_passed"); } }
+      ];
+      return [
+        { id:"turnback", label:"Pocket the useless pass and turn back into the antechamber.", to:"d4_hazard",
+          tags:["brass_rejected"], effect:function(s){ s.flags.add("brass_rejected"); } }
+      ];
+    }
+  },
+  d4_hazard: {
+    id:"d4_hazard", level:4, title:"Level 4 — The Pacing Thing",
+    lines:function(){ return [ plain("The thing in the dark stops pacing. It has been waiting, the way doors and creditors wait, and now it is your turn.") ]; },
+    options:function(){ return [
+      { id:"press", label:"Take it head-on; you have come this far.", tags:["careless"],
+        effect:function(s){ die(s, "Turned about on the fourth level without a plan, the visitor met the resident of the dark and was undone."); } },
+      { id:"evade", label:"Refuse the engagement and back away to the antechamber.", to:"d4_landing", tags:["evade"] }
+    ]; }
+  },
+  d4_beyond: {
+    id:"d4_beyond", level:4, title:"Beyond the Brass Door",
+    lines:function(){ return [ plain("You stand where the Guided Package never reaches. There is more here, stubbed and waiting for a later build — but the door, at least, was honest, and so were you in choosing the cheaper ticket.") ]; },
+    options:function(){ return [
+      { id:"bank", label:"Report your survival to the Bureau.",
+        effect:function(s){ s.outcome = "prevailed"; s.cause = "The visitor passed beyond the Brass Door. The Bureau records this with restraint."; } }
+    ]; }
+  }
+};
+
+// ---- session / character / engine ----------------------------------------
+function createSession(){
+  return { knowledge:new Set(), lives:0 };
+}
+
+function createGame(session){
+  if (!session) session = createSession();
+  session.lives += 1;
+  var state = {
+    life: session.lives,
+    alive: true,
+    outcome: null,            // null | "dead" | "prevailed"
+    cause: null,
+    nodeId: "harbor",
+    ticket: null,             // "agency" | "standard"
+    comfort: 0,               // hidden counter
+    perfumed: false, rested: false,
+    visited: new Set(["harbor"]),
+    kills: 0,
+    trinkets: 0,
+    flags: new Set(),
+    log: []                   // [{node,id,label,tags}]
+  };
+
+  function currentNode(){ return NODES[state.nodeId]; }
+
+  function finalizeKnowledge(){
+    var tags = {};
+    state.log.forEach(function(e){ (e.tags||[]).forEach(function(t){ tags[t]=true; }); });
+    var add = function(s){ session.knowledge.add(s); };
+    if (state.flags.has("brass_rejected")) add("A Guided Package is refused at the Brass Door.");
+    if (state.flags.has("brass_passed"))   add("Standard Admission opens the Brass Door.");
+    if (state.flags.has("anchor_rejected"))add("The Rusty Anchor turns away the too-well-kept.");
+    if (state.flags.has("oneway_closed"))  add("The broad stair to Level 2 only goes down.");
+    if (state.flags.has("found_pocket"))   add("A sealed chamber on Level 1 is reached by a hidden stair on Level 2.");
+    if (state.flags.has("hidden_stair"))   add("The cold draft on Level 2 hides a stair, not rats.");
+  }
+
+  return {
+    state: state,
+    session: session,
+
+    view:function(){
+      var node = currentNode();
+      return {
+        nodeId: state.nodeId,
+        level: node.level,
+        title: node.title,
+        lines: node.lines(state, session),
+        options: state.outcome ? [] : node.options(state, session).map(function(o){ return { id:o.id, label:o.label }; }),
+        over: state.outcome !== null,
+        outcome: state.outcome
+      };
+    },
+
+    choose:function(optionId){
+      if (state.outcome) return;
+      var node = currentNode();
+      var opts = node.options(state, session);
+      var opt = null;
+      for (var i=0;i<opts.length;i++){ if (opts[i].id === optionId){ opt = opts[i]; break; } }
+      if (!opt) throw new Error("No option '" + optionId + "' at node '" + state.nodeId + "'");
+      state.log.push({ node: state.nodeId, id: opt.id, label: opt.label, tags: (opt.tags||[]).slice() });
+      if (opt.effect) opt.effect(state, session);
+      if (state.outcome){ state.alive = (state.outcome !== "dead"); finalizeKnowledge(); return; }
+      if (opt.to){
+        var dest = (typeof opt.to === "function") ? opt.to(state, session) : opt.to;
+        state.nodeId = dest;
+        state.visited.add(dest);
+      }
+    },
+
+    isOver:function(){ return state.outcome !== null; },
+
+    postmortem:function(){ return generatePostmortem(state, session); }
+  };
+}
+
+// ---- THE LOAD-BEARING SCREEN ---------------------------------------------
+// Annotates ONLY choices actually made; maps choice -> consequence -> door
+// closed; never lies, never reveals untouched content, never prints the
+// hidden comfort counter as a number.
+function comfortSource(flagsHas, tagsHas){
+  var hotel = tagsHas("hotel"), spa = tagsHas("spa");
+  if (hotel && spa) return "a night at the Gilded Kraken and the attentions of the spa";
+  if (hotel) return "a night at the Gilded Kraken";
+  if (spa)   return "the attentions of the spa";
+  return "its comforts in the town";
+}
+
+function generatePostmortem(state, session){
+  var tagSet = {};
+  state.log.forEach(function(e){ (e.tags||[]).forEach(function(t){ tagSet[t]=true; }); });
+  var tagsHas = function(t){ return !!tagSet[t]; };
+  var prevailed = state.outcome === "prevailed";
+
+  var attributions = [];
+
+  // FORK 1 — ticket purchase -> Brass Door (only if the door was actually met)
+  if (state.flags.has("brass_rejected")){
+    attributions.push("The Guided Package, purchased with some enthusiasm at the Tour Agency, is — as its own small print maintained — valid only in Guided Zones. The Brass Door was, accordingly, not pervious to the visitor.");
+  } else if (state.flags.has("brass_passed")){
+    attributions.push("The Standard Admission, torn without ceremony from the kiosk, was honoured at the Brass Door, which opened as plainly as its notice had promised.");
+  }
+
+  // FORK 2 — comfort accumulation -> Rusty Anchor (only if turned away)
+  if (state.flags.has("anchor_rejected")){
+    attributions.push("Having taken " + comfortSource(null, tagsHas) + ", the visitor was found too well-kept for the Rusty Anchor, whose doorman declined the acquaintance.");
+  }
+
+  // MAY: exactly one non-spoiling breadcrumb, only for content actually passed
+  var breadcrumb = null;
+  if (anyLevel1(state) && !state.flags.has("plaque_examined")){
+    breadcrumb = "The visitor walked past something worth a second look. It rhymes.";
+  }
+
+  return {
+    heading: "BUREAU OF VISITOR OUTCOMES",
+    title: prevailed ? "Notice of Provisional Survival" : "Certificate of Conclusion",
+    cause: state.cause || (prevailed
+      ? "The visitor passed beyond the Brass Door. The Bureau records this with restraint."
+      : "The visitor was, at length and quite characteristically, undone."),
+    attributions: attributions,
+    breadcrumb: breadcrumb,
+    footer: prevailed
+      ? "The Bureau will require the appropriate forms, in triplicate, at the visitor's earliest convenience."
+      : "The Bureau thanks the deceased for his custom, such as it was."
+  };
+}
+
+var TD_CORE = {
+  SIGNALS: SIGNALS,
+  NODES: NODES,
+  createSession: createSession,
+  createGame: createGame,
+  generatePostmortem: generatePostmortem
+};
+if (typeof module !== "undefined" && module.exports) { module.exports = TD_CORE; }
+/* ===TD_CORE_END=== */
+</script>
+
+<!-- ============================================================= -->
+<!--  UI LAYER — DOM only; consumes TD_CORE. Not part of the tests. -->
+<!-- ============================================================= -->
+<script id="td-ui">
+(function(){
+  var app = document.getElementById("app");
+  var debugPanel = document.getElementById("debug");
+  var debugBody = document.getElementById("debugBody");
+  var session = TD_CORE.createSession();
+  var game = TD_CORE.createGame(session);
+
+  function lineHTML(l){
+    if (l.channel === "SUBJ") return '<p class="subj">' + escapeHTML(l.text) + '</p>';
+    if (l.channel === "NOTE") return '<p class="note">' + escapeHTML(l.text) + '</p>';
+    if (l.channel === "PLAQUE") return '<p class="plaque">' + escapeHTML(l.text) + '</p>';
+    return '<p class="obj">' + escapeHTML(l.text) + '</p>';
+  }
+  function escapeHTML(s){ return String(s).replace(/[&<>]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); }
+
+  function render(){
+    var v = game.view();
+    var html = "";
+    html += '<div class="where">' + (v.level === 0 ? "Town" : "Dungeon · Level " + v.level) + '</div>';
+    html += '<h2 class="scene">' + escapeHTML(v.title) + '</h2>';
+    html += '<div class="lines">' + v.lines.map(lineHTML).join("") + '</div>';
+
+    if (v.over){
+      html += renderPostmortem(game.postmortem());
+      html += '<div class="options">' +
+        '<button class="opt" data-act="new">Begin a new character. (The world remembers; you do not.)</button>' +
+        '</div>';
+    } else {
+      html += '<div class="options">' + v.options.map(function(o){
+        return '<button class="opt" data-opt="' + o.id + '">' + escapeHTML(o.label) + '</button>';
+      }).join("") + '</div>';
+    }
+    app.innerHTML = html;
+
+    var btns = app.querySelectorAll("button.opt");
+    for (var i=0;i<btns.length;i++){
+      btns[i].addEventListener("click", function(e){
+        var act = e.currentTarget.getAttribute("data-act");
+        if (act === "new"){ game = TD_CORE.createGame(session); render(); return; }
+        game.choose(e.currentTarget.getAttribute("data-opt"));
+        render();
+      });
+    }
+    renderDebug();
+  }
+
+  function renderPostmortem(pm){
+    var h = '<div class="pm">';
+    h += '<div class="head">' + escapeHTML(pm.heading) + '</div>';
+    h += '<div class="ttl">' + escapeHTML(pm.title) + '</div>';
+    h += '<p class="cause">' + escapeHTML(pm.cause) + '</p>';
+    if (pm.attributions.length){
+      h += '<div class="doors"><div><b>Doors your choices closed, or opened:</b></div><ul>';
+      pm.attributions.forEach(function(a){ h += '<li>' + escapeHTML(a) + '</li>'; });
+      h += '</ul></div>';
+    } else {
+      h += '<p class="cause">The Bureau finds little in your conduct to remark upon. This is not a compliment.</p>';
+    }
+    if (pm.breadcrumb) h += '<p class="crumb">' + escapeHTML(pm.breadcrumb) + '</p>';
+    h += '<div class="foot">' + escapeHTML(pm.footer) + '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  function renderDebug(){
+    var s = game.state;
+    var snap = {
+      life: s.life, outcome: s.outcome, node: s.nodeId,
+      ticket: s.ticket, comfort: s.comfort, perfumed: s.perfumed, rested: s.rested,
+      kills: s.kills, trinkets: s.trinkets,
+      flags: Array.from(s.flags), visited: Array.from(s.visited),
+      sessionLives: session.lives, knowledge: Array.from(session.knowledge),
+      log: s.log.map(function(e){ return e.node + ":" + e.id + (e.tags.length?(" ["+e.tags.join(",")+"]"):""); })
+    };
+    debugBody.textContent = JSON.stringify(snap, null, 2);
+  }
+
+  document.addEventListener("keydown", function(e){
+    if (e.key === "~" || e.key === "`"){
+      debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block";
+      renderDebug();
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

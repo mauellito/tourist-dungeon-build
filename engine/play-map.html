@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tourist Dungeon — Walk the Map (P2 visual)</title>
+<style>
+  :root { --paper:#f4efe6; --ink:#1c1a17; --faint:#6b645a; --rule:#c9bfae; --accent:#7a5c3a; --good:#3c6e3c; --bad:#9a3b2f; }
+  html,body { margin:0; background:var(--paper); color:var(--ink); font-family:"Georgia",serif; }
+  #wrap { max-width:780px; margin:0 auto; padding:18px 16px 60px; }
+  header.brand { border-bottom:2px solid var(--ink); padding-bottom:6px; }
+  header.brand h1 { font-size:19px; margin:0; letter-spacing:.5px; }
+  header.brand .sub { font-size:12px; color:var(--faint); font-style:italic; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:13px; color:var(--faint); margin:10px 0 4px; }
+  .bar input { width:90px; font-family:inherit; }
+  .ctl { font-family:inherit; font-size:13px; padding:5px 9px; border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; cursor:pointer; }
+  .verify { font-size:12.5px; border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:6px 10px; margin:6px 0 10px; }
+  .verify .ok { color:var(--good); } .verify .no { color:var(--bad); font-weight:bold; }
+  .stage { position:relative; width:max-content; }
+  canvas { background:#000; border:1px solid var(--ink); display:block; image-rendering:pixelated; }
+  .hud { display:flex; justify-content:space-between; font-size:13px; color:var(--faint); margin:6px 2px; }
+  .log { min-height:40px; font-size:13px; color:var(--accent); margin:4px 2px; }
+  .block { color:var(--bad); font-size:13px; min-height:18px; margin:2px; }
+  .help { font-size:12px; color:var(--faint); margin-top:8px; }
+  .controls { display:flex; gap:18px; flex-wrap:wrap; align-items:center; font-size:13px; margin:8px 2px;
+    border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:8px 10px; }
+  .controls b { color:var(--accent); }
+  .controls .keys { font-family:"Consolas",monospace; font-size:12px; color:var(--ink); }
+  .vstamp { position:fixed; right:8px; bottom:22px; font:11px "Consolas",monospace; color:#8a7c66; background:rgba(244,239,230,.85); padding:2px 6px; border:1px solid var(--rule); border-radius:3px; }
+  .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(20,18,14,.78); }
+  .panel { background:#fbf8f1; border:2px solid var(--ink); padding:16px 18px; max-width:430px; }
+  .panel .head { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--faint); }
+  .panel .ttl { font-size:18px; font-variant:small-caps; margin:2px 0 10px; }
+  .panel.win .ttl { color:var(--good); }
+  .panel .foot { font-size:12px; color:var(--faint); border-top:1px solid var(--rule); margin-top:10px; padding-top:8px; }
+  #debug { position:fixed; right:0; top:0; bottom:0; width:330px; overflow:auto; background:#15130f; color:#cfe3b0; font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:50; }
+  #debug pre { white-space:pre-wrap; word-break:break-word; margin:0; }
+  .hint { position:fixed; right:8px; bottom:6px; font-size:11px; color:var(--faint); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header class="brand">
+    <h1>THE DUNGEON — field survey</h1>
+    <div class="sub">A Tourist's Guide to the Dungeon — walk it yourself (arrow keys)</div>
+  </header>
+  <div class="bar">
+    <label>seed <input id="seed" type="number" /></label>
+    <button class="ctl" id="regen">Generate</button>
+    <button class="ctl" id="reroll">Random</button>
+    <span id="meta"></span>
+  </div>
+  <div id="verify" class="verify"></div>
+  <div class="stage">
+    <canvas id="cv" width="738" height="414"></canvas>
+    <div id="overlay"></div>
+  </div>
+  <div class="hud"><span id="hud-left"></span><span id="hud-right"></span></div>
+  <div class="block" id="block"></div>
+  <div class="log" id="log"></div>
+  <div class="controls">
+    <span><b>Move</b> <span class="keys">← ↑ ↓ →</span> or <span class="keys">W A S D</span></span>
+    <span><b>Diagonals</b> <span class="keys">Q E</span> (up-left / up-right) <span class="keys">Z C</span> (down-left / down-right)</span>
+    <span><b>Open door / use</b> <span class="keys">Enter</span></span>
+    <span><b>Debug</b> <span class="keys">~</span></span>
+  </div>
+  <div class="help">Walk into a door to <i>see</i> it; press <b>Enter</b> to open it. Walk into a creature to fight it. Walk into a building's letter to read its sign, then Enter to go inside.</div>
+</div>
+<div class="vstamp" id="vstamp"></div>
+<aside id="debug"><pre id="debugBody"></pre></aside>
+<div class="hint">press <b>~</b> for operator debug</div>
+
+<script src="rng.js"></script>
+<script src="checker.js"></script>
+<script src="generator.js"></script>
+<script src="interpreter.js"></script>
+<script src="mapmode.js"></script>
+<script src="game.js"></script>
+<script>
+(function () {
+  var TS = 18, FONT = "16px Consolas, monospace";
+  var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  var seedInput = document.getElementById("seed"), metaEl = document.getElementById("meta");
+  var verifyEl = document.getElementById("verify"), overlay = document.getElementById("overlay");
+  var hudL = document.getElementById("hud-left"), hudR = document.getElementById("hud-right");
+  var blockEl = document.getElementById("block"), logEl = document.getElementById("log");
+  var debugPanel = document.getElementById("debug"), debugBody = document.getElementById("debugBody");
+  var world = null, sim = null, session = { knowledge: new Set(), lives: 0 }, seenDiscoveries = {};
+
+  function urlSeed() { var m = /[?&]seed=(\d+)/.exec(location.search); return m ? parseInt(m[1], 10) : null; }
+
+  function newGame(seed) {
+    world = TD_GEN.generate(seed);
+    session = { knowledge: new Set(), lives: 0 };
+    sim = TD_GAME.create(world, { session: session });
+    window.__TD_SIM = function () { return sim; };
+    window.__TD_VIEW = function () { return sim.view(); };
+    seenDiscoveries = {};
+    seedInput.value = seed;
+    metaEl.textContent = "depth " + world.meta.depth + " · arrival day " + world.arrival_day;
+    renderVerify();
+    overlay.innerHTML = ""; logEl.textContent = ""; blockEl.textContent = "";
+    draw();
+  }
+  function nextCharacter() { sim.newCharacter(); seenDiscoveries = {}; overlay.innerHTML = ""; draw(); }
+
+  function renderVerify() {
+    var v = TD_CHECK.verify(world);
+    var parts = Object.keys(v.results).map(function (k) {
+      var ok = v.results[k];
+      return '<span class="' + (ok ? "ok" : "no") + '">' + (ok ? "✓" : "✗") + " " + k.replace(/_/g, " ") + "</span>";
+    });
+    verifyEl.innerHTML = (v.pass ? "<b>Checker:</b> " : "<b class='no'>CHECKER FAILED:</b> ") + parts.join(" &nbsp; ");
+  }
+
+  function draw() {
+    var vw = sim.view();
+    var vis = new Set(vw.visible), exp = new Set(vw.explored);
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+
+    for (var y = 0; y < vw.h; y++) {
+      for (var x = 0; x < vw.w; x++) {
+        var k = x + "," + y;
+        var seen = exp.has(k), bright = vis.has(k);
+        if (!seen) continue;                       // fog: never-seen stays black
+        var ch = vw.grid[y][x], px = x * TS, py = y * TS;
+        var door = (vw.doors || {})[k];
+        var glyph = "", col = "#000", bg = null;
+        if (door) {
+          bg = (vw.pendingDoor === k) ? "#6a5520" : "#403828";
+          if (door.glyph) { glyph = door.glyph; col = door.brass ? "#d2a04a" : "#d8b25a"; }
+          else if (door.type === "stair_down") { glyph = ">"; col = "#4ec0c0"; }
+          else if (door.type === "stair_up") { glyph = "<"; col = "#4ec0c0"; }
+          else if (door.type === "oneway") { glyph = "^"; col = "#d08a3a"; }
+          else { glyph = "+"; col = (door.takeable === false) ? "#c25b4f" : "#7ec07e"; }
+        } else if (ch === ".") { bg = bright ? "#5b5142" : "#332e26"; glyph = "·"; col = bright ? "#7a7060" : "#4a4438"; }
+        else if (ch === "~") { bg = "#22384a"; glyph = "≈"; col = "#5f86a6"; }
+        else if (ch === "#") { glyph = "#"; col = bright ? "#9a8b71" : "#5a5042"; }
+        if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
+        if (glyph) { ctx.fillStyle = bright ? col : dim(col); ctx.fillText(glyph, px + TS / 2, py + TS / 2 + 1); }
+      }
+    }
+    // features (town buildings A/K/H/P/F/R/>/~ and dungeon plaques ¶)
+    Object.keys(vw.features || {}).forEach(function (k) {
+      if (!vis.has(k)) return;
+      var f = vw.features[k], xy = k.split(","), fx = +xy[0], fy = +xy[1];
+      ctx.fillStyle = "#caa15a"; ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
+    });
+    // creatures (already filtered to visible)
+    vw.creatures.forEach(function (c) {
+      ctx.fillStyle = c.kind === "lurker" ? "#d24a3a" : "#d98f4a";
+      ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
+    });
+    // avatar
+    ctx.fillStyle = "#f0c040"; ctx.fillText("@", vw.player.x * TS + TS / 2, vw.player.y * TS + TS / 2 + 1);
+
+    var place = vw.phase === "town" ? "Harbour" : ("Level " + vw.level);
+    var tk = vw.ticket ? (" · ticket: " + vw.ticket) : " · no ticket";
+    hudL.innerHTML = place + " · " + escapeHTML(vw.title) + tk + " &nbsp; " + meterBar(vw.meters);
+    hudR.textContent = vw.phase === "town" ? "walk into a building to use it; the gate (&gt;) needs a ticket"
+      : ("required sights: " + vw.requiredDone + " / " + vw.requiredTotal);
+    blockEl.textContent = vw.lastEvent ? vw.lastEvent : "";
+
+    // discoveries log (objective tells found by exploring)
+    vw.discoveries.forEach(function (d) { seenDiscoveries[d] = true; });
+    logEl.innerHTML = Object.keys(seenDiscoveries).map(function (d) { return "• " + escapeHTML(d); }).join("<br>");
+
+    if (vw.dead) showPostmortem();
+    else if (vw.won) showWin();
+    renderDebug();
+  }
+
+  function meterBar(m) {
+    if (!m) return "";
+    function bar(label, val, max, color, invert) {
+      var pct = Math.max(0, Math.min(100, Math.round((val / max) * 100)));
+      var shown = invert ? (100 - pct) : pct;
+      return '<span style="color:' + color + '">' + label + " " + Math.round(val) + "</span>";
+    }
+    return bar("HP", m.hp, m.hpMax, m.hp < 30 ? "#c25b4f" : "#3c6e3c")
+      + " · " + bar("FATIGUE", m.fatigue, m.fatigueMax, m.fatigue > 70 ? "#c25b4f" : "#7a5c3a")
+      + " · " + bar("FED", m.satiation, m.satiationMax, m.satiation < 30 ? "#c25b4f" : "#7a5c3a");
+  }
+
+  function dim(hex) {
+    var c = hex.replace("#", ""); var r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+    return "rgb(" + Math.floor(r * 0.5) + "," + Math.floor(g * 0.5) + "," + Math.floor(b * 0.5) + ")";
+  }
+  function escapeHTML(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+
+  function showPostmortem() {
+    var pm = sim.postmortem();
+    var doors = (pm.attributions || []).map(function (a) { return "<li>" + escapeHTML(a) + "</li>"; }).join("");
+    var spatial = (pm.spatial || []).map(function (s) { return '<p class="crumb" style="color:#7a5c3a;font-style:italic">' + escapeHTML(s) + "</p>"; }).join("");
+    overlay.innerHTML = '<div class="panel"><div class="head">' + escapeHTML(pm.heading) + '</div>' +
+      '<div class="ttl">' + escapeHTML(pm.title) + '</div>' +
+      '<p>' + escapeHTML(pm.cause) + '</p>' + spatial +
+      (doors ? '<div><b>Doors your choices closed:</b><ul>' + doors + '</ul></div>' : "") +
+      '<div class="foot">' + escapeHTML(pm.footer) + '</div>' +
+      '<p><button class="ctl" id="again">Begin a new character (the world remembers)</button> ' +
+      '<button class="ctl" id="newd">A new dungeon</button></p></div>';
+    document.getElementById("again").addEventListener("click", nextCharacter);
+    document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
+  }
+  function showWin() {
+    overlay.innerHTML = '<div class="panel win"><div class="head">BUREAU OF VISITOR OUTCOMES</div>' +
+      '<div class="ttl">The One True Run is complete</div>' +
+      '<p>You have visited every required sight in a single life. The Bureau records this with restrained, municipal surprise.</p>' +
+      '<p><button class="ctl" id="again">Begin a new character</button> ' +
+      '<button class="ctl" id="newd">A new dungeon</button></p></div>';
+    document.getElementById("again").addEventListener("click", nextCharacter);
+    document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
+  }
+
+  function renderDebug() {
+    if (debugPanel.style.display !== "block") return;
+    var v = sim.view();
+    debugBody.textContent = JSON.stringify({
+      seed: world.meta.seed, phase: v.phase, level: v.level, node: v.node,
+      player: v.player, ticket: v.ticket, meters: sim._meters(),
+      signalsSeen: Array.from(sim._character().signalsSeen),
+      events: sim._character().events,
+      lives: sim.session.lives, knowledge: Array.from(sim.session.knowledge),
+      dead: v.dead, won: v.won
+    }, null, 2);
+  }
+
+  var MOVE = {
+    ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
+    w: "up", s: "down", a: "left", d: "right",
+    q: "ul", e: "ur", z: "dl", c: "dr"
+  };
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); sim.commit(); draw(); return; }
+    var k = (e.key && e.key.length === 1) ? e.key.toLowerCase() : e.key;
+    if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
+    var dir = MOVE[k];
+    if (dir) { e.preventDefault(); sim.move(dir); draw(); }
+  });
+  document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
+  document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
+
+  var VERSION = "play-map v4", BUILD = "1f3ef29";
+  document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
+  newGame(urlSeed() || 7);
+})();
+</script>
+</body>
+</html>

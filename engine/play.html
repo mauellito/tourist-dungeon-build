@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tourist Dungeon — Walk a Generated Dungeon (P2)</title>
+<style>
+  :root { --ink:#1c1a17; --paper:#f4efe6; --faint:#6b645a; --rule:#c9bfae; --accent:#7a5c3a; --good:#3c6e3c; --bad:#9a3b2f; }
+  html,body { margin:0; background:var(--paper); color:var(--ink); font-family:"Georgia",serif; line-height:1.5; }
+  #wrap { max-width:780px; margin:0 auto; padding:24px 20px 90px; }
+  header.brand { border-bottom:2px solid var(--ink); padding-bottom:6px; margin-bottom:10px; }
+  header.brand h1 { font-size:20px; margin:0; letter-spacing:.5px; }
+  header.brand .sub { font-size:12px; color:var(--faint); font-style:italic; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:13px; color:var(--faint); margin:10px 0 4px; }
+  .bar input { width:90px; font-family:inherit; }
+  .verify { font-size:13px; border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:6px 10px; margin:6px 0 14px; }
+  .verify .ok { color:var(--good); } .verify .no { color:var(--bad); font-weight:bold; }
+  .where { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--accent); margin:14px 0 2px; }
+  h2.scene { font-size:18px; margin:0 0 6px; }
+  .desc { margin:0 0 8px; }
+  .tell { font-size:14px; color:var(--accent); border-left:3px solid var(--accent); padding-left:8px; margin:6px 0; }
+  .progress { font-size:13px; color:var(--faint); margin:8px 0; }
+  .options { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  button.opt { text-align:left; font-family:inherit; font-size:15px; cursor:pointer; background:#fbf8f1;
+    border:1px solid var(--rule); border-radius:4px; padding:9px 12px; color:var(--ink); }
+  button.opt:hover { background:#fff; border-color:var(--accent); }
+  button.opt[disabled] { color:#a59c8c; cursor:not-allowed; background:#efe9dd; }
+  .oneway { font-size:12px; color:var(--bad); }
+  .win { border:2px solid var(--good); background:#eef3ea; padding:14px 16px; margin-top:10px; }
+  .ctl { font-family:inherit; font-size:13px; padding:5px 9px; border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; cursor:pointer; }
+  #debug { position:fixed; right:0; top:0; bottom:0; width:360px; overflow:auto; background:#15130f; color:#cfe3b0;
+    font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:50; }
+  #debug pre { white-space:pre-wrap; word-break:break-word; margin:0; }
+  .hint { position:fixed; right:8px; bottom:6px; font-size:11px; color:var(--faint); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header class="brand">
+    <h1>THE DUNGEON</h1>
+    <div class="sub">A Tourist's Guide to the Dungeon — Generated Expedition (P2 skeleton)</div>
+  </header>
+  <div class="bar">
+    <label>seed <input id="seed" type="number" /></label>
+    <button class="ctl" id="regen">Generate &amp; descend</button>
+    <button class="ctl" id="reroll">Random seed</button>
+    <span id="meta"></span>
+  </div>
+  <div id="verify" class="verify"></div>
+  <div id="app"></div>
+</div>
+<aside id="debug"><pre id="debugBody"></pre></aside>
+<div class="hint">press <b>~</b> for operator debug</div>
+
+<script src="rng.js"></script>
+<script src="checker.js"></script>
+<script src="generator.js"></script>
+<script src="interpreter.js"></script>
+<script>
+(function () {
+  var app = document.getElementById("app");
+  var verifyEl = document.getElementById("verify");
+  var metaEl = document.getElementById("meta");
+  var seedInput = document.getElementById("seed");
+  var debugPanel = document.getElementById("debug");
+  var debugBody = document.getElementById("debugBody");
+  var game = null, world = null;
+
+  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+
+  function urlSeed() {
+    var m = /[?&]seed=(\d+)/.exec(location.search);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function newWorld(seed) {
+    world = TD_GEN.generate(seed);
+    game = TD_INTERP.create(world);
+    seedInput.value = seed;
+    metaEl.textContent = "depth " + world.meta.depth + " · arrival day " + world.arrival_day +
+      (world.meta.express ? " · express" : "") + (world.meta.portal ? " · portal" : "");
+    renderVerify();
+    render();
+  }
+
+  function renderVerify() {
+    var v = TD_CHECK.verify(world);
+    var parts = Object.keys(v.results).map(function (k) {
+      var ok = v.results[k];
+      return '<span class="' + (ok ? "ok" : "no") + '">' + (ok ? "✓ " : "✗ ") + k.replace(/_/g, " ") + "</span>";
+    });
+    verifyEl.innerHTML = (v.pass ? "<b>Verified by the checker (all six obligations):</b> " : "<b class='no'>CHECKER FAILED:</b> ")
+      + parts.join(" &nbsp; ");
+  }
+
+  function render() {
+    var vw = game.view();
+    var html = "";
+    html += '<div class="where">' + (vw.level === 0 ? "The Harbour" : "Dungeon · Level " + vw.level) + " · day " + vw.day + "</div>";
+    html += '<h2 class="scene">' + esc(vw.title) + "</h2>";
+    if (vw.desc) html += '<p class="desc">' + esc(vw.desc) + "</p>";
+    html += '<div class="progress">Required sights seen: ' + vw.requiredDone + " / " + vw.requiredTotal + "</div>";
+
+    if (vw.complete) {
+      html += '<div class="win"><b>The One True Run is complete.</b><br>You have visited every required sight in a single life. ' +
+        "The Bureau records this with restrained, municipal surprise.</div>";
+      html += '<div class="options"><button class="opt" data-act="regen">Generate a new dungeon.</button></div>';
+    } else {
+      html += '<div class="options">';
+      vw.options.forEach(function (o) {
+        o.tells.forEach(function (t) { html += '<div class="tell">' + esc(t) + "</div>"; });
+        var dis = o.takeable ? "" : " disabled";
+        var suffix = o.takeable ? (o.one_way ? ' <span class="oneway">(one-way)</span>' : "")
+          : ' <span class="oneway">(' + esc(o.reason) + ")</span>";
+        html += '<button class="opt" data-edge="' + esc(o.id) + '"' + dis + ">" + esc(o.label) + suffix + "</button>";
+      });
+      html += "</div>";
+    }
+    app.innerHTML = html;
+
+    Array.prototype.forEach.call(app.querySelectorAll("button.opt"), function (b) {
+      b.addEventListener("click", function (e) {
+        if (e.currentTarget.getAttribute("data-act") === "regen") { newWorld((parseInt(seedInput.value, 10) || 1) + 1); return; }
+        var id = e.currentTarget.getAttribute("data-edge");
+        if (id) { game.choose(id); render(); }
+      });
+    });
+    renderDebug();
+  }
+
+  function renderDebug() {
+    if (debugPanel.style.display !== "block") return;
+    var s = game.state;
+    debugBody.textContent = JSON.stringify({
+      seed: world.meta.seed, node: s.node, day: s.day,
+      flags: Array.from(s.flags), visitedRequired: Array.from(s.visitedRequired),
+      requiredRemaining: game.requiredRemaining(), log: s.log,
+      meta: world.meta
+    }, null, 2);
+  }
+
+  document.getElementById("regen").addEventListener("click", function () { newWorld(parseInt(seedInput.value, 10) || 1); });
+  document.getElementById("reroll").addEventListener("click", function () { newWorld(Math.floor(Math.random() * 1e6) + 1); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "~" || e.key === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); }
+  });
+
+  newWorld(urlSeed() || 7);
+})();
+</script>
+</body>
+</html>
