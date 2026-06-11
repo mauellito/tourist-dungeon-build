@@ -18,11 +18,19 @@
   .verify .ok { color:var(--good); } .verify .no { color:var(--bad); font-weight:bold; }
   .stage { position:relative; width:max-content; }
   canvas { background:#000; border:1px solid var(--ink); display:block; image-rendering:pixelated; }
-  .hud { display:flex; justify-content:space-between; font-size:13px; color:var(--faint); margin:6px 2px; }
-  .log { min-height:40px; font-size:13px; color:var(--accent); margin:4px 2px; }
-  .block { color:var(--bad); font-size:13px; min-height:18px; margin:2px; }
-  .help { font-size:12px; color:var(--faint); margin-top:8px; }
-  .controls { display:flex; gap:18px; flex-wrap:wrap; align-items:center; font-size:13px; margin:8px 2px;
+  /* the always-visible stats panel (HP / fatigue / hunger / level / turn / ticket) */
+  .stats { display:flex; flex-wrap:wrap; gap:14px; align-items:center; font:13px "Consolas",monospace;
+    border:1px solid var(--ink); background:#fbf8f1; border-radius:4px; padding:6px 10px; margin:6px 0; }
+  .stats .s b { color:var(--faint); font-weight:normal; font-size:11px; letter-spacing:.5px; text-transform:uppercase; }
+  .stats .s span { font-size:14px; }
+  .place { font-size:13px; color:var(--faint); margin:4px 2px; }
+  .block { color:var(--bad); font-size:13px; min-height:18px; margin:2px; font-style:italic; }
+  /* the scrolling message log — the game's voice lives here */
+  .log { border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:6px 10px; margin:4px 0;
+    font-size:13px; color:var(--accent); height:108px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; }
+  .log .line { padding:1px 0; }
+  .log .line.cur { color:var(--ink); }
+  .controls { display:flex; gap:14px 18px; flex-wrap:wrap; align-items:center; font-size:12.5px; margin:8px 2px;
     border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:8px 10px; }
   .controls b { color:var(--accent); }
   .controls .keys { font-family:"Consolas",monospace; font-size:12px; color:var(--ink); }
@@ -33,6 +41,14 @@
   .panel .ttl { font-size:18px; font-variant:small-caps; margin:2px 0 10px; }
   .panel.win .ttl { color:var(--good); }
   .panel .foot { font-size:12px; color:var(--faint); border-top:1px solid var(--rule); margin-top:10px; padding-top:8px; }
+  /* the inventory list (an overlay over the map) */
+  .pack { text-align:left; min-width:300px; }
+  .pack ul { list-style:none; margin:6px 0; padding:0; font-family:"Consolas",monospace; font-size:13px; }
+  .pack li { padding:2px 6px; }
+  .pack li.sel { background:#e7dcc6; }
+  .pack .glyph { display:inline-block; width:1.4em; color:var(--accent); }
+  .pack .desc { font-family:"Georgia",serif; font-size:12.5px; color:var(--faint); margin-top:8px; min-height:30px; }
+  .pack .hint { font-size:11px; color:var(--faint); margin-top:8px; }
   #debug { position:fixed; right:0; top:0; bottom:0; width:330px; overflow:auto; background:#15130f; color:#cfe3b0; font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:50; }
   #debug pre { white-space:pre-wrap; word-break:break-word; margin:0; }
   .hint { position:fixed; right:8px; bottom:6px; font-size:11px; color:var(--faint); }
@@ -42,7 +58,7 @@
 <div id="wrap">
   <header class="brand">
     <h1>THE DUNGEON — field survey</h1>
-    <div class="sub">A Tourist's Guide to the Dungeon — walk it yourself (arrow keys)</div>
+    <div class="sub">A Tourist's Guide to the Dungeon — walk it yourself</div>
   </header>
   <div class="bar">
     <label>seed <input id="seed" type="number" /></label>
@@ -55,16 +71,23 @@
     <canvas id="cv" width="738" height="414"></canvas>
     <div id="overlay"></div>
   </div>
-  <div class="hud"><span id="hud-left"></span><span id="hud-right"></span></div>
+  <div class="stats" id="stats"></div>
+  <div class="place" id="place"></div>
   <div class="block" id="block"></div>
   <div class="log" id="log"></div>
   <div class="controls">
-    <span><b>Move</b> <span class="keys">← ↑ ↓ →</span> or <span class="keys">W A S D</span></span>
-    <span><b>Diagonals</b> <span class="keys">Q E</span> (up-left / up-right) <span class="keys">Z C</span> (down-left / down-right)</span>
-    <span><b>Open door / use</b> <span class="keys">Enter</span></span>
+    <span><b>Move</b> <span class="keys">← ↑ ↓ →</span></span>
+    <span><b>Diagonals</b> <span class="keys">Y U B N</span> (↖ ↗ ↙ ↘)</span>
+    <span><b>Wait</b> <span class="keys">.</span></span>
+    <span><b>Open / use</b> <span class="keys">o</span> or <span class="keys">Enter</span></span>
+    <span><b>Close door</b> <span class="keys">c</span></span>
+    <span><b>Search</b> <span class="keys">s</span></span>
+    <span><b>Get item</b> <span class="keys">g</span></span>
+    <span><b>Inventory</b> <span class="keys">i</span></span>
+    <span><b>Look</b> <span class="keys">l</span></span>
     <span><b>Debug</b> <span class="keys">~</span></span>
   </div>
-  <div class="help">Walk into a door to <i>see</i> it; press <b>Enter</b> to open it. Walk into a creature to fight it. Walk into a building's letter to read its sign, then Enter to go inside.</div>
+  <div class="hint" style="position:static;margin-top:6px">Walk into a door to <i>see</i> it; press <b>o</b>/<b>Enter</b> to open. Walk into a creature to fight. In the pack: a letter selects, <b>u</b> uses, <b>d</b> drops.</div>
 </div>
 <div class="vstamp" id="vstamp"></div>
 <aside id="debug"><pre id="debugBody"></pre></aside>
@@ -78,14 +101,14 @@
 <script src="game.js"></script>
 <script>
 (function () {
-  var TS = 18, FONT = "16px Consolas, monospace";
+  var TS = 18, FONT = "16px Consolas, monospace", SMALL = "9px Consolas, monospace";
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   var seedInput = document.getElementById("seed"), metaEl = document.getElementById("meta");
   var verifyEl = document.getElementById("verify"), overlay = document.getElementById("overlay");
-  var hudL = document.getElementById("hud-left"), hudR = document.getElementById("hud-right");
+  var statsEl = document.getElementById("stats"), placeEl = document.getElementById("place");
   var blockEl = document.getElementById("block"), logEl = document.getElementById("log");
   var debugPanel = document.getElementById("debug"), debugBody = document.getElementById("debugBody");
-  var world = null, sim = null, session = { knowledge: new Set(), lives: 0 }, seenDiscoveries = {};
+  var world = null, sim = null, session = { knowledge: new Set(), lives: 0 };
 
   function urlSeed() { var m = /[?&]seed=(\d+)/.exec(location.search); return m ? parseInt(m[1], 10) : null; }
 
@@ -95,14 +118,13 @@
     sim = TD_GAME.create(world, { session: session });
     window.__TD_SIM = function () { return sim; };
     window.__TD_VIEW = function () { return sim.view(); };
-    seenDiscoveries = {};
     seedInput.value = seed;
     metaEl.textContent = "depth " + world.meta.depth + " · arrival day " + world.arrival_day;
     renderVerify();
-    overlay.innerHTML = ""; logEl.textContent = ""; blockEl.textContent = "";
+    overlay.innerHTML = "";
     draw();
   }
-  function nextCharacter() { sim.newCharacter(); seenDiscoveries = {}; overlay.innerHTML = ""; draw(); }
+  function nextCharacter() { sim.newCharacter(); overlay.innerHTML = ""; draw(); }
 
   function renderVerify() {
     var v = TD_CHECK.verify(world);
@@ -126,6 +148,7 @@
         if (!seen) continue;                       // fog: never-seen stays black
         var ch = vw.grid[y][x], px = x * TS, py = y * TS;
         var door = (vw.doors || {})[k];
+        var plain = (vw.plain || {})[k];
         var glyph = "", col = "#000", bg = null;
         if (door) {
           bg = (vw.pendingDoor === k) ? "#6a5520" : "#403828";
@@ -134,6 +157,9 @@
           else if (door.type === "stair_up") { glyph = "<"; col = "#4ec0c0"; }
           else if (door.type === "oneway") { glyph = "^"; col = "#d08a3a"; }
           else { glyph = "+"; col = (door.takeable === false) ? "#c25b4f" : "#7ec07e"; }
+        } else if (plain) {
+          bg = (vw.pendingDoor === k) ? "#6a5520" : "#37301f";
+          glyph = plain.open ? "'" : "+"; col = plain.open ? "#8a7c5a" : "#caa15a";
         } else if (ch === ".") { bg = bright ? "#5b5142" : "#332e26"; glyph = "·"; col = bright ? "#7a7060" : "#4a4438"; }
         else if (ch === "~") { bg = "#22384a"; glyph = "≈"; col = "#5f86a6"; }
         else if (ch === "#") { glyph = "#"; col = bright ? "#9a8b71" : "#5a5042"; }
@@ -141,47 +167,93 @@
         if (glyph) { ctx.fillStyle = bright ? col : dim(col); ctx.fillText(glyph, px + TS / 2, py + TS / 2 + 1); }
       }
     }
-    // features (town buildings A/K/H/P/F/R/>/~ and dungeon plaques ¶)
+    // floor items (visible only)
+    Object.keys(vw.items || {}).forEach(function (k) {
+      if (!vis.has(k)) return;
+      var it = vw.items[k], xy = k.split(","), ix = +xy[0], iy = +xy[1];
+      ctx.font = FONT; ctx.fillStyle = itemColor(it.kind);
+      ctx.fillText(it.glyph || "?", ix * TS + TS / 2, iy * TS + TS / 2 + 1);
+    });
+    // features (town buildings + dungeon plaques ¶)
     Object.keys(vw.features || {}).forEach(function (k) {
       if (!vis.has(k)) return;
       var f = vw.features[k], xy = k.split(","), fx = +xy[0], fy = +xy[1];
-      ctx.fillStyle = "#caa15a"; ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
+      ctx.font = FONT; ctx.fillStyle = "#caa15a"; ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
     });
-    // creatures (already filtered to visible)
+    // creatures (already filtered to visible) — with a little HP bar
     vw.creatures.forEach(function (c) {
-      ctx.fillStyle = c.kind === "lurker" ? "#d24a3a" : "#d98f4a";
+      ctx.font = FONT;
+      ctx.fillStyle = creatureColor(c.kind);
       ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
+      if (typeof c.hp === "number" && typeof c.maxHp === "number" && c.hp < c.maxHp) {
+        var frac = Math.max(0, c.hp / c.maxHp);
+        ctx.fillStyle = "#3a1410"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, TS - 4, 2);
+        ctx.fillStyle = "#c25b4f"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 2);
+      }
     });
     // avatar
-    ctx.fillStyle = "#f0c040"; ctx.fillText("@", vw.player.x * TS + TS / 2, vw.player.y * TS + TS / 2 + 1);
+    var pl = vw.player;
+    ctx.font = FONT; ctx.fillStyle = "#f0c040"; ctx.fillText("@", pl.x * TS + TS / 2, pl.y * TS + TS / 2 + 1);
 
-    var place = vw.phase === "town" ? "Harbour" : ("Level " + vw.level);
-    var tk = vw.ticket ? (" · ticket: " + vw.ticket) : " · no ticket";
-    hudL.innerHTML = place + " · " + escapeHTML(vw.title) + tk + " &nbsp; " + meterBar(vw.meters);
-    hudR.textContent = vw.phase === "town" ? "walk into a building to use it; the gate (&gt;) needs a ticket"
-      : ("required sights: " + vw.requiredDone + " / " + vw.requiredTotal);
-    blockEl.textContent = vw.lastEvent ? vw.lastEvent : "";
+    // look cursor
+    if (vw.look && vw.look.active) {
+      ctx.strokeStyle = "#f0e0a0"; ctx.lineWidth = 1.5;
+      ctx.strokeRect(vw.look.x * TS + 1, vw.look.y * TS + 1, TS - 2, TS - 2);
+    }
 
-    // discoveries log (objective tells found by exploring)
-    vw.discoveries.forEach(function (d) { seenDiscoveries[d] = true; });
-    logEl.innerHTML = Object.keys(seenDiscoveries).map(function (d) { return "• " + escapeHTML(d); }).join("<br>");
+    renderStats(vw);
+    renderLog(vw);
 
-    if (vw.dead) showPostmortem();
+    if (vw.invOpen) renderPack(vw);
+    else if (vw.dead) showPostmortem();
     else if (vw.won) showWin();
+    else overlay.innerHTML = "";
     renderDebug();
   }
 
-  function meterBar(m) {
-    if (!m) return "";
-    function bar(label, val, max, color, invert) {
-      var pct = Math.max(0, Math.min(100, Math.round((val / max) * 100)));
-      var shown = invert ? (100 - pct) : pct;
-      return '<span style="color:' + color + '">' + label + " " + Math.round(val) + "</span>";
-    }
-    return bar("HP", m.hp, m.hpMax, m.hp < 30 ? "#c25b4f" : "#3c6e3c")
-      + " · " + bar("FATIGUE", m.fatigue, m.fatigueMax, m.fatigue > 70 ? "#c25b4f" : "#7a5c3a")
-      + " · " + bar("FED", m.satiation, m.satiationMax, m.satiation < 30 ? "#c25b4f" : "#7a5c3a");
+  function renderStats(vw) {
+    var m = vw.meters || {};
+    var hunger = m.satiationMax ? Math.round(100 * (1 - m.satiation / m.satiationMax)) : 0;
+    var place = vw.phase === "dungeon" ? ("L" + vw.level) : (vw.phase === "town" ? "Harbour" : "Indoors");
+    function s(label, val, color) { return '<span class="s"><b>' + label + '</b> <span style="color:' + (color || "#1c1a17") + '">' + val + "</span></span>"; }
+    statsEl.innerHTML =
+      s("HP", Math.round(m.hp) + "/" + m.hpMax, m.hp < 30 ? "#c25b4f" : "#3c6e3c") +
+      s("Fatigue", Math.round(m.fatigue), m.fatigue > 70 ? "#c25b4f" : "#7a5c3a") +
+      s("Hunger", hunger, hunger > 70 ? "#c25b4f" : "#7a5c3a") +
+      s("Place", place) +
+      s("Turn", vw.turn || 0) +
+      s("Ticket", vw.ticket || "—", vw.ticket ? "#3c6e3c" : "#9a3b2f");
+    placeEl.innerHTML = escapeHTML(vw.title || "") +
+      (vw.phase === "dungeon" ? (" &nbsp; required sights: " + vw.requiredDone + " / " + vw.requiredTotal) : "");
+    blockEl.textContent = vw.lastEvent || "";
   }
+
+  function renderLog(vw) {
+    var msgs = vw.messages || [];
+    var last = msgs.slice(-12);
+    logEl.innerHTML = last.map(function (m, i) {
+      return '<div class="line' + (i === last.length - 1 ? " cur" : "") + '">' + escapeHTML(m) + "</div>";
+    }).join("");
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function renderPack(vw) {
+    var inv = vw.inventory || [], sel = vw.invSel || 0;
+    var items = inv.map(function (it, i) {
+      var letter = String.fromCharCode(97 + i);
+      return '<li class="' + (i === sel ? "sel" : "") + '"><span class="glyph">' + escapeHTML(it.glyph || "·") + "</span>" +
+        letter + ") " + escapeHTML(it.name) + "</li>";
+    }).join("");
+    var desc = inv.length ? escapeHTML(inv[sel] ? inv[sel].desc : "") : "Your pack is empty.";
+    overlay.innerHTML = '<div class="panel pack"><div class="head">YOUR PACK</div>' +
+      '<div class="ttl">What the visitor carries</div>' +
+      (items ? "<ul>" + items + "</ul>" : "<p><i>empty</i></p>") +
+      '<div class="desc">' + desc + "</div>" +
+      '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div>';
+  }
+
+  function itemColor(kind) { return kind === "ration" ? "#caa15a" : kind === "bandage" ? "#d8d2c0" : "#b07acc"; }
+  function creatureColor(kind) { return kind === "lurker" ? "#d24a3a" : kind === "chaser" ? "#e07020" : "#d98f4a"; }
 
   function dim(hex) {
     var c = hex.replace("#", ""); var r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
@@ -217,31 +289,57 @@
     if (debugPanel.style.display !== "block") return;
     var v = sim.view();
     debugBody.textContent = JSON.stringify({
-      seed: world.meta.seed, phase: v.phase, level: v.level, node: v.node,
-      player: v.player, ticket: v.ticket, meters: sim._meters(),
-      signalsSeen: Array.from(sim._character().signalsSeen),
-      events: sim._character().events,
-      lives: sim.session.lives, knowledge: Array.from(sim.session.knowledge),
+      seed: world.meta.seed, phase: v.phase, level: v.level, turn: v.turn,
+      player: v.player, ticket: v.ticket, meters: v.meters,
+      inventory: (v.inventory || []).map(function (i) { return i.name; }),
+      look: v.look, invOpen: v.invOpen,
       dead: v.dead, won: v.won
     }, null, 2);
   }
 
+  // ---- input ---------------------------------------------------------------
   var MOVE = {
     ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
-    w: "up", s: "down", a: "left", d: "right",
-    q: "ul", e: "ur", z: "dl", c: "dr"
+    y: "ul", u: "ur", b: "dl", n: "dr"
   };
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") { e.preventDefault(); sim.commit(); draw(); return; }
-    var k = (e.key && e.key.length === 1) ? e.key.toLowerCase() : e.key;
+    var raw = e.key;
+    var k = (raw && raw.length === 1) ? raw.toLowerCase() : raw;
     if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
+    var vw = sim.view();
+
+    // LOOK MODE: movement keys move the cursor; l or Esc exits.
+    if (vw.look && vw.look.active) {
+      if (k === "Escape" || k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
+      var ld = MOVE[k];
+      if (ld) { e.preventDefault(); sim.lookMove(ld); draw(); return; }
+      return;
+    }
+    // INVENTORY MODE: letters select; u use; d drop; i/Esc close.
+    if (vw.invOpen) {
+      if (k === "Escape" || k === "i") { e.preventDefault(); sim.toggleInventory(); draw(); return; }
+      if (k === "u") { e.preventDefault(); sim.useSelected(); draw(); return; }
+      if (k === "d") { e.preventDefault(); sim.dropSelected(); draw(); return; }
+      if (k === "ArrowUp") { e.preventDefault(); sim.invSelect((vw.invSel || 0) - 1); draw(); return; }
+      if (k === "ArrowDown") { e.preventDefault(); sim.invSelect((vw.invSel || 0) + 1); draw(); return; }
+      if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.invSelect(k.charCodeAt(0) - 97); draw(); return; }
+      return;
+    }
+    // NORMAL MODE
+    if (k === "Enter" || k === "o") { e.preventDefault(); sim.commit(); draw(); return; }
+    if (k === "." || k === "5") { e.preventDefault(); sim.wait(); draw(); return; }
+    if (k === "g") { e.preventDefault(); sim.get(); draw(); return; }
+    if (k === "s") { e.preventDefault(); sim.search(); draw(); return; }
+    if (k === "c") { e.preventDefault(); sim.closeDoor(); draw(); return; }
+    if (k === "i") { e.preventDefault(); sim.toggleInventory(); draw(); return; }
+    if (k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
     var dir = MOVE[k];
-    if (dir) { e.preventDefault(); sim.move(dir); draw(); }
+    if (dir) { e.preventDefault(); sim.move(dir); draw(); return; }
   });
   document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
 
-  var VERSION = "play-map v4", BUILD = "1f3ef29";
+  var VERSION = "play-map v5 · ADOM-minimum", BUILD = "fa1d10d";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

@@ -130,6 +130,91 @@ function TD_MAP_TESTS() {
     assert(g._meters().hp < hpBefore, "starvation drains HP");
   });
 
+  // ------------------------------------------------------- TURN-BASED CLOCK
+  test("the turn counter advances on action and the world acts only then", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    var t0 = g._turn();
+    g.move("left");
+    eq(g._turn(), t0 + 1, "a step is one turn");
+    g.wait();
+    eq(g._turn(), t0 + 2, "waiting passes a turn");
+    var t1 = g._turn();
+    // no key pressed -> no turn elapses (the world is frozen between keypresses)
+    eq(g._turn(), t1, "no action, no turn");
+  });
+
+  // ------------------------------------------------------------ FLOOR ITEMS
+  test("items lie on the floor; g picks them up into the pack", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    g._setItem(19, 11, "ration");                          // a bun one tile west
+    var miss = g.get();
+    assert(!miss.got, "nothing under the avatar yet");
+    g.move("left");                                        // step onto the bun
+    eq(g._player().x, 19);
+    var r = g.get();
+    assert(r.got, "g takes the item");
+    eq(g._inventory().length, 1, "the bun is in the pack");
+    eq(g._inventory()[0].kind, "ration");
+    assert(!g._items()["19,11"], "the floor tile is now empty");
+  });
+
+  // --------------------------------------------------------- SEARCH SECRETS
+  test("searching an adjacent wall finds the hidden pocket", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    // central room is carved x16..24,y8..14; (20,7) is the wall just north of (20,8)
+    g._addSecret(20, 9, "bandage");                        // a secret in the room floor's neighbour
+    // stand next to a wall secret: put one at (16,11)'s wall neighbour (15,11)
+    g._addSecret(15, 11, "souvenir");
+    g.move("left"); g.move("left"); g.move("left"); g.move("left");  // to x16, beside wall (15,11)
+    eq(g._player().x, 16);
+    var before = Object.keys(g._items()).length;
+    var r = g.search();
+    assert(r.searched, "search runs");
+    assert(r.found >= 1, "the adjacent secret is found");
+    assert(!!g._items()["15,11"], "the hidden item is now on the revealed tile");
+  });
+
+  // ----------------------------------------------- PLAIN DOORS: OPEN / CLOSE
+  test("a shut plain door blocks; o opens it, c closes it, and it blocks pursuit", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    g._addPlain(19, 11);                                   // a plain door one tile west
+    assert(!g._passable(19, 11), "a shut plain door is not passable");
+    var b = g.move("left");                                // bump it
+    assert(!b.moved && b.plain, "the shut door blocks the step and reveals");
+    eq(g._player().x, 20, "did not pass the shut door");
+    var o = g.open();                                      // o / Enter opens it
+    assert(o.opened, "the door opens");
+    assert(g._plain()["19,11"].open, "it is now open");
+    assert(g._passable(19, 11), "an open plain door is passable");
+    g.move("left");
+    eq(g._player().x, 19, "now you can step through");
+    g.move("right");                                       // step back east of the door
+    var c = g.closeDoor();
+    assert(c.closed, "c closes the adjacent open door");
+    assert(!g._plain()["19,11"].open, "it is shut again");
+  });
+
+  // ------------------------------------------------ THIRD MONSTER: THE CHASER
+  test("the chaser pursues relentlessly every turn", function () {
+    var g = TD_MAP.create(world(), { creatures: true });
+    g._setCreatures([{ x: 24, y: 11, kind: "chaser", hp: 26, maxHp: 26, dmg: 11, name: "a fervent docent", glyph: "d" }]);
+    var d0 = Math.abs(24 - g._player().x);
+    g.wait();                                              // we hold still; it should close in
+    var cr = g._creatures()[0];
+    var d1 = Math.abs(cr.x - g._player().x) + Math.abs(cr.y - g._player().y);
+    assert(d1 < d0 + 1, "the chaser moved toward the avatar on our turn");
+    assert(cr.x < 24 || cr.y !== 11, "the chaser advanced from its spot");
+  });
+
+  // ------------------------------------------- COMBAT MESSAGE CARRIES HP -----
+  test("a struck-but-living creature reports its remaining HP in the log", function () {
+    var g = TD_MAP.create(world(), { creatures: true });
+    g._setCreatures([{ x: 21, y: 11, kind: "lurker", hp: 45, maxHp: 45, dmg: 16, name: "a patient lurker", glyph: "L" }]);
+    var r = g.move("right");                               // 20 dmg, it survives (25 left)
+    assert(r.attacked && !r.killed, "it survives the first blow");
+    includes(r.event, "25/45", "the log shows the creature's remaining HP");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

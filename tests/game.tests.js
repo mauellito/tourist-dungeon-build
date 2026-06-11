@@ -111,6 +111,53 @@ function TD_GAME_TESTS() {
     eq(g.session.lives, livesBefore + 1, "a new life is counted");
   });
 
+  // --------------------------------------------------------- TURN / WAIT / GET
+  test("waiting passes a turn (in town too); get finds nothing on the harbour stones", function () {
+    var g = game();
+    var t0 = g._turn();
+    g.wait();
+    eq(g._turn(), t0 + 1, "a turn passes when you wait");
+    var r = g.get();
+    assert(!r.got, "there is nothing to pick up in the street");
+  });
+
+  // ---------------------------------------------------------------- THE PACK
+  test("the pack: eating a ration fills the belly, applying a bandage heals", function () {
+    var g = game();
+    g._meters().satiation = 40; g._meters().hp = 50;
+    g._inventory().push({ kind: "ration", name: "a bun", desc: "d", use: "eat", food: 60 });
+    g._inventory().push({ kind: "bandage", name: "a bandage", desc: "d", use: "heal", heal: 30 });
+    g.toggleInventory();
+    g.invSelect(0); g.useSelected();                       // eat the ration
+    eq(g._meters().satiation, 100, "a ration tops the belly up (capped)");
+    g.invSelect(0); g.useSelected();                       // apply the bandage
+    eq(g._meters().hp, 80, "the bandage heals 30");
+    eq(g._inventory().length, 0, "both consumables are spent");
+  });
+
+  test("the ticket rides in the pack as an inspectable item and cannot be dropped", function () {
+    var g = game();
+    g._interact("kiosk");                                  // standard ticket
+    var list = g._invList();
+    assert(list.some(function (i) { return i.kind === "ticket"; }), "the ticket shows up in the pack");
+    var idx = list.map(function (i) { return i.kind; }).indexOf("ticket");
+    g.toggleInventory(); g.invSelect(idx);
+    var r = g.dropSelected();
+    assert(!r.dropped, "the ticket cannot be dropped");
+    eq(g._character().ticket, "standard", "you still hold admission");
+  });
+
+  // -------------------------------------------------------------------- LOOK
+  test("look names the tile under the cursor and toggles back off", function () {
+    var g = game();
+    var r = g.lookToggle();
+    assert(r.look, "look is on");
+    inc(g._lastEvent(), "Look", "the look line is shown");
+    inc(g._lastEvent(), "yourself", "the cursor starts on you");
+    g.lookToggle();
+    assert(!g._look().active, "look toggles off");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

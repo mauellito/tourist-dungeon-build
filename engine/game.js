@@ -1,10 +1,14 @@
 // Tourist Dungeon engine — TD_GAME: the spatial expedition.
 // A walkable TOWN (streets + harbour + distinct buildings), each building
 // opening into its own INTERIOR screen, plus the generated DUNGEON (TD_MAP).
-// Doors REVEAL on contact and OPEN on Enter; movement is 8-way. Generation and
-// the checker are untouched; the Brass Door, the doorman gate, and signal
-// placement are play layer. Classic script: assigns TD_GAME. Requires TD_RNG,
-// TD_INTERP, TD_MAP.
+// Doors REVEAL on contact and OPEN on Enter; movement is 8-way. On top of that
+// it carries the ADOM-minimum grammar at the top level so it works in every
+// phase: a turn counter, a scrolling message log, a carried inventory (with the
+// ticket as an inspectable item), wait, and look. The spatial verbs that only
+// make sense underground (get / search / close / drop-on-floor) are delegated to
+// the dungeon controller (TD_MAP). Generation and the checker are untouched; the
+// Brass Door, the doorman gate, and signal placement are play layer.
+// Classic script: assigns TD_GAME. Requires TD_RNG, TD_INTERP, TD_MAP.
 "use strict";
 
 var TD_GAME = (function () {
@@ -51,46 +55,55 @@ var TD_GAME = (function () {
       if (m.required && lv > maxL) { maxL = lv; brassTarget = n; }
     });
 
-    var meters, character, placeId, player, pendingDoor, dungeon, lastEvent, dead, won, returnTile, places;
+    var meters, character, shared, placeId, player, pendingDoor, dungeon, lastEvent, dead, won, returnTile, places;
+    var invOpen, invSel, look;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
       character = { ticket: null, signalsSeen: new Set(), events: { clicks: [], brassRejected: false, anchorRejected: false } };
-      placeId = "TOWN"; dungeon = null; dead = false; won = false; lastEvent = "Welcome to the harbour. Mind the monsters; don't feed the guides.";
+      // the run-context shared with the dungeon controller: one inventory, one
+      // message log, one turn counter, across town and dungeon.
+      shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
+      placeId = "TOWN"; dungeon = null; dead = false; won = false;
+      invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
       returnTile = null;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
+      lastEvent = null;
+      logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
+
+    function logMsg(t) { if (!t) return; lastEvent = t; shared.messages.push(t); if (shared.messages.length > 80) shared.messages.shift(); }
 
     // ---- effects layer (shared by spatial counters AND the _interact test hook)
     function act(type) {
       var seen = function (id) { character.signalsSeen.add(id); };
       switch (type) {
-        case "lookout": seen("012"); lastEvent = SIG["012"].t; break;
+        case "lookout": seen("012"); logMsg(SIG["012"].t); break;
         case "agency":
-          if (character.ticket) { lastEvent = "You already hold admission."; break; }
+          if (character.ticket) { logMsg("You already hold admission."); break; }
           character.ticket = "agency"; seen("002"); seen("001");
-          lastEvent = "The clerk beams: “" + SIG["002"].t + "”  (the small print, more quietly: “" + SIG["001"].t + ".”)"; break;
+          logMsg("The clerk beams: “" + SIG["002"].t + "”  (the small print, more quietly: “" + SIG["001"].t + ".”)"); break;
         case "kiosk":
-          if (character.ticket) { lastEvent = "You already hold admission."; break; }
+          if (character.ticket) { logMsg("You already hold admission."); break; }
           character.ticket = "standard"; seen("003");
-          lastEvent = "A grey ticket curls out. It reads, in full: “" + SIG["003"].t + ".”"; break;
+          logMsg("A grey ticket curls out. It reads, in full: “" + SIG["003"].t + ".”"); break;
         case "hotel":
           meters.comfort += 2; restore(100, 0, 100); seen("006");
-          lastEvent = "The concierge: “" + SIG["006"].t + "”  You take the night and wake wonderfully restored."; break;
+          logMsg("The concierge: “" + SIG["006"].t + "”  You take the night and wake wonderfully restored."); break;
         case "spa":
           meters.comfort += 1; meters.fatigue = Math.max(0, meters.fatigue - 30); meters.satiation = Math.min(100, meters.satiation + 20); seen("007");
-          lastEvent = SIG["007"].t; break;
+          logMsg(SIG["007"].t); break;
         case "food":
           meters.satiation = 100;
-          lastEvent = "A hot meal and a flat, honest drink. You are fed, if not improved. The fortune cookie says something you do not yet understand."; break;
+          logMsg("A hot meal and a flat, honest drink. You are fed, if not improved. The fortune cookie says something you do not yet understand."); break;
         case "anchor":
-          if (meters.comfort >= 2) { seen("005"); character.events.anchorRejected = true; lastEvent = "The doorman, with a nose: “" + SIG["005"].t + "”"; }
-          else { lastEvent = "The doorman loses interest in you, which here is a welcome."; }
+          if (meters.comfort >= 2) { seen("005"); character.events.anchorRejected = true; logMsg("The doorman, with a nose: “" + SIG["005"].t + "”"); }
+          else { logMsg("The doorman loses interest in you, which here is a welcome."); }
           break;
         case "gate":
-          if (!character.ticket) { lastEvent = "The gate does not open for the unticketed."; break; }
-          enterDungeon(); lastEvent = "You present your ticket; the turnstile sighs and lets you by."; break;
+          if (!character.ticket) { logMsg("The gate does not open for the unticketed."); break; }
+          enterDungeon(); logMsg("You present your ticket; the turnstile sighs and lets you by."); break;
       }
     }
     function restore(hp, fat, sat) { meters.hp = hp; meters.fatigue = fat; meters.satiation = sat; }
@@ -124,7 +137,7 @@ var TD_GAME = (function () {
       // doorman gate on the tavern; ticket gate on the dungeon gate
       doors[key(8, 14)].gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
       doors[key(32, 14)].gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
-      features[key(20, 3)] = { type: "lookout", glyph: "~", label: "the harbour rail", text: SIG["012"].t, act: "lookout" };
+      features[key(20, 3)] = { type: "lookout", glyph: "~", label: "harbour rail", text: SIG["012"].t, act: "lookout" };
       return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 20, y: 11 } };
     }
 
@@ -139,10 +152,11 @@ var TD_GAME = (function () {
     }
 
     function cur() { return places[placeId]; }
+    function curPlayer() { return (placeId === "DUNGEON" && dungeon) ? dungeon._player() : player; }
 
     // ---- dungeon ---------------------------------------------------------
     function enterDungeon() {
-      dungeon = TD_MAP.create(world, { shared: { meters: meters, character: character }, decorate: decorate, onCross: onCross });
+      dungeon = TD_MAP.create(world, { shared: shared, decorate: decorate, onCross: onCross });
       placeId = "DUNGEON";
     }
     function levelOf(node) { return (world.nodes[node] || {}).level || 0; }
@@ -151,7 +165,7 @@ var TD_GAME = (function () {
       Object.keys(ctrl.doors).forEach(function (k) { if (ctrl.doors[k].type === "oneway") ctrl.doors[k].tells = [SIG["008"].t, SIG["009"].t]; });
       if (levelOf(ctrl.node) === 1) {
         var px = helpers.CX - 3, py = helpers.CY - 2;
-        if (helpers.isFloor(px, py)) ctrl.features[helpers.key(px, py)] = { id: "011", channel: "OBJ", glyph: "¶", text: SIG["011"].t };
+        if (helpers.isFloor(px, py)) ctrl.features[helpers.key(px, py)] = { id: "011", channel: "OBJ", glyph: "¶", label: "plaque", text: SIG["011"].t };
       }
     }
     function onCross(doorMeta, ctrl) {
@@ -179,32 +193,129 @@ var TD_GAME = (function () {
       var nx = player.x + DIRS[dir][0], ny = player.y + DIRS[dir][1];
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) return { moved: false };
       var d = P.doors[key(nx, ny)];
-      if (d) { pendingDoor = { meta: d, x: nx, y: ny }; lastEvent = doorReveal(d); return { moved: false, bumpedDoor: true, event: lastEvent }; }
+      if (d) { pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
       var f = P.features[key(nx, ny)];
       if (f) { act(f.act); return { moved: false, interacted: f.act, event: lastEvent }; }
       if (P.grid[ny][nx] !== ".") return { moved: false };
       player.x = nx; player.y = ny; pendingDoor = null; lastEvent = null;
+      shared.turn += 1;
       return { moved: true };
     }
 
-    function commit() {       // Enter
+    function commit() {       // Enter / o
       if (placeId === "DUNGEON") { var rd = dungeon.open(); afterDungeon(); return rd; }
       var p = pendingDoor;
-      if (!p) { lastEvent = "There is no door before you."; return { opened: false }; }
+      if (!p) { logMsg("There is no door before you."); return { opened: false }; }
       if (cheby(p, player) > 1) { pendingDoor = null; return { opened: false }; }
       var d = p.meta;
-      if (d.gate) { var oc = d.gate(); if (oc && oc.block) { lastEvent = oc.block; return { opened: false, blocked: oc.block }; } }
+      if (d.gate) { var oc = d.gate(); if (oc && oc.block) { logMsg(oc.block); return { opened: false, blocked: oc.block }; } }
       pendingDoor = null;
       transition(d.to, p);
       return { opened: true, to: d.to };
     }
 
+    // ---- the new ADOM verbs (top-level; spatial ones delegate underground) ---
+    function wait() {
+      if (placeId === "DUNGEON") { var r = dungeon.wait(); afterDungeon(); return r; }
+      shared.turn += 1; logMsg("You pause. The harbour goes about its business."); return { waited: true };
+    }
+    function get() {
+      if (placeId === "DUNGEON") { var r = dungeon.get(); afterDungeon(); return r; }
+      logMsg("There is nothing here to take."); return { got: false };
+    }
+    function search() {
+      if (placeId === "DUNGEON") { var r = dungeon.search(); afterDungeon(); return r; }
+      logMsg("You inspect the harbour wall. It is only a wall, and unimpressed."); return { searched: true, found: 0 };
+    }
+    function closeDoor() {
+      if (placeId === "DUNGEON") { var r = dungeon.closeDoor(); afterDungeon(); return r; }
+      logMsg("There is nothing here you may close."); return { closed: false };
+    }
+
+    // inventory: the carried pack, plus the ticket as an inspectable virtual item
+    function ticketDesc() {
+      if (character.ticket === "agency") return "A Guided Package from the Tour Agency. “" + SIG["002"].t + "”  The fine print: “" + SIG["001"].t + "” — Guided Zones only.";
+      if (character.ticket === "standard") return "A grey Standard Admission ticket. “" + SIG["003"].t + ".”";
+      return "A ticket of some kind.";
+    }
+    function invList() {
+      var list = shared.inventory.slice();
+      if (character.ticket) list.push({ kind: "ticket", virtual: true, glyph: "=", name: "your admission ticket (" + character.ticket + ")", desc: ticketDesc(), use: "inspect" });
+      return list;
+    }
+    function removeReal(it) { var i = shared.inventory.indexOf(it); if (i >= 0) shared.inventory.splice(i, 1); }
+    function clampSel() { var n = invList().length; invSel = n ? Math.max(0, Math.min(n - 1, invSel)) : 0; }
+
+    function toggleInventory() {
+      invOpen = !invOpen;
+      if (invOpen) { invSel = 0; logMsg(invList().length ? "You open your pack." : "Your pack is empty (but for what you carry on your person)."); }
+      return { invOpen: invOpen, inventory: invList() };
+    }
+    function invSelect(i) {
+      var l = invList(); if (!l.length) return { selected: -1 };
+      invSel = Math.max(0, Math.min(l.length - 1, i));
+      logMsg(l[invSel].name + " — " + l[invSel].desc);
+      return { selected: invSel, item: l[invSel] };
+    }
+    function useSelected() {
+      var l = invList(); if (!l.length) { logMsg("Your pack is empty."); return { used: false }; }
+      var it = l[invSel];
+      if (it.use === "eat") { meters.satiation = Math.min(meters.satiationMax, meters.satiation + (it.food || 40)); removeReal(it); logMsg("You eat " + it.name + ". The hunger eases."); }
+      else if (it.use === "heal") { meters.hp = Math.min(meters.hpMax, meters.hp + (it.heal || 20)); removeReal(it); logMsg("You apply " + it.name + ". Your wounds close a little."); }
+      else { logMsg(it.name + " — " + it.desc); }
+      clampSel();
+      return { used: true, item: it };
+    }
+    function dropSelected() {
+      var l = invList(); if (!l.length) { logMsg("You have nothing to drop."); return { dropped: false }; }
+      var it = l[invSel];
+      if (it.virtual) { logMsg("You had better hold on to your ticket."); return { dropped: false }; }
+      removeReal(it);
+      if (placeId === "DUNGEON" && dungeon) { dungeon.dropItem(it); afterDungeon(); }
+      else logMsg("You set " + it.name + " down on the harbour stones and walk on.");
+      clampSel();
+      return { dropped: true, item: it };
+    }
+
+    // look: a movable cursor over visible tiles, naming what is there
+    function describeAt(x, y) {
+      var v = baseView(), k = key(x, y), pl = curPlayer();
+      if (x === pl.x && y === pl.y) return "yourself, a visitor of unremarkable prospects.";
+      if (v.creatures) { for (var i = 0; i < v.creatures.length; i++) { var c = v.creatures[i]; if (c.x === x && c.y === y) return c.name + " (" + c.hp + "/" + c.maxHp + " health)."; } }
+      if (v.items && v.items[k]) return v.items[k].name + " — " + v.items[k].desc;
+      if (v.doors && v.doors[k]) return (v.doors[k].label || "a door") + ".";
+      if (v.plain && v.plain[k]) return v.plain[k].open ? "an open inner door." : "a shut inner door.";
+      if (v.features && v.features[k]) { var f = v.features[k]; return f.label ? ("the " + f.label + ": " + (f.text || "")) : (f.text || "something worth noting."); }
+      var row = v.grid[y], ch = row ? row[x] : "#";
+      if (ch === ".") return "bare floor.";
+      if (ch === "~") return "dark water; the far shore is in plain view and plainly off-limits.";
+      if (ch === "#") return "a wall. Searching beside it might turn something up.";
+      return "shadow you have not been close to.";
+    }
+    function inView(v, x, y) { var k = key(x, y); return (v.visible && v.visible.indexOf(k) >= 0) || (v.explored && v.explored.indexOf(k) >= 0); }
+    function lookToggle() {
+      look.active = !look.active;
+      if (look.active) { var pl = curPlayer(); look.x = pl.x; look.y = pl.y; logMsg("Look — " + describeAt(look.x, look.y) + "  (move the cursor; press l or Esc to stop)"); }
+      else logMsg("You stop looking and straighten up.");
+      return { look: look.active, x: look.x, y: look.y };
+    }
+    function lookMove(dir) {
+      if (!look.active || !DIRS[dir]) return { look: look.active };
+      var nx = look.x + DIRS[dir][0], ny = look.y + DIRS[dir][1];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) return { look: true, x: look.x, y: look.y };
+      var v = baseView();
+      if (!inView(v, nx, ny)) { logMsg("You cannot make out anything that far into the dark."); return { look: true, x: look.x, y: look.y }; }
+      look.x = nx; look.y = ny;
+      logMsg("Look — " + describeAt(nx, ny));
+      return { look: true, x: nx, y: ny, desc: lastEvent };
+    }
+
     function transition(to, doorPos) {
       if (to === "DUNGEON") { act("gate"); return; }                  // enterDungeon + line
-      if (to === "TOWN") { placeId = "TOWN"; player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y }; lastEvent = "You step back out into the harbour."; return; }
+      if (to === "TOWN") { placeId = "TOWN"; player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y }; logMsg("You step back out into the harbour."); return; }
       returnTile = { x: player.x, y: player.y };                       // come back where we entered
       placeId = to; player = { x: places[to].spawn.x, y: places[to].spawn.y };
-      lastEvent = (places[to].sign || []).join("  —  ");
+      logMsg((places[to].sign || []).join("  —  "));
     }
 
     function afterDungeon() {
@@ -222,7 +333,7 @@ var TD_GAME = (function () {
       return {
         phase: placeId === "TOWN" ? "town" : "interior", w: W, h: H,
         grid: P.grid.map(function (r) { return r.join(""); }),
-        doors: P.doors, features: P.features,
+        doors: P.doors, features: P.features, items: {}, plain: {},
         player: { x: player.x, y: player.y }, creatures: [],
         explored: explored, visible: explored,
         level: 0, title: P.title, meters: meters, ticket: character.ticket,
@@ -232,9 +343,19 @@ var TD_GAME = (function () {
         dead: false, won: false
       };
     }
-    function view() {
+    function baseView() {
       if (placeId === "DUNGEON") { var v = dungeon.view(); v.ticket = character.ticket; v.fieldNotes = fieldNotes(); return v; }
       return tilePlaceView();
+    }
+    function view() {
+      var v = baseView();
+      v.turn = shared.turn; v.messages = shared.messages; v.inventory = invList();
+      v.invOpen = invOpen; v.invSel = invSel;
+      v.look = { active: look.active, x: look.x, y: look.y };
+      // the latest log line is the unified "current event", whoever wrote it
+      // (town counters, dungeon controller, or the top-level verbs here).
+      if (shared.messages.length) v.lastEvent = shared.messages[shared.messages.length - 1];
+      return v;
     }
     function fieldNotes() { return Array.from(session.knowledge).map(function (k) { return "field note: " + k; }); }
 
@@ -261,6 +382,9 @@ var TD_GAME = (function () {
     return {
       world: world, session: session,
       move: move, open: commit, commit: commit, view: view, postmortem: postmortem, newCharacter: newCharacter,
+      wait: wait, get: get, search: search, closeDoor: closeDoor,
+      toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected,
+      lookToggle: lookToggle, lookMove: lookMove,
       isDead: function () { return dead; }, isComplete: function () { return won; },
       SIG: SIG, brassTarget: brassTarget,
       _interact: function (type) { lastEvent = null; act(type); return { event: lastEvent, phase: placeId === "DUNGEON" ? "dungeon" : "town" }; },
@@ -268,6 +392,11 @@ var TD_GAME = (function () {
       _phase: function () { return placeId === "DUNGEON" ? "dungeon" : (placeId === "TOWN" ? "town" : "interior"); },
       _place: function () { return placeId; }, _player: function () { return player; },
       _dungeon: function () { return dungeon; },
+      _shared: function () { return shared; },
+      _inventory: function () { return shared.inventory; },
+      _invList: function () { return invList(); },
+      _turn: function () { return shared.turn; },
+      _look: function () { return look; },
       _brassCheck: function () { return onCross({ brass: true, type: "door" }, { node: brassTarget }); },
       _lastEvent: function () { return lastEvent; }
     };
