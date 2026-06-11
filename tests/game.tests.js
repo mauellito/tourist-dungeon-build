@@ -319,6 +319,22 @@ function TD_GAME_TESTS() {
     assert(barks >= 2, "the shops bark at each other near the strip (" + barks + ")");
   });
 
+  // ----------------------------------- ENERGY SCHEDULER (v14 R1) -----------
+  test("a fast actor acts measurably more than a slow one over 100 turns", function () {
+    var g = game(); g._freezeVendor(true);                // hush the default walkers
+    var kid = g._addActor({ id: "kid", x: 31, y: 18, glyph: "k", name: "a kid", speed: 130 });
+    var nun = g._addActor({ id: "slownun", x: 31, y: 22, glyph: "n", name: "a slow nun", speed: 70 });
+    for (var i = 0; i < 100; i++) g.wait();               // each wait is a player turn
+    assert(kid.acts > nun.acts, "speed 130 acts more than speed 70 (" + kid.acts + " vs " + nun.acts + ")");
+    assert(kid.acts > 100 && nun.acts < 100, "roughly 130 vs 70 acts (" + kid.acts + ", " + nun.acts + ")");
+  });
+
+  test("a wobbling drunk sailor never steps through a wall", function () {
+    var g = game(); g._freezeVendor(true);
+    var sailor = g._addActor({ id: "sailor", x: 8, y: 33, glyph: "d", name: "a drunk sailor", speed: 60, wobble: true });
+    for (var i = 0; i < 120; i++) { g.wait(); var grid = g.view().grid; assert(grid[sailor.y][sailor.x] === ".", "the sailor stands on a street floor tile, never inside a wall"); }
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

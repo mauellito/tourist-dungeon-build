@@ -83,7 +83,7 @@ var TD_GAME = (function () {
     });
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
-    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, townsfolk, sensedGarden;
+    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, townsfolk, sensedGarden, crowd;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
@@ -96,12 +96,15 @@ var TD_GAME = (function () {
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; sensedGarden = false;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
-      vendor = { x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true, home: { x: 31, y: 7 }, radius: 9 };   // works the tourist strip
-      townsfolk = [                                       // wandering flavor NPCs anchored to a home patch
-        { id: "nuns", voiceId: "nuns", x: 44, y: 24, glyph: "n", name: "a pair of nuns", frozen: false, home: { x: 44, y: 25 }, radius: 6 },   // near the church
-        { id: "farmers", voiceId: "farmers", x: 20, y: 25, glyph: "f", name: "a farmer", frozen: false, home: { x: 20, y: 25 }, radius: 7 },
-        { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false, home: { x: 31, y: 30 }, radius: 8 }
+      // every actor runs on the energy scheduler: it gains its SPEED in energy
+      // each player town-turn and acts whenever energy >= 100 (ADOM-style).
+      vendor = { id: "vendor", x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true, home: { x: 31, y: 7 }, radius: 9, speed: 90, energy: 0, acts: 0 };
+      townsfolk = [                                       // flavor walkers anchored to a home patch
+        { id: "nuns", voiceId: "nuns", x: 44, y: 24, glyph: "n", name: "a pair of nuns", frozen: false, home: { x: 44, y: 25 }, radius: 6, speed: 70, energy: 0, acts: 0 },
+        { id: "farmers", voiceId: "farmers", x: 20, y: 25, glyph: "f", name: "a farmer", frozen: false, home: { x: 20, y: 25 }, radius: 7, speed: 90, energy: 0, acts: 0 },
+        { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false, home: { x: 31, y: 30 }, radius: 8, speed: 90, energy: 0, acts: 0 }
       ];
+      crowd = [];                                         // the filler population (R3)
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
@@ -429,29 +432,38 @@ var TD_GAME = (function () {
       }
       return false;
     }
-    // the vendor + townsfolk wander the streets turn-by-turn (frozen during tests)
-    function npcs() { if (placeId !== "TOWN") return []; return (vendor ? [vendor] : []).concat(townsfolk || []); }
+    // the town actors run on an ENERGY SCHEDULER (ADOM-style): each player
+    // town-turn every actor gains its SPEED in energy and acts (once per 100).
+    function npcs() { if (placeId !== "TOWN") return []; return (vendor ? [vendor] : []).concat(townsfolk || []).concat(crowd || []); }
     function occupied(list, self, x, y) { for (var i = 0; i < list.length; i++) if (list[i] !== self && list[i].x === x && list[i].y === y) return true; return false; }
-    function walkersStep() {
+    // an NPC-walkable exterior tile: a STREET/PLAZA floor tile, not a door, not a
+    // feature, not water/trees, not the player, not another actor.
+    function npcWalkable(T, list, self, x, y) {
+      if (x < 0 || y < 0 || x >= W || y >= H) return false;
+      if (T.grid[y][x] !== ".") return false;
+      if (T.doors[key(x, y)] || T.features[key(x, y)]) return false;
+      if (x === player.x && y === player.y) return false;
+      return !occupied(list, self, x, y);
+    }
+    function actorStep(npc, T, list) {                    // ONE movement action
+      var ds = [[0, -1], [0, 1], [-1, 0], [1, 0]], opts = [];
+      for (var i = 0; i < ds.length; i++) { var x = npc.x + ds[i][0], y = npc.y + ds[i][1]; if (npcWalkable(T, list, npc, x, y)) opts.push({ x: x, y: y }); }
+      if (!opts.length) return;
+      if (npc.home) {                                     // home-patch bias (errand loops arrive in R2)
+        var near = opts.filter(function (o) { return (Math.abs(o.x - npc.home.x) + Math.abs(o.y - npc.home.y)) <= (npc.radius || 6); });
+        if (near.length) opts = near;
+        else opts.sort(function (a, b) { return (Math.abs(a.x - npc.home.x) + Math.abs(a.y - npc.home.y)) - (Math.abs(b.x - npc.home.x) + Math.abs(b.y - npc.home.y)); }).splice(1);
+      }
+      var p = opts[Math.floor(Math.random() * opts.length)]; npc.x = p.x; npc.y = p.y; npc.acts = (npc.acts || 0) + 1;
+    }
+    function walkersStep() {                              // the scheduler (one player turn)
       if (placeId !== "TOWN") return;
-      var T = places.TOWN, list = npcs(), ds = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+      var T = places.TOWN, list = npcs();
       list.forEach(function (npc) {
         if (npc.frozen) return;
-        var opts = [];
-        for (var i = 0; i < ds.length; i++) {
-          var x = npc.x + ds[i][0], y = npc.y + ds[i][1];
-          if (x < 0 || y < 0 || x >= W || y >= H) continue;
-          if (T.grid[y][x] === "." && !T.doors[key(x, y)] && !T.features[key(x, y)] && !(x === player.x && y === player.y) && !occupied(list, npc, x, y)) opts.push({ x: x, y: y });
-        }
-        if (!opts.length) return;
-        // route bias: stay within a home patch (the nuns linger by the church,
-        // the vendor works the strip) — keep options inside the radius if any.
-        if (npc.home) {
-          var near = opts.filter(function (o) { return (Math.abs(o.x - npc.home.x) + Math.abs(o.y - npc.home.y)) <= (npc.radius || 6); });
-          if (near.length) opts = near;
-          else opts.sort(function (a, b) { return (Math.abs(a.x - npc.home.x) + Math.abs(a.y - npc.home.y)) - (Math.abs(b.x - npc.home.x) + Math.abs(b.y - npc.home.y)); }).splice(1);
-        }
-        var p = opts[Math.floor(Math.random() * opts.length)]; npc.x = p.x; npc.y = p.y;
+        npc.energy = (npc.energy || 0) + (npc.speed || 100);
+        var guard = 0;
+        while (npc.energy >= 100 && guard++ < 4) { actorStep(npc, T, list); npc.energy -= 100; }
       });
     }
     // the two gift shops trade dueling barks when the visitor is near both
@@ -498,7 +510,8 @@ var TD_GAME = (function () {
     // ---- the new ADOM verbs (top-level; spatial ones delegate underground) ---
     function wait() {
       if (placeId === "DUNGEON") { var r = dungeon.wait(); afterDungeon(); return r; }
-      shared.turn += 1; logMsg("You pause. The harbour goes about its business."); return { waited: true };
+      shared.turn += 1; walkersStep();   // a wait is a player turn; the town keeps moving
+      logMsg("You pause. The harbour goes about its business."); return { waited: true };
     }
     function get() {
       if (placeId === "DUNGEON") { var r = dungeon.get(); afterDungeon(); return r; }
@@ -687,7 +700,10 @@ var TD_GAME = (function () {
       _pendingVendor: function () { return pendingVendor; },
       _vendor: function () { return vendor; },
       _setVendor: function (x, y) { vendor = { x: x, y: y, frozen: true, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true }; return vendor; },
-      _freezeVendor: function (b) { if (vendor) vendor.frozen = !!b; (townsfolk || []).forEach(function (n) { n.frozen = !!b; }); },
+      _freezeVendor: function (b) { if (vendor) vendor.frozen = !!b; (townsfolk || []).forEach(function (n) { n.frozen = !!b; }); (crowd || []).forEach(function (n) { n.frozen = !!b; }); },
+      _actors: function () { return npcs(); },
+      _addActor: function (a) { a.energy = a.energy || 0; a.acts = a.acts || 0; if (typeof a.speed !== "number") a.speed = 100; crowd.push(a); return a; },
+      _step: function () { walkersStep(); },
       _voice: function (id) { return voice(id); },
       _keepers: function () { return KEEPER; },
       _townMeta: function () { return places.TOWN.meta; },
