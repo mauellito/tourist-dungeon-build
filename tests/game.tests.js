@@ -447,6 +447,28 @@ function TD_GAME_TESTS() {
     assert(!/cart|permit/i.test(type.greetings.join(" ")), "the type pool is distinct");
   });
 
+  // ----------------------------------- WIRE + CHANNEL (v15 R4) -------------
+  test("interior occupants can be talked to: contact begins a chat on the senses channel", function () {
+    var g = game(); g._goto("hotel");
+    var occ = g.view().creatures[0];
+    assert(occ && occ.friendly, "the hotel has an occupant");
+    g._warp(occ.x - 1, occ.y);
+    var before = g._shared().messages.length;
+    g.move("right");                                       // bump the occupant
+    var msgs = g._shared().messages.slice(before);
+    assert(msgs.some(function (m) { return m.ch === "senses" && m.kind === "said" && /guest/i.test(m.text); }), "the hotel guest speaks (senses / said)");
+    assert(msgs.every(function (m) { return !m.urgent; }), "dialogue is ambient, never a critical stop");
+  });
+
+  test("talking to an exterior walker is ambient (senses, never urgent)", function () {
+    var g = game(); g._freezeVendor(true);
+    var npc = g._addActor({ id: "chatter", type: "dockworker", voiceId: "dockworker", glyph: "w", name: "a dock worker", x: g._player().x + 1, y: g._player().y, speed: 0, frozen: true });
+    var before = g._shared().messages.length;
+    g.move("right");
+    var msgs = g._shared().messages.slice(before).filter(function (m) { return /dock worker/i.test(m.text); });
+    assert(msgs.length >= 1 && msgs.every(function (m) { return m.ch === "senses" && !m.urgent; }), "the dock worker speaks on the senses channel, never urgent");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }
