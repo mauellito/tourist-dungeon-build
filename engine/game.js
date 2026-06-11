@@ -56,7 +56,7 @@ var TD_GAME = (function () {
     });
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
-    var invOpen, invSel, look;
+    var invOpen, invSel, look, sensedWater;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
@@ -66,41 +66,54 @@ var TD_GAME = (function () {
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
       placeId = "TOWN"; dungeon = null; dead = false; won = false;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
-      returnTile = null; pendingDoor = null; pendingCounter = null;
+      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
 
-    function logMsg(t, urgent) { if (!t) return; lastEvent = t; lastUrgent = !!urgent; shared.messages.push({ text: t, urgent: !!urgent }); if (shared.messages.length > 80) shared.messages.shift(); }
+    // every line declares a CHANNEL (Channel Law, CLAUDE.md). "event" = mechanical
+    // truth; "senses" = perceived (heard/said/seen true; intuition may mislead).
+    function logMsg(t, urgent, meta) {
+      if (!t) return; meta = meta || {};
+      lastEvent = t; lastUrgent = !!urgent;
+      shared.messages.push({ text: t, urgent: !!urgent, ch: meta.ch || "event", kind: meta.kind || null, obj: meta.obj || null });
+      if (shared.messages.length > 120) shared.messages.shift();
+    }
+    function senses(t, kind, obj, urgent) { logMsg(t, !!urgent, { ch: "senses", kind: kind, obj: obj }); }
     function makeRation() { return TD_MAP.makeItem("ration"); }
 
     // ---- effects layer (shared by spatial counters AND the _interact test hook)
     function act(type) {
       var seen = function (id) { character.signalsSeen.add(id); };
       switch (type) {
-        case "lookout": seen("012"); logMsg(SIG["012"].t); break;
+        case "lookout": seen("012"); senses(SIG["012"].t, "seen", "OBJ"); break;
         case "agency":
           if (character.ticket) { logMsg("You already hold admission."); break; }
           character.ticket = "agency"; seen("002"); seen("001");
-          logMsg("The clerk beams: “" + SIG["002"].t + "”  (the small print, more quietly: “" + SIG["001"].t + ".”)"); break;
+          senses("The clerk beams: “" + SIG["002"].t + "”", "said", "SUBJ");          // 002 SUBJ
+          senses("Quieter, the small print she reads aloud: “" + SIG["001"].t + ".”", "said", "OBJ");  // 001 OBJ
+          logMsg("A Guided Package is stamped into your hand."); break;
         case "kiosk":
           if (character.ticket) { logMsg("You already hold admission."); break; }
           character.ticket = "standard"; seen("003");
-          logMsg("A grey ticket curls out. It reads, in full: “" + SIG["003"].t + ".”"); break;
+          logMsg("A grey ticket curls from the slot: “" + SIG["003"].t + ".”"); break;   // 003 printed fact -> event
         case "hotel":
           meters.comfort += 2; restore(100, 0, 100); seen("006");
-          logMsg("The concierge: “" + SIG["006"].t + "”  You take the night and wake wonderfully restored."); break;
+          senses("The concierge, without looking up: “" + SIG["006"].t + "”", "said", "SUBJ");  // 006 SUBJ
+          logMsg("You take the night at the Gilded Kraken and wake wonderfully restored."); break;
         case "spa":
           meters.comfort += 1; meters.fatigue = Math.max(0, meters.fatigue - 30); meters.satiation = Math.min(100, meters.satiation + 20); seen("007");
-          logMsg(SIG["007"].t); break;
+          logMsg("The spa works you over.");
+          senses(SIG["007"].t, "said", "OBJ"); break;                  // 007 OBJ effect, told to you
         case "food":
-          meters.satiation = meters.satiationMax;                       // the hot meal, now
-          shared.inventory.push(makeRation()); shared.inventory.push(makeRation());   // and two for the road
-          logMsg("A hot meal and a flat, honest drink — you are fed, if not improved — and two buns wrapped for the road (2 rations to your pack). The fortune cookie says something you do not yet understand."); break;
+          meters.satiation = meters.satiationMax;
+          shared.inventory.push(makeRation()); shared.inventory.push(makeRation());
+          logMsg("A hot meal and a flat, honest drink; two buns go to your pack for the road (2 rations).");
+          senses("The fortune cookie says something you do not yet understand.", "intuition", "SUBJ"); break;
         case "anchor":
-          if (meters.comfort >= 2) { seen("005"); character.events.anchorRejected = true; logMsg("The doorman, with a nose: “" + SIG["005"].t + "”"); }
+          if (meters.comfort >= 2) { seen("005"); character.events.anchorRejected = true; senses("The doorman, with a nose: “" + SIG["005"].t + "”", "said", "OBJ"); }  // 005 OBJ
           else { logMsg("The doorman loses interest in you, which here is a welcome."); }
           break;
         case "gate":
@@ -191,15 +204,15 @@ var TD_GAME = (function () {
     // a sale is a conversation: contact begins the patter, only Enter closes the
     // deal. Each counter pitches in its house voice, then a plain offer line.
     var PITCH = {
-      agency: { pitch: "The Agency clerk sweeps a hand over a laminated map: “This pass gets you everywhere worth going!” (Everywhere worth going, the small print clarifies, is a Guided Zone.)",
+      agency: { pitch: "The Agency clerk sweeps a hand over a laminated map: “This pass gets you everywhere worth going!” (Everywhere worth going, the small print clarifies, is a Guided Zone.)", obj: "SUBJ",
         offer: "Take the Guided Package? — Enter to accept; step away to decline." },
-      kiosk: { pitch: "The kiosk hums. A grey ticket waits in the slot, and a notice apologises in advance for the lack of occasion.",
+      kiosk: { pitch: "The kiosk hums. A grey ticket waits in the slot, and a notice apologises in advance for the lack of occasion.", obj: "OBJ",
         offer: "Take a Standard Admission? — Enter to accept; step away to decline." },
-      hotel: { pitch: "The concierge looks you over and remains unmoved: “Nothing down there worth roughing it for, dear.” The bed, he implies, is the only sensible destination.",
+      hotel: { pitch: "The concierge looks you over and remains unmoved: “Nothing down there worth roughing it for, dear.” The bed, he implies, is the only sensible destination.", obj: "SUBJ",
         offer: "Take the night at the Gilded Kraken? — Enter to accept; step away to decline." },
-      spa: { pitch: "The attendant promises you will emerge improved, and — lowering her voice — announced.",
+      spa: { pitch: "The attendant promises you will emerge improved, and — lowering her voice — announced.", obj: "SUBJ",
         offer: "Take the treatment? — Enter to accept; step away to decline." },
-      food: { pitch: "The barman sets down something hot and something flat. Neither is impressed by you, which here passes for welcome.",
+      food: { pitch: "The barman sets down something hot and something flat. Neither is impressed by you, which here passes for welcome.", obj: "OBJ",
         offer: "Buy a meal, with rations for the road? — Enter to accept; step away to decline." }
     };
 
@@ -216,14 +229,26 @@ var TD_GAME = (function () {
         if (f.act === "lookout") { pendingCounter = null; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
         // a counter/desk: begin the conversation, do NOT transact
         pendingDoor = null; pendingCounter = { act: f.act, x: nx, y: ny };
-        var p = PITCH[f.act] || { pitch: "The clerk awaits your custom.", offer: "Enter to accept; step away to decline." };
-        logMsg(p.pitch); logMsg(p.offer);
+        var p = PITCH[f.act] || { pitch: "The clerk awaits your custom.", offer: "Enter to accept; step away to decline.", obj: "SUBJ" };
+        senses(p.pitch, "said", p.obj || "SUBJ");   // the patter is perceived speech
+        logMsg(p.offer);                            // the offer is a mechanical prompt
         return { moved: false, bumpedCounter: true, act: f.act, event: lastEvent };
       }
       if (P.grid[ny][nx] !== ".") return { moved: false };
       player.x = nx; player.y = ny; pendingDoor = null; pendingCounter = null; lastEvent = null;
       shared.turn += 1;
+      // the senses emitter (town): the harbour makes itself heard near the water
+      var nearW = waterAdjacent(P, nx, ny);
+      if (nearW && !sensedWater) senses("Down at the quay the water laps at the stone, patient and cold.", "heard", "OBJ");
+      sensedWater = nearW;
       return { moved: true };
+    }
+    function waterAdjacent(P, x, y) {
+      for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+        var ny = y + dy, nx = x + dx;
+        if (ny >= 0 && nx >= 0 && ny < H && nx < W && P.grid[ny][nx] === "~") return true;
+      }
+      return false;
     }
 
     function commit() {       // Enter / o

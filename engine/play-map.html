@@ -74,6 +74,29 @@
   .log .line.crit { color:var(--bad); font-weight:bold; }
   .log .line.crit .tn { color:var(--bad); }
 
+  /* the senses panel — atmosphere, visually distinct (italic, steel-blue) */
+  .senses .sline { font-style:italic; color:#4a6b86; font:12.5px/1.45 "Georgia",serif; padding:2px 0; }
+  .senses .sline .kx { font:9px "Consolas",monospace; font-style:normal; color:#8fa6b8; text-transform:uppercase; letter-spacing:1px; margin-right:5px; }
+  .senses .none { color:var(--faint); font-style:italic; font-size:12px; }
+
+  /* the full-screen review log (both streams, filterable) */
+  #review { position:fixed; inset:0; z-index:80; display:none; flex-direction:column; background:rgba(22,18,13,.97); color:var(--paper); padding:18px 22px; }
+  #review.show { display:flex; }
+  #review .rv-head { display:flex; align-items:center; gap:16px; flex-wrap:wrap; border-bottom:2px solid var(--rule); padding-bottom:8px; margin-bottom:8px; }
+  #review .rv-title { font-variant:small-caps; font-size:18px; letter-spacing:1px; }
+  #review .rv-filters { display:flex; gap:6px; }
+  #review .rv-f { font:12px "Consolas",monospace; padding:3px 10px; border:1px solid var(--rule); background:#2a241a; color:var(--paper); border-radius:3px; cursor:pointer; }
+  #review .rv-f.on { background:var(--accent); border-color:var(--accent); }
+  #review .rv-close { margin-left:auto; font-size:11.5px; color:#b6a98e; }
+  #review .rv-list { flex:1; overflow-y:auto; font:13px/1.55 "Consolas",monospace; }
+  #review .rv-list .row { padding:1px 0; display:flex; gap:8px; }
+  #review .rv-list .row .tn { color:#9c8f73; min-width:38px; }
+  #review .rv-list .row .cx { min-width:62px; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding-top:2px; }
+  #review .rv-list .row.event .cx { color:#caa15a; }
+  #review .rv-list .row.senses .cx { color:#7fa8c9; }
+  #review .rv-list .row.senses .tx { font-family:"Georgia",serif; font-style:italic; color:#bcd0e0; }
+  #review .rv-list .row.crit .tx { color:#ff8a7a; font-weight:bold; }
+
   .banner { position:absolute; top:12px; left:50%; transform:translateX(-50%); max-width:82%; text-align:center;
     background:rgba(140,28,22,.94); color:#fff; font-family:"Georgia",serif; font-weight:bold; font-size:14px;
     padding:7px 16px; border:1px solid #f4e3b0; border-radius:4px; opacity:0; pointer-events:none; box-shadow:0 1px 8px rgba(0,0,0,.4); }
@@ -144,6 +167,10 @@
         <div class="card-b" id="threats"></div>
       </div>
       <div class="card">
+        <div class="card-h">What You Sense</div>
+        <div class="card-b senses" id="senses"></div>
+      </div>
+      <div class="card">
         <div class="card-h">Controls &amp; Key</div>
         <div class="card-b legend" id="legend"></div>
       </div>
@@ -153,9 +180,22 @@
   <div class="cue" id="cue"></div>
 
   <div class="card" id="msgpanel">
-    <div class="card-h">Field Log</div>
+    <div class="card-h">Field Log <span style="float:right;font-weight:normal;text-transform:none;letter-spacing:0">press <b>L</b> for the full review log</span></div>
     <div class="card-b log" id="msglog"></div>
   </div>
+</div>
+
+<div id="review">
+  <div class="rv-head">
+    <span class="rv-title">The Review Log — your memory</span>
+    <span class="rv-filters">
+      <button class="rv-f" data-f="all">All</button>
+      <button class="rv-f" data-f="event">Events</button>
+      <button class="rv-f" data-f="senses">Senses</button>
+    </span>
+    <span class="rv-close">press <b>L</b> or <b>Esc</b> to close · <b>a</b>/<b>e</b>/<b>s</b> to filter</span>
+  </div>
+  <div class="rv-list" id="rv-list"></div>
 </div>
 <aside id="debug"><pre id="debugBody"></pre></aside>
 <div class="vstamp" id="vstamp"></div>
@@ -176,8 +216,10 @@
   var seedInput = document.getElementById("seed"), metaEl = document.getElementById("meta");
   var verifyEl = document.getElementById("verify"), overlay = document.getElementById("overlay");
   var dossierEl = document.getElementById("dossier"), threatsEl = document.getElementById("threats"), legendEl = document.getElementById("legend");
-  var cueEl = document.getElementById("cue"), msglogEl = document.getElementById("msglog");
+  var cueEl = document.getElementById("cue"), msglogEl = document.getElementById("msglog"), sensesEl = document.getElementById("senses");
+  var reviewEl = document.getElementById("review"), rvListEl = document.getElementById("rv-list");
   var bannerEl = document.getElementById("banner"), moreEl = document.getElementById("more"), moreTextEl = document.getElementById("more-text");
+  var reviewOpen = false, reviewFilter = "all";
   var debugPanel = document.getElementById("debug"), debugBody = document.getElementById("debugBody");
   var world = null, sim = null, session = { knowledge: new Set(), lives: 0 };
   // presentation-only state
@@ -208,6 +250,7 @@
   function resetUI() {
     stampMap = new WeakMap(); lastCrit = null; ackIndex = 0; labelsOn = false; lastFx = null;
     barker = TD_UI.Barker(); barkPrev = { level: 0, kill: false, levelTurn: null };
+    reviewOpen = false; reviewFilter = "all"; reviewEl.classList.remove("show");
     Array.prototype.slice.call(stageEl.querySelectorAll(".dmgfloat")).forEach(function (n) { n.remove(); });
     moreEl.classList.remove("show");
   }
@@ -282,8 +325,10 @@
     spawnDamage(vw);
     renderDossier(vw);
     renderThreats(vw);
+    renderSenses(vw);
     renderCue(vw);
     renderLog(vw);
+    if (reviewOpen) renderReview();
     maybeBanner(vw);
     renderMore(vw);
 
@@ -442,7 +487,8 @@
   function renderLog(vw) {
     var msgs = vw.messages || [];
     msgs.forEach(function (m) { if (m && typeof m === "object" && !stampMap.has(m)) stampMap.set(m, vw.turn); });
-    var last = msgs.slice(-8);
+    // the Field Log shows the EVENT stream only; the senses stream has its own panel
+    var last = msgs.filter(function (m) { return (m.ch || "event") === "event"; }).slice(-8);
     msglogEl.innerHTML = last.map(function (m) {
       var text = (m && typeof m === "object") ? m.text : m;
       var t = (m && typeof m === "object" && stampMap.has(m)) ? stampMap.get(m) : (vw.turn || 0);
@@ -450,6 +496,31 @@
     }).join("");
     msglogEl.scrollTop = msglogEl.scrollHeight;
   }
+  // the SENSES panel — what the character perceives (atmosphere, distinct type)
+  function renderSenses(vw) {
+    var ms = (vw.messages || []).filter(function (m) { return m.ch === "senses"; });
+    if (!ms.length) { sensesEl.innerHTML = '<div class="none">— the air is quiet —</div>'; return; }
+    sensesEl.innerHTML = ms.slice(-5).map(function (m) {
+      return '<div class="sline"><span class="kx">' + escapeHTML(m.kind || "sense") + "</span>" + escapeHTML(m.text) + "</div>";
+    }).join("");
+  }
+  // the REVIEW LOG — both streams interleaved, turn-stamped, filterable
+  function renderReview() {
+    var msgs = sim.view().messages || [];
+    var rows = msgs.filter(function (m) { return reviewFilter === "all" || (m.ch || "event") === reviewFilter; });
+    rvListEl.innerHTML = rows.map(function (m) {
+      var t = stampMap.has(m) ? stampMap.get(m) : 0;
+      var ch = (m.ch || "event");
+      var cls = "row " + ch + (m.urgent ? " crit" : "");
+      var cx = ch === "senses" ? ((m.kind || "sense") + (m.obj ? "·" + m.obj : "")) : "event";
+      return '<div class="' + cls + '"><span class="tn">T' + t + '</span><span class="cx">' + escapeHTML(cx) + '</span><span class="tx">' + escapeHTML(m.text) + "</span></div>";
+    }).join("");
+    Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.classList.toggle("on", b.getAttribute("data-f") === reviewFilter); });
+    rvListEl.scrollTop = rvListEl.scrollHeight;
+  }
+  function openReview() { reviewOpen = true; reviewEl.classList.add("show"); renderReview(); }
+  function closeReview() { reviewOpen = false; reviewEl.classList.remove("show"); }
+  function setReviewFilter(f) { reviewFilter = f; renderReview(); }
   function maybeBanner(vw) {
     var msgs = vw.messages || [], m = msgs[msgs.length - 1];
     if (m && m.urgent && m !== lastCrit) {
@@ -544,6 +615,16 @@
     var k = (raw && raw.length === 1) ? raw.toLowerCase() : raw;
     if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
 
+    // the REVIEW LOG (L) — your searchable memory of both streams
+    if (raw === "L") { e.preventDefault(); if (reviewOpen) closeReview(); else openReview(); return; }
+    if (reviewOpen) {
+      if (k === "Escape" || k === "l") { e.preventDefault(); closeReview(); return; }
+      if (k === "a") { e.preventDefault(); setReviewFilter("all"); return; }
+      if (k === "e") { e.preventDefault(); setReviewFilter("event"); return; }
+      if (k === "s") { e.preventDefault(); setReviewFilter("senses"); return; }
+      return;   // modal: the review log swallows other input
+    }
+
     // --more-- HALT: a pending critical accepts no input but acknowledgment
     var gate = TD_UI.moreGate(sim.view().messages, ackIndex);
     if (gate.blocked) { e.preventDefault(); ackIndex = gate.index + 1; draw(); return; }
@@ -579,8 +660,9 @@
   });
   document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
+  Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v8 · steal list", BUILD = "793e95e";
+  var VERSION = "play-map v9 · senses channel", BUILD = "6ff21b1";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

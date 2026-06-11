@@ -11,13 +11,29 @@ function TD_GAME_TESTS() {
   function game(seed) { return TD_GAME.create(TD_GEN.generate(seed || 3)); }
 
   // -------------------------------------------------------------- FORK 1
-  test("Agency kiosk sets the guided ticket and shows OBJ fine print + SUBJ patter", function () {
+  test("Agency: SUBJ patter (002) and OBJ fine print (001) ride the senses channel", function () {
     var g = game();
-    var r = g._interact("agency");
+    g._interact("agency");
     eq(g._character().ticket, "agency");
     assert(g._character().signalsSeen.has("001"), "objective fine print 001 seen");
     assert(g._character().signalsSeen.has("002"), "subjective patter 002 seen");
-    inc(r.event, "Valid in Guided Zones", "the OBJ fine print is shown and is true");
+    var sens = g._shared().messages.filter(function (m) { return m.ch === "senses"; });
+    assert(sens.some(function (m) { return /everywhere worth going/.test(m.text) && m.obj === "SUBJ"; }), "002 is SUBJ senses (said)");
+    assert(sens.some(function (m) { return /Valid in Guided Zones/.test(m.text) && m.obj === "OBJ"; }), "001 is OBJ senses (said), and true");
+    assert(g._shared().messages.some(function (m) { return m.ch === "event" && /Guided Package/.test(m.text); }), "the mechanical fact is an EVENT line");
+  });
+
+  // ----------------------------------------------- CHANNEL LAW --------------
+  test("no line ships unchanneled; 002 and 006 are SUBJ senses", function () {
+    var g = game();
+    g._interact("agency"); g._interact("hotel");
+    var msgs = g._shared().messages;
+    assert(msgs.length > 0, "there are lines");
+    assert(msgs.every(function (m) { return m.ch === "event" || m.ch === "senses"; }), "every line declares a channel");
+    assert(msgs.some(function (m) { return m.ch === "event"; }), "the event stream is used");
+    var subj = msgs.filter(function (m) { return m.ch === "senses" && m.obj === "SUBJ"; }).map(function (m) { return m.text; }).join(" || ");
+    assert(/everywhere worth going/.test(subj), "002 SUBJ senses present");
+    assert(/roughing it/.test(subj), "006 SUBJ senses present");
   });
 
   test("Standard kiosk sets the standard ticket (OBJ all-areas)", function () {

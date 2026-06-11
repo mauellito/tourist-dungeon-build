@@ -104,7 +104,8 @@ var TD_MAP = (function () {
       character: shared.character || { ticket: null, signalsSeen: new Set() },
       inventory: shared.inventory || (shared.inventory = []),
       messages: shared.messages || (shared.messages = []),
-      kills: 0, lastHungerStage: "well fed", wasExhausted: false
+      kills: 0, lastHungerStage: "well fed", wasExhausted: false,
+      sensedSkitter: false, toldDoors: {}
     };
     // the turn counter lives on the shared object so town + dungeon agree on it.
     if (typeof shared.turn !== "number") shared.turn = 0;
@@ -114,7 +115,33 @@ var TD_MAP = (function () {
     function curLevel() { return (world.nodes[ctrl.node] || {}).level || 0; }
     function inDungeon() { return curLevel() >= 1; }
 
-    function logMsg(t, urgent) { if (!t) return; ctrl.lastEvent = t; ctrl.lastUrgent = !!urgent; ctrl.messages.push({ text: t, urgent: !!urgent }); if (ctrl.messages.length > 80) ctrl.messages.shift(); }
+    // every player-facing line declares a CHANNEL (Channel Law, CLAUDE.md):
+    // "event" = what mechanically happens (always true); "senses" = what the
+    // character perceives (heard/said/seen are true; intuition may mislead).
+    function logMsg(t, urgent, meta) {
+      if (!t) return; meta = meta || {};
+      ctrl.lastEvent = t; ctrl.lastUrgent = !!urgent;
+      ctrl.messages.push({ text: t, urgent: !!urgent, ch: meta.ch || "event", kind: meta.kind || null, obj: meta.obj || null });
+      if (ctrl.messages.length > 120) ctrl.messages.shift();
+    }
+    function senses(t, kind, obj, urgent) { logMsg(t, !!urgent, { ch: "senses", kind: kind, obj: obj }); }
+
+    // the senses emitter — atmosphere from the surroundings. FUTURE HOOK: an
+    // Intuition stat will later gate frequency/quality here; nothing wired yet.
+    function nearUnseenCreature() {
+      var vis = visibleSet();
+      for (var i = 0; i < ctrl.creatures.length; i++) {
+        var c = ctrl.creatures[i], dman = Math.abs(c.x - ctrl.player.x) + Math.abs(c.y - ctrl.player.y);
+        if (dman <= REVEAL + 3 && !vis.has(key(c.x, c.y))) return true;
+      }
+      return false;
+    }
+    function emitSenses() {
+      if (!inDungeon()) return;
+      var skit = nearUnseenCreature();
+      if (skit && !ctrl.sensedSkitter) senses("Something skitters past, just beyond the lamplight.", "heard", "OBJ");
+      ctrl.sensedSkitter = skit;
+    }
 
     function reveal(px, py) {
       for (var dy = -REVEAL; dy <= REVEAL; dy++)
@@ -309,6 +336,11 @@ var TD_MAP = (function () {
       if (d) {
         ctrl.pendingDoor = { meta: d, x: nx, y: ny };
         logMsg(doorReveal(d), false);
+        if (d.tells && d.tells.length && !ctrl.toldDoors[d.edgeId]) {   // the secret tells, perceived
+          ctrl.toldDoors[d.edgeId] = 1;
+          senses(d.tells[0], "heard", "OBJ");                          // 008 cold draft — true
+          if (d.tells[1]) senses(d.tells[1], "intuition", "SUBJ");     // 009 "probably rats" — a hunch, may mislead
+        }
         return { moved: false, bumpedDoor: true, event: ctrl.lastEvent };
       }
 
@@ -331,6 +363,7 @@ var TD_MAP = (function () {
       var it = itemAt(nx, ny);
       if (it) logMsg("Here lies " + it.name + ". Press g to take it.", false);
       endTurn("step");
+      emitSenses();
       return { moved: true, dead: ctrl.dead, feature: f || undefined, item: it || undefined };
     }
 
@@ -341,6 +374,7 @@ var TD_MAP = (function () {
       if (ctrl.dead || ctrl.won) return { waited: false };
       logMsg(enemiesVisible() ? "You hold still, watching the dark move." : "You rest a moment; the ache in your legs eases.", false);
       endTurn("rest");
+      emitSenses();
       return { waited: true, rested: !enemiesVisible(), dead: ctrl.dead };
     }
 
@@ -434,7 +468,7 @@ var TD_MAP = (function () {
       if (onCross) { var oc = onCross(d, ctrl); if (oc && oc.block) { logMsg(oc.block, false); return { opened: false, blocked: oc.block }; } }
       var r = interp.choose(d.edgeId);
       if (!r.ok) { logMsg(d.reason || "the way is barred", false); return { opened: false, blocked: ctrl.lastEvent }; }
-      if (d.type === "oneway") logMsg("The way seals behind you with a click. It will not open from this side.", true);
+      if (d.type === "oneway") { logMsg("The way seals behind you with a click. It will not open from this side.", true); senses("A click, behind and below; the way has closed.", "heard", "OBJ"); }
       else { ctrl.lastEvent = null; ctrl.lastUrgent = false; }
       ctrl.node = interp.state.node; ctrl.won = !!r.complete; ctrl.pendingDoor = null;
       shared.turn += 1;

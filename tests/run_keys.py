@@ -237,6 +237,21 @@ F.onload = function(){
     var hx=view().player.x, hy=view().player.y; press('left');
     ok('--more-- accepts no input but acknowledgment (the step is eaten)', view().player.x===hx&&view().player.y===hy);
     ok('after acknowledgment, the halt clears', !moreShown());
+    clearMore();
+
+    // =============== ROUND 4: the senses channel + review log =============
+    ok('the senses panel exists in the sidebar', !!doc.getElementById('senses'));
+    ok('every message declares a channel', (view().messages||[]).every(function(m){return m.ch==='event'||m.ch==='senses';}));
+    pk('L');
+    ok('L opens the review log', doc.getElementById('review').classList.contains('show'));
+    ok('the review log interleaves both streams',
+       !!doc.querySelector('#rv-list .row.event') && !!doc.querySelector('#rv-list .row.senses'));
+    pk('s');
+    ok('filtering to senses hides the event stream', !doc.querySelector('#rv-list .row.event') && !!doc.querySelector('#rv-list .row.senses'));
+    pk('e');
+    ok('filtering to events hides the senses stream', !doc.querySelector('#rv-list .row.senses') && !!doc.querySelector('#rv-list .row.event'));
+    pk('a'); pk('L');
+    ok('L closes the review log', !doc.getElementById('review').classList.contains('show'));
 
   } catch(e){ R.push('HARNESS_ERROR '+(e&&e.stack?e.stack:e)); }
   var fails=R.filter(function(x){return x.indexOf('FAIL')===0||x.indexOf('HARNESS')===0;}).length;

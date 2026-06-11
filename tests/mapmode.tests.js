@@ -258,6 +258,25 @@ function TD_MAP_TESTS() {
       "after 40 steps a full character is at worst Peckish (not starving)");
   });
 
+  // -------------------------------------------- SENSES CHANNEL (Round 4) ----
+  test("no dungeon line ships unchanneled; the click is a heard senses line", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    g.move("left"); g.wait();
+    assert(g._messages().every(function (m) { return m.ch === "event" || m.ch === "senses"; }), "every line declares a channel");
+  });
+
+  test("a one-way's tells emit on the senses channel (heard OBJ + intuition SUBJ); the seal is heard", function () {
+    var g = TD_MAP.create(world({ one_way: true }), { creatures: false });
+    var dk = Object.keys(g._doors())[0];
+    g._doors()[dk].tells = ["A cold draft slides from a seam in the wall.", "Probably rats in the wall."];
+    ups(g, 6);                                             // bump the one-way: its tells are perceived
+    var sens = g._messages().filter(function (m) { return m.ch === "senses"; });
+    assert(sens.some(function (m) { return m.kind === "heard" && m.obj === "OBJ" && /cold draft/.test(m.text); }), "the draft is heard, OBJ, true");
+    assert(sens.some(function (m) { return m.kind === "intuition" && m.obj === "SUBJ"; }), "the hunch (009) is intuition, SUBJ, may mislead");
+    g.open();                                              // descend: the click is heard
+    assert(g._messages().some(function (m) { return m.ch === "senses" && m.kind === "heard" && /click/.test(m.text); }), "the seal click is a heard senses line");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }
