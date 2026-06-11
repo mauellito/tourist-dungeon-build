@@ -104,7 +104,7 @@ var TD_GAME = (function () {
     });
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
-    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, townsfolk, sensedGarden, crowd;
+    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, townsfolk, sensedGarden, crowd, pendingExit, exitReturn, left;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
@@ -114,7 +114,7 @@ var TD_GAME = (function () {
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
       placeId = "TOWN"; dungeon = null; dead = false; won = false;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
-      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; sensedGarden = false;
+      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; sensedGarden = false; pendingExit = false; exitReturn = null; left = false;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
       // every actor runs on the energy scheduler: it gains its SPEED in energy
@@ -328,7 +328,16 @@ var TD_GAME = (function () {
       carve(g, 45, 28, 48, 30); g[27][46] = ".";                                 // the gap + the pocket garden
       features[key(46, 29)] = { type: "shrine", glyph: "¶", col: "nature", label: "a forgotten shrine", text: "Behind the church, out of the Bureau's sightline: a small shrine, two candles, and a quiet you may keep.", act: "shrine" };
 
-      return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 31, y: 20 }, meta: { streets: streets, districts: districts } };
+      // --- THE ROAD OUT OF TOWN (past the motel) + the EXIT tile (leaving ends the game) ---
+      carve(g, 58, 33, 61, 34);
+      features[key(58, 33)] = { type: "view", glyph: "=", col: "signal", label: "the road out of town", text: "Past the motel the road leaves the harbour behind, and the town simply stops. The Bureau posts a sign and a shrug.", act: "look" };
+      var exitTile = { x: 61, y: 33 };
+      // --- HORIZON LANDMARKS (promise, not content): visible, unreachable, covetous ---
+      features[key(6, 6)] = { type: "view", glyph: "▲", col: "signal", label: "a castle on a far hill", text: "On a far hill a castle keeps its own counsel and its own portcullis. The Bureau notes it is 'not currently on the itinerary'.", act: "look" };
+      features[key(57, 6)] = { type: "view", glyph: "▲", col: "signal", label: "a monastery in the hills", text: "A monastery folds into the hills, bells and all, serenely beyond the turnstile. You may look; looking is free.", act: "look" };
+      features[key(9, 34)] = { type: "view", glyph: "○", col: "signal", label: "a cave mouth in the distance", text: "Across the water a cave mouth yawns, dark and promising and entirely off the map. The Bureau covets it on your behalf.", act: "look" };
+
+      return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 31, y: 20 }, exit: exitTile, meta: { streets: streets, districts: districts } };
     }
 
     function occupantName(spec) {
@@ -448,7 +457,10 @@ var TD_GAME = (function () {
         return { moved: false, bumpedCounter: true, act: f.act, event: lastEvent };
       }
       if (P.grid[ny][nx] !== ".") return { moved: false };
+      var ox = player.x, oy = player.y;
       player.x = nx; player.y = ny; pendingDoor = null; pendingCounter = null; pendingVendor = false; lastEvent = null;
+      // the road out of town: stepping onto the exit tile prompts a clean leave
+      if (P.exit && nx === P.exit.x && ny === P.exit.y) { pendingExit = true; exitReturn = { x: ox, y: oy }; logMsg("The Bureau reminds departing visitors that itineraries, once surrendered, are not reissued. Leave town? (y / n)"); return { moved: true, exitPrompt: true }; }
       shared.turn += 1;
       walkersStep();
       // the senses emitter (town): the harbour makes itself heard near the water
@@ -756,9 +768,14 @@ var TD_GAME = (function () {
       if (placeId === "DUNGEON") { var v = dungeon.view(); v.ticket = character.ticket; v.fieldNotes = fieldNotes(); return v; }
       return tilePlaceView();
     }
+    // leaving town ends the session cleanly (only y commits)
+    function confirmExit() { pendingExit = false; left = true; logMsg("You leave town. The itinerary is surrendered; the Bureau wishes you a statistically average day."); }
+    function cancelExit() { if (pendingExit) { pendingExit = false; if (exitReturn) player = { x: exitReturn.x, y: exitReturn.y }; logMsg("You think better of it and step back into town."); } }
+
     function view() {
       var v = baseView();
       v.turn = shared.turn; v.messages = shared.messages; v.inventory = invList();
+      v.exitPrompt = !!pendingExit; v.left = !!left;
       v.invOpen = invOpen; v.invSel = invSel;
       v.look = { active: look.active, x: look.x, y: look.y };
       v.hunger = TD_MAP.hungerStage(meters);
@@ -796,6 +813,7 @@ var TD_GAME = (function () {
       wait: wait, get: get, search: search, closeDoor: closeDoor,
       toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected,
       lookToggle: lookToggle, lookMove: lookMove,
+      confirmExit: confirmExit, cancelExit: cancelExit,
       say: function (t) { logMsg(t); },   // the Bureau speaks during play (presentation flavour)
       isDead: function () { return dead; }, isComplete: function () { return won; },
       SIG: SIG, brassTarget: brassTarget,
@@ -817,6 +835,8 @@ var TD_GAME = (function () {
       _voice: function (id) { return voice(id); },
       _keepers: function () { return KEEPER; },
       _townMeta: function () { return places.TOWN.meta; },
+      _exitTile: function () { return places.TOWN.exit; },
+      _pendingExit: function () { return !!pendingExit; },
       _warp: function (x, y) { player = { x: x, y: y }; return view(); },
       _playerState: function () { return playerState(); },
       _hunger: function () { return TD_MAP.hungerStage(meters); },

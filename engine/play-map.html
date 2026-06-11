@@ -341,7 +341,9 @@
     maybeBanner(vw);
     renderMore(vw);
 
-    if (vw.invOpen) renderPack(vw);
+    if (vw.left) showLeft();
+    else if (vw.exitPrompt) showExitPrompt(vw);
+    else if (vw.invOpen) renderPack(vw);
     else if (vw.dead) showPostmortem();
     else if (vw.won) showWin();
     else overlay.innerHTML = "";
@@ -589,6 +591,21 @@
     document.getElementById("again").addEventListener("click", nextCharacter);
     document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
   }
+  function showExitPrompt(vw) {
+    overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">Bureau of Visitor Outcomes</div>' +
+      '<div class="ttl">The road out of town</div>' +
+      '<p>The Bureau reminds departing visitors that itineraries, once surrendered, are not reissued.</p>' +
+      '<p><b>Leave town?</b> &nbsp; press <b>y</b> to leave &nbsp;·&nbsp; <b>n</b> to step back</p></div></div>';
+  }
+  function showLeft() {
+    overlay.innerHTML = '<div class="scrim"><div class="panel win"><div class="head">Bureau of Visitor Outcomes</div>' +
+      '<div class="ttl">You have left town</div>' +
+      '<p>The itinerary is surrendered; the Bureau wishes you a statistically average day. The session is closed.</p>' +
+      '<p><button class="ctl" id="again">Arrive again (a new character)</button> ' +
+      '<button class="ctl" id="newd">A new dungeon</button></p></div></div>';
+    document.getElementById("again").addEventListener("click", nextCharacter);
+    document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
+  }
   function showWin() {
     overlay.innerHTML = '<div class="scrim"><div class="panel win"><div class="head">Bureau of Visitor Outcomes</div>' +
       '<div class="ttl">The One True Run is complete</div>' +
@@ -639,6 +656,13 @@
     if (gate.blocked) { e.preventDefault(); ackIndex = gate.index + 1; draw(); return; }
 
     var vw = sim.view();
+    // the leave-town prompt is modal: y commits, n / Esc steps back
+    if (vw.exitPrompt) {
+      if (k === "y") { e.preventDefault(); sim.confirmExit(); draw(); return; }
+      if (k === "n" || k === "Escape") { e.preventDefault(); sim.cancelExit(); draw(); return; }
+      e.preventDefault(); return;
+    }
+    if (vw.left) { e.preventDefault(); return; }   // session closed; use the on-screen buttons
     if (k === "Tab") { e.preventDefault(); labelsOn = !labelsOn; draw(); return; }
 
     if (vw.look && vw.look.active) {

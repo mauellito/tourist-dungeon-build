@@ -392,6 +392,28 @@ function TD_GAME_TESTS() {
     }
   });
 
+  // ----------------------------------- EXIT + HORIZON (v14 R4) -------------
+  test("the exit tile prompts to leave; n steps you back; y closes the session", function () {
+    var g = game(); var ex = g._exitTile();
+    g._warp(ex.x - 1, ex.y);
+    assert(!g._pendingExit(), "no prompt before reaching the exit tile");
+    g.move("right");
+    assert(g._pendingExit() && g.view().exitPrompt, "stepping onto the exit tile prompts");
+    g.cancelExit();
+    assert(!g._pendingExit() && g._player().x === ex.x - 1 && g._player().y === ex.y, "n steps you back, safely");
+    g._warp(ex.x - 1, ex.y); g.move("right"); g.confirmExit();
+    assert(g.view().left, "y leaves town and closes the session");
+  });
+
+  test("three horizon landmarks exist and read on the senses channel", function () {
+    var g = game(); var feats = g.view().features;
+    var labels = Object.keys(feats).map(function (k) { return feats[k].label || ""; });
+    ["castle", "monastery", "cave"].forEach(function (w) { assert(labels.some(function (l) { return new RegExp(w, "i").test(l); }), "a " + w + " landmark exists"); });
+    g._warp(6, 7); var before = g._shared().messages.length; g.move("up");   // step onto the castle lookout
+    var sens = g._shared().messages.slice(before).filter(function (m) { return m.ch === "senses"; });
+    assert(sens.some(function (m) { return /castle/i.test(m.text) && m.kind === "seen"; }), "looking at the castle emits a senses/seen line");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }
