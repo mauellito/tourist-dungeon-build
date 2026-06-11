@@ -72,6 +72,27 @@ var TD_GAME = (function () {
     chinese: "keeper_mixed", clamshack: "keeper_brooklyn", gift1: "gift1", gift2: "gift2"
   };
 
+  // named errand destinations (all are STREET/PLAZA tiles in the fixed town map)
+  var DEST = {
+    dock: { x: 30, y: 33 }, warehouse: { x: 7, y: 33 }, tavern: { x: 27, y: 33 },
+    rail: { x: 31, y: 36 }, alley: { x: 8, y: 28 }, plaza: { x: 31, y: 10 },
+    church: { x: 43, y: 24 }, shops: { x: 12, y: 18 }, main: { x: 31, y: 14 },
+    "strip-a": { x: 28, y: 6 }, "strip-b": { x: 34, y: 6 }, giftshops: { x: 31, y: 7 }
+  };
+  // destination pools per actor TYPE — the errand loop draws from these
+  var POOLS = {
+    townsfolk: ["shops", "plaza", "church", "home"],
+    nuns: ["church", "plaza", "main"],
+    dockworker: ["dock", "warehouse", "tavern"],
+    sailor: ["tavern", "rail", "alley"],
+    shopper: ["shops", "plaza", "giftshops"],
+    visitor: ["giftshops", "plaza", "strip-a", "strip-b"],
+    vendor: ["strip-a", "strip-b", "plaza", "giftshops"]
+  };
+  // the guard's fixed patrol route: main street, plaza, tourist strip, a pass by
+  // the red-light archway (atmospheric only — no reactions, no crime system)
+  var GUARD_ROUTE = ["main", "plaza", "strip-a", "alley", "main"];
+
   function create(world, opts) {
     opts = opts || {};
     var session = opts.session || { knowledge: new Set(), lives: 0 };
@@ -98,11 +119,12 @@ var TD_GAME = (function () {
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
       // every actor runs on the energy scheduler: it gains its SPEED in energy
       // each player town-turn and acts whenever energy >= 100 (ADOM-style).
-      vendor = { id: "vendor", x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true, home: { x: 31, y: 7 }, radius: 9, speed: 90, energy: 0, acts: 0 };
-      townsfolk = [                                       // flavor walkers anchored to a home patch
-        { id: "nuns", voiceId: "nuns", x: 44, y: 24, glyph: "n", name: "a pair of nuns", frozen: false, home: { x: 44, y: 25 }, radius: 6, speed: 70, energy: 0, acts: 0 },
-        { id: "farmers", voiceId: "farmers", x: 20, y: 25, glyph: "f", name: "a farmer", frozen: false, home: { x: 20, y: 25 }, radius: 7, speed: 90, energy: 0, acts: 0 },
-        { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false, home: { x: 31, y: 30 }, radius: 8, speed: 90, energy: 0, acts: 0 }
+      vendor = { id: "vendor", x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true, type: "vendor", home: { x: 31, y: 7 }, speed: 90, energy: 0, acts: 0 };
+      townsfolk = [                                       // key walkers on the errand loop
+        { id: "nuns", voiceId: "nuns", x: 44, y: 24, glyph: "n", name: "a pair of nuns", frozen: false, type: "nuns", home: { x: 44, y: 24 }, speed: 70, energy: 0, acts: 0 },
+        { id: "farmers", voiceId: "farmers", x: 19, y: 25, glyph: "f", name: "a farmer", frozen: false, type: "townsfolk", home: { x: 19, y: 25 }, speed: 90, energy: 0, acts: 0 },
+        { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false, type: "townsfolk", home: { x: 31, y: 30 }, speed: 90, energy: 0, acts: 0 },
+        { id: "guard1", voiceId: "guard", x: 31, y: 14, glyph: "G", name: "a Bureau patrol", frozen: false, type: "guard", route: GUARD_ROUTE, home: { x: 31, y: 14 }, speed: 100, energy: 0, acts: 0 }
       ];
       crowd = [];                                         // the filler population (R3)
       lastEvent = null; lastUrgent = false;
@@ -445,16 +467,43 @@ var TD_GAME = (function () {
       if (x === player.x && y === player.y) return false;
       return !occupied(list, self, x, y);
     }
-    function actorStep(npc, T, list) {                    // ONE movement action
-      var ds = [[0, -1], [0, 1], [-1, 0], [1, 0]], opts = [];
-      for (var i = 0; i < ds.length; i++) { var x = npc.x + ds[i][0], y = npc.y + ds[i][1]; if (npcWalkable(T, list, npc, x, y)) opts.push({ x: x, y: y }); }
-      if (!opts.length) return;
-      if (npc.home) {                                     // home-patch bias (errand loops arrive in R2)
-        var near = opts.filter(function (o) { return (Math.abs(o.x - npc.home.x) + Math.abs(o.y - npc.home.y)) <= (npc.radius || 6); });
-        if (near.length) opts = near;
-        else opts.sort(function (a, b) { return (Math.abs(a.x - npc.home.x) + Math.abs(a.y - npc.home.y)) - (Math.abs(b.x - npc.home.x) + Math.abs(b.y - npc.home.y)); }).splice(1);
+    // a STREET/PLAZA tile (for errand pathing — ignores dynamic actors)
+    function streetTile(T, x, y) { return x >= 0 && y >= 0 && x < W && y < H && T.grid[y][x] === "." && !T.doors[key(x, y)] && !T.features[key(x, y)]; }
+    function bfsStreets(T, sx, sy, tx, ty) {
+      if (!streetTile(T, tx, ty)) return null;
+      var q = [[sx, sy]], seen = {}, prev = {}, ds = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+      seen[sx + "," + sy] = 1;
+      while (q.length) {
+        var c = q.shift();
+        if (c[0] === tx && c[1] === ty) { var path = [], k = tx + "," + ty; while (k !== sx + "," + sy) { var p = k.split(","); path.unshift({ x: +p[0], y: +p[1] }); k = prev[k]; } return path; }
+        for (var i = 0; i < ds.length; i++) { var nx = c[0] + ds[i][0], ny = c[1] + ds[i][1], kk = nx + "," + ny; if (!seen[kk] && streetTile(T, nx, ny)) { seen[kk] = 1; prev[kk] = c[0] + "," + c[1]; q.push([nx, ny]); } }
       }
-      var p = opts[Math.floor(Math.random() * opts.length)]; npc.x = p.x; npc.y = p.y; npc.acts = (npc.acts || 0) + 1;
+      return null;
+    }
+    function pickErrand(npc) {
+      if (npc.type === "guard") { npc.wp = ((npc.wp == null ? -1 : npc.wp) + 1) % npc.route.length; return DEST[npc.route[npc.wp]] || npc.home; }
+      var pool = POOLS[npc.type] || ["home"];
+      var name = pool[Math.floor(Math.random() * pool.length)];
+      return name === "home" ? npc.home : (DEST[name] || npc.home);
+    }
+    function wobbleStep(npc, T, list) {
+      var ds = [[0, -1], [0, 1], [-1, 0], [1, 0]], o = [];
+      for (var i = 0; i < ds.length; i++) { var x = npc.x + ds[i][0], y = npc.y + ds[i][1]; if (npcWalkable(T, list, npc, x, y)) o.push({ x: x, y: y }); }
+      if (o.length) { var p = o[Math.floor(Math.random() * o.length)]; npc.x = p.x; npc.y = p.y; }
+    }
+    // ONE movement action: the ERRAND LOOP — go to a destination via streets,
+    // dwell, then pick the next. (No pure random wander.)
+    function actorStep(npc, T, list) {
+      if (npc.dwell > 0) { npc.dwell--; return; }
+      if (!npc.path || !npc.path.length) {
+        var d = pickErrand(npc);
+        npc.path = (d ? bfsStreets(T, npc.x, npc.y, d.x, d.y) : null) || [];
+        if (!npc.path.length) { npc.dwell = 2; return; }   // could not path; brief idle, then re-pick
+      }
+      if (npc.wobble && Math.random() < 0.25) { wobbleStep(npc, T, list); return; }   // a drunk 1-tile deviation
+      var n = npc.path[0];
+      if (npcWalkable(T, list, npc, n.x, n.y)) { npc.x = n.x; npc.y = n.y; npc.path.shift(); if (!npc.path.length) npc.dwell = 10 + Math.floor(Math.random() * 21); }
+      else { npc.path = null; }                            // blocked by another actor — re-path next turn
     }
     function walkersStep() {                              // the scheduler (one player turn)
       if (placeId !== "TOWN") return;
@@ -463,7 +512,7 @@ var TD_GAME = (function () {
         if (npc.frozen) return;
         npc.energy = (npc.energy || 0) + (npc.speed || 100);
         var guard = 0;
-        while (npc.energy >= 100 && guard++ < 4) { actorStep(npc, T, list); npc.energy -= 100; }
+        while (npc.energy >= 100 && guard++ < 4) { actorStep(npc, T, list); npc.energy -= 100; npc.acts = (npc.acts || 0) + 1; }   // each 100 energy = one action (move or dwell)
       });
     }
     // the two gift shops trade dueling barks when the visitor is near both

@@ -331,8 +331,34 @@ function TD_GAME_TESTS() {
 
   test("a wobbling drunk sailor never steps through a wall", function () {
     var g = game(); g._freezeVendor(true);
-    var sailor = g._addActor({ id: "sailor", x: 8, y: 33, glyph: "d", name: "a drunk sailor", speed: 60, wobble: true });
+    var sailor = g._addActor({ id: "sailor", x: 8, y: 33, glyph: "d", name: "a drunk sailor", speed: 60, wobble: true, type: "sailor", home: { x: 8, y: 33 } });
     for (var i = 0; i < 120; i++) { g.wait(); var grid = g.view().grid; assert(grid[sailor.y][sailor.x] === ".", "the sailor stands on a street floor tile, never inside a wall"); }
+  });
+
+  // ----------------------------------- ERRAND LOOPS (v14 R2) ---------------
+  test("NPCs travel via streets only, reach destinations, and dwell", function () {
+    var g = game(); var v = g.view();
+    function isStreet(x, y) { return v.grid[y][x] === "." && !v.doors[x + "," + y] && !v.features[x + "," + y]; }
+    var dwelled = {};
+    for (var i = 0; i < 400; i++) {
+      g.wait();
+      g._actors().forEach(function (a) {
+        assert(isStreet(a.x, a.y), a.id + " on a non-street tile (" + a.x + "," + a.y + "='" + v.grid[a.y][a.x] + "')");
+        if (a.dwell > 0) dwelled[a.id] = true;             // arrived at a destination
+      });
+    }
+    ["nuns", "farmers", "senorita", "vendor"].forEach(function (id) { assert(dwelled[id], id + " reached a destination and dwelt"); });
+  });
+
+  test("the Bureau patrol walks its full route over time", function () {
+    var g = game();
+    var wp = { main: [31, 14], plaza: [31, 10], "strip-a": [28, 6], alley: [8, 28] }, hit = {};
+    for (var i = 0; i < 700; i++) {
+      g.wait();
+      var gd = g._actors().filter(function (a) { return a.id === "guard1"; })[0];
+      Object.keys(wp).forEach(function (n) { if (gd.x === wp[n][0] && gd.y === wp[n][1]) hit[n] = true; });
+    }
+    Object.keys(wp).forEach(function (n) { assert(hit[n], "the guard visited waypoint " + n); });
   });
 
   var pass = results.filter(function (r) { return r.ok; }).length;
