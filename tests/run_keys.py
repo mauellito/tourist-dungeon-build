@@ -167,6 +167,34 @@ F.onload = function(){
     // ============================ MESSAGE LOG ============================
     ok('the message log is accumulating the game voice', (view().messages||[]).length>4);
 
+    // ============== UI OVERHAUL: three zones render in the real DOM =======
+    ok('three-zone layout present (map canvas, sidebar, message panel)',
+       !!doc.getElementById('cv') && !!doc.getElementById('sidebar') && !!doc.getElementById('msgpanel'));
+    var LADDER=['well fed','Peckish','Hungry','Famished','Starving'];
+    var sbH=doc.getElementById('sb-hunger');
+    ok('the sidebar dossier shows the hunger STAGE as a word',
+       sbH && LADDER.indexOf((sbH.textContent||'').trim())>=0);
+    ok('the dossier shows turn count and required-sights progress',
+       !!doc.getElementById('sb-turn') && /\d+\s*\/\s*\d+/.test((doc.getElementById('sb-sights')||{}).textContent||''));
+    var lines=doc.querySelectorAll('#msglog .line');
+    ok('the message panel renders log lines', lines.length>0);
+    ok('every log line is stamped with its turn number',
+       lines.length>0 && Array.prototype.every.call(lines, function(L){ var tn=L.querySelector('.tn'); return tn && /^T\d+/.test(tn.textContent||''); }));
+    ok('log lines are colour-coded by tier (a notable line is present)',
+       !!doc.querySelector('#msglog .line.note'));
+    ok('the contextual cue strip tells you what you can do here',
+       ((doc.getElementById('cue')||{}).textContent||'').trim().length>0);
+
+    // contextual cue names an item underfoot when you stand on one
+    var gt=goTo(22,12);                                    // the bandage tile
+    ok('standing on an item, the cue prompts to pick it up',
+       gt && /pick up/.test((doc.getElementById('cue').textContent||'')));
+
+    // the look cursor produces a one-line description in voice
+    pk('l'); var lc=(doc.getElementById('cue').textContent||'');
+    ok('the look cue shows a one-line description in voice', /Look/.test(lc));
+    pk('l');
+
   } catch(e){ R.push('HARNESS_ERROR '+(e&&e.stack?e.stack:e)); }
   var fails=R.filter(function(x){return x.indexOf('FAIL')===0||x.indexOf('HARNESS')===0;}).length;
   document.getElementById('out').textContent=R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length;

@@ -3,64 +3,108 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Tourist Dungeon — Walk the Map (P2 visual)</title>
+<title>Tourist Dungeon — Field Survey</title>
 <style>
-  :root { --paper:#f4efe6; --ink:#1c1a17; --faint:#6b645a; --rule:#c9bfae; --accent:#7a5c3a; --good:#3c6e3c; --bad:#9a3b2f; }
-  html,body { margin:0; background:var(--paper); color:var(--ink); font-family:"Georgia",serif; }
-  #wrap { max-width:780px; margin:0 auto; padding:18px 16px 60px; }
-  header.brand { border-bottom:2px solid var(--ink); padding-bottom:6px; }
-  header.brand h1 { font-size:19px; margin:0; letter-spacing:.5px; }
+  :root {
+    --paper:#efe7d6; --panel:#f6f1e4; --ink:#1b1812; --faint:#6f675a; --rule:#bcae93;
+    --accent:#7a4f26; --good:#2f6d33; --warn:#b06a1f; --bad:#9a2f23; --void:#07060a;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--paper); color:var(--ink); font-family:"Georgia","Times New Roman",serif; }
+  #wrap { max-width:1200px; margin:0 auto; padding:16px 16px 56px; }
+  header.brand { border-bottom:3px double var(--ink); padding-bottom:6px; display:flex; align-items:baseline; justify-content:space-between; }
+  header.brand h1 { font-size:21px; margin:0; letter-spacing:1px; font-variant:small-caps; }
   header.brand .sub { font-size:12px; color:var(--faint); font-style:italic; }
-  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:13px; color:var(--faint); margin:10px 0 4px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:13px; color:var(--faint); margin:10px 0 6px; }
   .bar input { width:90px; font-family:inherit; }
-  .ctl { font-family:inherit; font-size:13px; padding:5px 9px; border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; cursor:pointer; }
-  .verify { font-size:12.5px; border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:6px 10px; margin:6px 0 10px; }
+  .ctl { font-family:inherit; font-size:13px; padding:5px 9px; border:1px solid var(--rule); background:var(--panel); border-radius:4px; cursor:pointer; }
+  .ctl:hover { background:#efe6d2; }
+  .verify { font-size:12px; border:1px solid var(--rule); background:var(--panel); border-radius:4px; padding:5px 10px; margin:0 0 10px; }
   .verify .ok { color:var(--good); } .verify .no { color:var(--bad); font-weight:bold; }
-  .stage { position:relative; width:max-content; }
-  canvas { background:#000; border:1px solid var(--ink); display:block; image-rendering:pixelated; }
-  /* the always-visible stats panel (HP / fatigue / hunger / level / turn / ticket) */
-  .stats { display:flex; flex-wrap:wrap; gap:14px; align-items:center; font:13px "Consolas",monospace;
-    border:1px solid var(--ink); background:#fbf8f1; border-radius:4px; padding:6px 10px; margin:6px 0; }
-  .stats .s b { color:var(--faint); font-weight:normal; font-size:11px; letter-spacing:.5px; text-transform:uppercase; }
-  .stats .s span { font-size:14px; }
-  .place { font-size:13px; color:var(--faint); margin:4px 2px; }
-  .block { color:var(--bad); font-size:13px; min-height:18px; margin:2px; font-style:italic; }
-  /* the scrolling message log — the game's voice lives here */
-  .log { border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:6px 10px; margin:4px 0;
-    font-size:13px; color:var(--accent); height:108px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; }
-  .log .line { padding:1px 0; }
-  .log .line.cur { color:var(--ink); }
+
+  /* ---- the three-zone screen ---- */
+  #game { display:flex; gap:16px; align-items:flex-start; justify-content:center; }
+  .stage { position:relative; flex:0 0 auto; }
+  canvas { background:var(--void); border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); }
+
+  /* the sidebar: a municipal "visitor dossier" + a controls legend */
+  aside#sidebar { flex:0 0 252px; display:flex; flex-direction:column; gap:12px; }
+  .card { border:1px solid var(--rule); background:var(--panel); border-radius:5px; overflow:hidden; }
+  .card-h { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--panel);
+    background:var(--accent); padding:5px 10px; border-bottom:1px solid var(--rule); }
+  .card-b { padding:9px 10px; }
+
+  /* dossier meters + stats */
+  .meter { display:grid; grid-template-columns:54px 1fr 56px; align-items:center; gap:6px; margin:3px 0; font:12px "Consolas",monospace; }
+  .meter-l { color:var(--faint); text-transform:uppercase; font-size:10px; letter-spacing:.5px; }
+  .meter-track { height:11px; background:#e0d6bf; border:1px solid var(--rule); border-radius:2px; overflow:hidden; }
+  .meter-fill { height:100%; }
+  .meter-v { text-align:right; }
+  .statrow { display:flex; justify-content:space-between; font:12.5px "Consolas",monospace; padding:2px 0; border-top:1px dotted var(--rule); }
+  .statrow:first-child { border-top:none; }
+  .statrow .k { color:var(--faint); text-transform:uppercase; font-size:10px; letter-spacing:.5px; padding-top:2px; }
+  .statrow .v { font-weight:bold; }
+  .hunger-starving { color:var(--bad); font-weight:bold; }
+
+  .legend { font:11.5px "Consolas",monospace; color:var(--ink); }
+  .legend .row { display:flex; justify-content:space-between; padding:1.5px 0; }
+  .legend .keys { color:var(--accent); }
+  .legend hr { border:none; border-top:1px dotted var(--rule); margin:5px 0; }
+  .glyphkey { display:flex; flex-wrap:wrap; gap:3px 10px; margin-top:4px; }
+  .glyphkey span b { font-family:"Consolas",monospace; }
+
+  /* the contextual cue strip — "what can I do here" */
+  .cue { margin:12px 0 0; min-height:24px; padding:7px 12px; border:1px solid var(--rule); border-left:4px solid var(--accent);
+    background:var(--panel); border-radius:4px; font-size:14px; color:var(--ink); }
+  .cue.act { font-weight:bold; }
+  .cue.look { border-left-color:#3a6ea5; font-style:italic; }
+  .cue .pre { font-family:"Consolas",monospace; color:var(--accent); }
+
+  /* the bottom message panel — a real scrolling field log */
+  #msgpanel { margin-top:12px; }
+  .log { height:148px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; font:13px/1.5 "Consolas",monospace; }
+  .log .line { padding:1px 2px; color:var(--faint); }
+  .log .line .tn { display:inline-block; min-width:34px; color:#a99a7c; }
+  .log .line.routine { color:#6a6253; }
+  .log .line.note { color:var(--ink); }
+  .log .line.note .tn { color:var(--accent); }
   .log .line.crit { color:var(--bad); font-weight:bold; }
-  .block.crit { color:var(--bad); font-weight:bold; font-style:normal; }
-  .controls { display:flex; gap:14px 18px; flex-wrap:wrap; align-items:center; font-size:12.5px; margin:8px 2px;
-    border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:8px 10px; }
-  .controls b { color:var(--accent); }
-  .controls .keys { font-family:"Consolas",monospace; font-size:12px; color:var(--ink); }
-  .vstamp { position:fixed; right:8px; bottom:22px; font:11px "Consolas",monospace; color:#8a7c66; background:rgba(244,239,230,.85); padding:2px 6px; border:1px solid var(--rule); border-radius:3px; }
-  .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(20,18,14,.78); }
-  .panel { background:#fbf8f1; border:2px solid var(--ink); padding:16px 18px; max-width:430px; }
+  .log .line.crit .tn { color:var(--bad); }
+
+  /* critical flash banner over the map */
+  .banner { position:absolute; top:12px; left:50%; transform:translateX(-50%); max-width:82%; text-align:center;
+    background:rgba(140,28,22,.94); color:#fff; font-family:"Georgia",serif; font-weight:bold; font-size:14px;
+    padding:7px 16px; border:1px solid #f4e3b0; border-radius:4px; opacity:0; pointer-events:none; box-shadow:0 1px 8px rgba(0,0,0,.4); }
+  .banner.show { animation: flashbanner 2s ease forwards; }
+  @keyframes flashbanner { 0%{opacity:0;transform:translateX(-50%) translateY(-6px);} 8%{opacity:1;transform:translateX(-50%) translateY(0);} 72%{opacity:1;} 100%{opacity:0;} }
+
+  /* overlays (inventory / postmortem / win) live over the map */
+  .overlay-host { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .overlay-host:empty { display:none; }
+  .scrim { position:absolute; inset:0; background:rgba(16,14,10,.78); display:flex; align-items:center; justify-content:center; }
+  .panel { background:var(--panel); border:2px solid var(--ink); padding:16px 18px; max-width:430px; position:relative; }
   .panel .head { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--faint); }
   .panel .ttl { font-size:18px; font-variant:small-caps; margin:2px 0 10px; }
   .panel.win .ttl { color:var(--good); }
   .panel .foot { font-size:12px; color:var(--faint); border-top:1px solid var(--rule); margin-top:10px; padding-top:8px; }
-  /* the inventory list (an overlay over the map) */
   .pack { text-align:left; min-width:300px; }
   .pack ul { list-style:none; margin:6px 0; padding:0; font-family:"Consolas",monospace; font-size:13px; }
   .pack li { padding:2px 6px; }
-  .pack li.sel { background:#e7dcc6; }
+  .pack li.sel { background:#e4d8bd; }
   .pack .glyph { display:inline-block; width:1.4em; color:var(--accent); }
   .pack .desc { font-family:"Georgia",serif; font-size:12.5px; color:var(--faint); margin-top:8px; min-height:30px; }
   .pack .hint { font-size:11px; color:var(--faint); margin-top:8px; }
+
   #debug { position:fixed; right:0; top:0; bottom:0; width:330px; overflow:auto; background:#15130f; color:#cfe3b0; font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:50; }
   #debug pre { white-space:pre-wrap; word-break:break-word; margin:0; }
-  .hint { position:fixed; right:8px; bottom:6px; font-size:11px; color:var(--faint); }
+  .vstamp { position:fixed; right:8px; bottom:6px; font:11px "Consolas",monospace; color:#8a7c66; background:rgba(239,231,214,.9); padding:2px 6px; border:1px solid var(--rule); border-radius:3px; }
 </style>
 </head>
 <body>
 <div id="wrap">
   <header class="brand">
-    <h1>THE DUNGEON — field survey</h1>
-    <div class="sub">A Tourist's Guide to the Dungeon — walk it yourself</div>
+    <h1>Tourist Dungeon — Field Survey</h1>
+    <div class="sub">A Tourist's Guide to the Dungeon · Bureau of Visitor Outcomes</div>
   </header>
   <div class="bar">
     <label>seed <input id="seed" type="number" /></label>
@@ -69,32 +113,34 @@
     <span id="meta"></span>
   </div>
   <div id="verify" class="verify"></div>
-  <div class="stage">
-    <canvas id="cv" width="738" height="414"></canvas>
-    <div id="overlay"></div>
+
+  <div id="game">
+    <div class="stage">
+      <canvas id="cv" width="902" height="506"></canvas>
+      <div id="banner" class="banner"></div>
+      <div id="overlay" class="overlay-host"></div>
+    </div>
+    <aside id="sidebar">
+      <div class="card">
+        <div class="card-h">Visitor Dossier</div>
+        <div class="card-b" id="dossier"></div>
+      </div>
+      <div class="card">
+        <div class="card-h">Controls &amp; Key</div>
+        <div class="card-b legend" id="legend"></div>
+      </div>
+    </aside>
   </div>
-  <div class="stats" id="stats"></div>
-  <div class="place" id="place"></div>
-  <div class="block" id="block"></div>
-  <div class="log" id="log"></div>
-  <div class="controls">
-    <span><b>Move</b> <span class="keys">← ↑ ↓ →</span></span>
-    <span><b>Diagonals</b> <span class="keys">Y U B N</span> (↖ ↗ ↙ ↘)</span>
-    <span><b>Numpad</b> <span class="keys">7 8 9 · 4 5 6 · 1 2 3</span> (5 = wait)</span>
-    <span><b>Wait</b> <span class="keys">.</span></span>
-    <span><b>Open / use</b> <span class="keys">o</span> or <span class="keys">Enter</span></span>
-    <span><b>Close door</b> <span class="keys">c</span></span>
-    <span><b>Search</b> <span class="keys">s</span></span>
-    <span><b>Get item</b> <span class="keys">g</span></span>
-    <span><b>Inventory</b> <span class="keys">i</span></span>
-    <span><b>Look</b> <span class="keys">l</span></span>
-    <span><b>Debug</b> <span class="keys">~</span></span>
+
+  <div class="cue" id="cue"></div>
+
+  <div class="card" id="msgpanel">
+    <div class="card-h">Field Log</div>
+    <div class="card-b log" id="msglog"></div>
   </div>
-  <div class="hint" style="position:static;margin-top:6px">Walk into a door to <i>see</i> it; press <b>o</b>/<b>Enter</b> to open. Walk into a creature to fight. In the pack: a letter selects, <b>u</b> uses, <b>d</b> drops.</div>
 </div>
-<div class="vstamp" id="vstamp"></div>
 <aside id="debug"><pre id="debugBody"></pre></aside>
-<div class="hint">press <b>~</b> for operator debug</div>
+<div class="vstamp" id="vstamp"></div>
 
 <script src="rng.js"></script>
 <script src="checker.js"></script>
@@ -104,14 +150,36 @@
 <script src="game.js"></script>
 <script>
 (function () {
-  var TS = 18, FONT = "16px Consolas, monospace", SMALL = "9px Consolas, monospace";
+  var TS = 22, FONT = "18px Consolas, monospace";
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   var seedInput = document.getElementById("seed"), metaEl = document.getElementById("meta");
   var verifyEl = document.getElementById("verify"), overlay = document.getElementById("overlay");
-  var statsEl = document.getElementById("stats"), placeEl = document.getElementById("place");
-  var blockEl = document.getElementById("block"), logEl = document.getElementById("log");
+  var dossierEl = document.getElementById("dossier"), legendEl = document.getElementById("legend");
+  var cueEl = document.getElementById("cue"), msglogEl = document.getElementById("msglog"), bannerEl = document.getElementById("banner");
   var debugPanel = document.getElementById("debug"), debugBody = document.getElementById("debugBody");
   var world = null, sim = null, session = { knowledge: new Set(), lives: 0 };
+  var stampMap = new WeakMap();   // message-object -> the turn it first appeared (presentation only)
+  var lastCrit = null;            // last critical message we flashed a banner for
+
+  // ---- palette: distinct glyph colours by category (higher contrast) -------
+  var COL = {
+    voidc: "#07060a",
+    floorBg: "#574d3c", floorBgDim: "#2a2620", floorDot: "#9b8e72", floorDotDim: "#4a4438",
+    wall: "#c6b48a", wallDim: "#5f564a",
+    water: "#1d3346", waterGlyph: "#6fa0c4",
+    player: "#ffd23a",
+    pendingBg: "#7a5f1e", doorBg: "#403225"
+  };
+  function creatureColor(kind) { return kind === "lurker" ? "#ff5a4a" : kind === "chaser" ? "#ff9e3a" : "#e8c45a"; }
+  function itemColor(kind) { return kind === "ration" ? "#ffd24a" : kind === "bandage" ? "#f0ead6" : "#c98cff"; }
+  function doorColor(d) {
+    if (d.brass) return "#f0c860";
+    if (d.takeable === false) return "#ff6a5a";
+    if (d.type === "stair_down" || d.type === "stair_up") return "#5fdede";
+    if (d.type === "oneway") return "#ffa94a";
+    if (d.glyph) return "#f0c860";                  // town building / gate letters
+    return "#6ee06e";
+  }
 
   function urlSeed() { var m = /[?&]seed=(\d+)/.exec(location.search); return m ? parseInt(m[1], 10) : null; }
 
@@ -121,9 +189,10 @@
     sim = TD_GAME.create(world, { session: session });
     window.__TD_SIM = function () { return sim; };
     window.__TD_VIEW = function () { return sim.view(); };
+    stampMap = new WeakMap(); lastCrit = null;
     seedInput.value = seed;
     metaEl.textContent = "depth " + world.meta.depth + " · arrival day " + world.arrival_day;
-    renderVerify();
+    renderVerify(); renderLegend();
     overlay.innerHTML = "";
     draw();
   }
@@ -138,34 +207,35 @@
     verifyEl.innerHTML = (v.pass ? "<b>Checker:</b> " : "<b class='no'>CHECKER FAILED:</b> ") + parts.join(" &nbsp; ");
   }
 
+  // =========================================================== DRAW =========
   function draw() {
     var vw = sim.view();
     var vis = new Set(vw.visible), exp = new Set(vw.explored);
-    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = COL.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
 
     for (var y = 0; y < vw.h; y++) {
       for (var x = 0; x < vw.w; x++) {
         var k = x + "," + y;
         var seen = exp.has(k), bright = vis.has(k);
-        if (!seen) continue;                       // fog: never-seen stays black
+        if (!seen) continue;
         var ch = vw.grid[y][x], px = x * TS, py = y * TS;
-        var door = (vw.doors || {})[k];
-        var plain = (vw.plain || {})[k];
+        var door = (vw.doors || {})[k], plain = (vw.plain || {})[k];
         var glyph = "", col = "#000", bg = null;
         if (door) {
-          bg = (vw.pendingDoor === k) ? "#6a5520" : "#403828";
-          if (door.glyph) { glyph = door.glyph; col = door.brass ? "#d2a04a" : "#d8b25a"; }
-          else if (door.type === "stair_down") { glyph = ">"; col = "#4ec0c0"; }
-          else if (door.type === "stair_up") { glyph = "<"; col = "#4ec0c0"; }
-          else if (door.type === "oneway") { glyph = "^"; col = "#d08a3a"; }
-          else { glyph = "+"; col = (door.takeable === false) ? "#c25b4f" : "#7ec07e"; }
+          bg = (vw.pendingDoor === k) ? COL.pendingBg : COL.doorBg;
+          col = doorColor(door);
+          if (door.glyph) glyph = door.glyph;
+          else if (door.type === "stair_down") glyph = ">";
+          else if (door.type === "stair_up") glyph = "<";
+          else if (door.type === "oneway") glyph = "^";
+          else glyph = "+";
         } else if (plain) {
-          bg = (vw.pendingDoor === k) ? "#6a5520" : "#37301f";
-          glyph = plain.open ? "'" : "+"; col = plain.open ? "#8a7c5a" : "#caa15a";
-        } else if (ch === ".") { bg = bright ? "#5b5142" : "#332e26"; glyph = "·"; col = bright ? "#7a7060" : "#4a4438"; }
-        else if (ch === "~") { bg = "#22384a"; glyph = "≈"; col = "#5f86a6"; }
-        else if (ch === "#") { glyph = "#"; col = bright ? "#9a8b71" : "#5a5042"; }
+          bg = (vw.pendingDoor === k) ? COL.pendingBg : "#37301f";
+          glyph = plain.open ? "'" : "+"; col = plain.open ? "#8a7c5a" : "#d2a14a";
+        } else if (ch === ".") { bg = bright ? COL.floorBg : COL.floorBgDim; glyph = "·"; col = bright ? COL.floorDot : COL.floorDotDim; }
+        else if (ch === "~") { bg = COL.water; glyph = "≈"; col = COL.waterGlyph; }
+        else if (ch === "#") { glyph = "#"; col = bright ? COL.wall : COL.wallDim; }
         if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
         if (glyph) { ctx.fillStyle = bright ? col : dim(col); ctx.fillText(glyph, px + TS / 2, py + TS / 2 + 1); }
       }
@@ -174,38 +244,37 @@
     Object.keys(vw.items || {}).forEach(function (k) {
       if (!vis.has(k)) return;
       var it = vw.items[k], xy = k.split(","), ix = +xy[0], iy = +xy[1];
-      ctx.font = FONT; ctx.fillStyle = itemColor(it.kind);
-      ctx.fillText(it.glyph || "?", ix * TS + TS / 2, iy * TS + TS / 2 + 1);
+      ctx.fillStyle = itemColor(it.kind); ctx.fillText(it.glyph || "?", ix * TS + TS / 2, iy * TS + TS / 2 + 1);
     });
-    // features (town buildings + dungeon plaques ¶)
+    // features (town buildings + dungeon signal plaques ¶)
     Object.keys(vw.features || {}).forEach(function (k) {
       if (!vis.has(k)) return;
       var f = vw.features[k], xy = k.split(","), fx = +xy[0], fy = +xy[1];
-      ctx.font = FONT; ctx.fillStyle = "#caa15a"; ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
+      ctx.fillStyle = "#f0c040"; ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
     });
-    // creatures (already filtered to visible) — with a little HP bar
+    // creatures (already filtered to visible) with a small HP bar
     vw.creatures.forEach(function (c) {
-      ctx.font = FONT;
       ctx.fillStyle = creatureColor(c.kind);
       ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
       if (typeof c.hp === "number" && typeof c.maxHp === "number" && c.hp < c.maxHp) {
         var frac = Math.max(0, c.hp / c.maxHp);
-        ctx.fillStyle = "#3a1410"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, TS - 4, 2);
-        ctx.fillStyle = "#c25b4f"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 2);
+        ctx.fillStyle = "#2a0d0a"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, TS - 4, 3);
+        ctx.fillStyle = "#ff5a4a"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 3);
       }
     });
     // avatar
     var pl = vw.player;
-    ctx.font = FONT; ctx.fillStyle = "#f0c040"; ctx.fillText("@", pl.x * TS + TS / 2, pl.y * TS + TS / 2 + 1);
-
+    ctx.fillStyle = COL.player; ctx.fillText("@", pl.x * TS + TS / 2, pl.y * TS + TS / 2 + 1);
     // look cursor
     if (vw.look && vw.look.active) {
-      ctx.strokeStyle = "#f0e0a0"; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#f4e3a0"; ctx.lineWidth = 2;
       ctx.strokeRect(vw.look.x * TS + 1, vw.look.y * TS + 1, TS - 2, TS - 2);
     }
 
-    renderStats(vw);
+    renderDossier(vw);
+    renderCue(vw);
     renderLog(vw);
+    maybeBanner(vw);
 
     if (vw.invOpen) renderPack(vw);
     else if (vw.dead) showPostmortem();
@@ -214,35 +283,140 @@
     renderDebug();
   }
 
-  function renderStats(vw) {
-    var m = vw.meters || {};
-    var hg = vw.hunger || { stage: "—", critical: false };
-    var place = vw.phase === "dungeon" ? ("L" + vw.level) : (vw.phase === "town" ? "Harbour" : "Indoors");
-    function s(label, val, color) { return '<span class="s"><b>' + label + '</b> <span style="color:' + (color || "#1c1a17") + '">' + val + "</span></span>"; }
-    statsEl.innerHTML =
-      s("HP", Math.round(m.hp) + "/" + m.hpMax, m.hp < 0.25 * m.hpMax ? "#c25b4f" : "#3c6e3c") +
-      s("Fatigue", Math.round(m.fatigue), m.fatigue > 70 ? "#c25b4f" : "#7a5c3a") +
-      s("Hunger", escapeHTML(hg.stage), hg.critical ? "#c25b4f" : "#7a5c3a") +
-      s("Place", place) +
-      s("Turn", vw.turn || 0) +
-      s("Ticket", vw.ticket || "—", vw.ticket ? "#3c6e3c" : "#9a3b2f");
-    placeEl.innerHTML = escapeHTML(vw.title || "") +
-      (vw.phase === "dungeon" ? (" &nbsp; required sights: " + vw.requiredDone + " / " + vw.requiredTotal) : "");
-    blockEl.textContent = vw.lastEvent || "";
-    blockEl.className = "block" + (vw.lastUrgent ? " crit" : "");
+  // =========================================================== SIDEBAR ======
+  function renderDossier(vw) {
+    var m = vw.meters || {}, hg = vw.hunger || { stage: "—", critical: false };
+    var hpCol = m.hp < 0.25 * m.hpMax ? "#c25b4f" : m.hp < 0.5 * m.hpMax ? "#b06a1f" : "#2f6d33";
+    var ftCol = m.fatigue > 80 ? "#c25b4f" : m.fatigue > 55 ? "#b06a1f" : "#7a5c3a";
+    var place = vw.phase === "dungeon" ? ("Level " + vw.level) : (vw.phase === "town" ? "The Harbour" : "Indoors");
+    var hungerCls = hg.critical ? "hunger-starving" : "";
+    dossierEl.innerHTML =
+      bar("HP", m.hp, m.hpMax, hpCol, true) +
+      bar("Fatigue", m.fatigue, m.fatigueMax, ftCol, false) +
+      '<div style="height:5px"></div>' +
+      statrow("Hunger", '<span id="sb-hunger" class="' + hungerCls + '">' + escapeHTML(hg.stage) + "</span>") +
+      statrow("Ticket", '<span id="sb-ticket">' + escapeHTML(vw.ticket || "none") + "</span>") +
+      statrow("Place", '<span id="sb-place">' + escapeHTML(place) + "</span>") +
+      statrow("Turn", '<span id="sb-turn">' + (vw.turn || 0) + "</span>") +
+      statrow("Sights", '<span id="sb-sights">' + (vw.phase === "dungeon" ? (vw.requiredDone + " / " + vw.requiredTotal) : "—") + "</span>");
+  }
+  function bar(label, val, max, color, showMax) {
+    var pct = Math.max(0, Math.min(100, Math.round(100 * (val / (max || 1)))));
+    return '<div class="meter"><div class="meter-l">' + label + '</div>' +
+      '<div class="meter-track"><div class="meter-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+      '<div class="meter-v">' + Math.round(val) + (showMax ? "/" + max : "") + "</div></div>";
+  }
+  function statrow(k, vHtml) { return '<div class="statrow"><span class="k">' + k + '</span><span class="v">' + vHtml + "</span></div>"; }
+
+  function renderLegend() {
+    legendEl.innerHTML =
+      legRow("Move", "← ↑ ↓ → / Y U B N") +
+      legRow("Numpad", "7 8 9 · 4 5 6 · 1 2 3") +
+      legRow("Wait", ". or numpad 5") +
+      legRow("Open / use", "o or Enter") +
+      legRow("Close door", "c") + legRow("Search", "s") +
+      legRow("Get item", "g") + legRow("Inventory", "i") + legRow("Look", "l") +
+      "<hr>" +
+      '<div class="glyphkey">' +
+        gk("@", COL.player, "you") + gk("r/L/d", "#ff7a4a", "creatures") +
+        gk("% ! *", "#ffd24a", "items") + gk("+ &gt; ^", "#6ee06e", "doors") +
+        gk("¶", "#f0c040", "signals") +
+      "</div>";
+  }
+  function legRow(k, keys) { return '<div class="row"><span>' + k + '</span><span class="keys">' + keys + "</span></div>"; }
+  function gk(g, c, label) { return '<span><b style="color:' + c + '">' + g + "</b> " + label + "</span>"; }
+
+  // =========================================================== CONTEXT CUE ==
+  function K(x, y) { return x + "," + y; }
+  function renderCue(vw) {
+    var c = contextCue(vw);
+    cueEl.className = "cue " + (c.kind || "");
+    cueEl.innerHTML = c.html;
+  }
+  function contextCue(vw) {
+    // 1) while looking, echo the look description in voice
+    if (vw.look && vw.look.active) return { kind: "look", html: escapeHTML(vw.lastEvent || "Look — …") };
+    var p = vw.player;
+    // 2) an item underfoot
+    var under = (vw.items || {})[K(p.x, p.y)];
+    if (under) return { kind: "act", html: '<span class="pre">g</span> — pick up ' + escapeHTML(under.name) };
+    // 3) a door you are facing (already bumped: Enter acts now)
+    if (vw.pendingDoor) {
+      var pd = (vw.doors || {})[vw.pendingDoor], pp = (vw.plain || {})[vw.pendingDoor];
+      if (pd) return { kind: "act", html: doorEnterCue(pd) };
+      if (pp) return { kind: "act", html: '<span class="pre">o</span> / <span class="pre">Enter</span> — open the inner door' };
+    }
+    // 4) a sale in progress (you stepped into the counter)
+    var pc = sim._pendingCounter ? sim._pendingCounter() : null;
+    if (pc) return { kind: "act", html: '<span class="pre">Enter</span> — close the deal · step away to decline' };
+    // 5) scan the eight neighbours for the nearest interactable; cue how to use it
+    var adj = scanAdjacent(vw);
+    if (adj) return { kind: "", html: adj };
+    // 6) nothing pressing — a quiet reminder of the verbs
+    return { kind: "", html: '<span class="pre">move</span> with the arrows or numpad · <span class="pre">l</span> to look about · <span class="pre">i</span> for your pack' };
+  }
+  function scanAdjacent(vw) {
+    var p = vw.player, off = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]];
+    var door = null, counter = null, plain = null;
+    for (var i = 0; i < off.length; i++) {
+      var k = K(p.x + off[i][0], p.y + off[i][1]);
+      if (!door && (vw.doors || {})[k]) door = vw.doors[k];
+      if (!counter && (vw.features || {})[k]) counter = vw.features[k];
+      if (!plain && (vw.plain || {})[k] && !vw.plain[k].open) plain = vw.plain[k];
+    }
+    if (door) return moveIntoCue(door);
+    if (counter) return featureCue(counter);
+    if (plain) return '<span class="pre">o</span> — open the inner door beside you';
+    return null;
+  }
+  function doorEnterCue(d) {
+    if (d.to === "DUNGEON") return '<span class="pre">Enter</span> — present your ticket at the gate';
+    if (d.to === "TOWN") return '<span class="pre">Enter</span> — step out to the harbour';
+    if (d.edgeId) {
+      if (d.brass) return '<span class="pre">Enter</span> — present your ticket at the Brass Door';
+      if (d.takeable === false) return '<span class="pre">Enter</span> — try the barred way (' + escapeHTML(d.reason || "locked") + ")";
+      if (d.type === "stair_down") return '<span class="pre">Enter</span> — descend the stair';
+      if (d.type === "stair_up") return '<span class="pre">Enter</span> — climb the stair';
+      if (d.type === "oneway") return '<span class="pre">Enter</span> — descend (it seals behind you)';
+      return '<span class="pre">Enter</span> — go through ' + escapeHTML(d.label || "the door");
+    }
+    return '<span class="pre">Enter</span> — go into ' + escapeHTML(d.label || "the building");
+  }
+  function moveIntoCue(d) {
+    var what = d.to === "DUNGEON" ? "the dungeon gate" : d.to === "TOWN" ? "the way out"
+      : (d.type === "stair_down") ? "a stair down" : (d.type === "stair_up") ? "a stair up"
+      : (d.type === "oneway") ? "a one-way stair" : (d.brass ? "the Brass Door" : (d.label || "a door"));
+    return 'Beside you: ' + escapeHTML(what) + ' — step into it, then <span class="pre">Enter</span>.';
+  }
+  function featureCue(f) {
+    if (f.act === "lookout") return 'Beside you: ' + escapeHTML(f.label || "the rail") + ' — step over to read the view.';
+    return 'Beside you: ' + escapeHTML(f.label || "the desk") + ' — step in to hear them out.';
   }
 
+  // =========================================================== MESSAGE LOG ==
+  var NOTE_RE = /(You take|You eat|You apply|You strike|serve .* notice|amends your itinerary|swings open|inner door shut|find a seam|hidden pocket|present your ticket|Standard Admission|Guided Package|wake wonderfully|grow |Enter to accept|set down|put down)/i;
+  function tierOf(m) { if (m.urgent) return "crit"; if (NOTE_RE.test(m.text)) return "note"; return "routine"; }
   function renderLog(vw) {
     var msgs = vw.messages || [];
-    var last = msgs.slice(-12);
-    logEl.innerHTML = last.map(function (m, i) {
+    msgs.forEach(function (m) { if (m && typeof m === "object" && !stampMap.has(m)) stampMap.set(m, vw.turn); });
+    var last = msgs.slice(-8);
+    msglogEl.innerHTML = last.map(function (m) {
       var text = (m && typeof m === "object") ? m.text : m;
-      var urgent = (m && typeof m === "object") ? m.urgent : false;
-      return '<div class="line' + (i === last.length - 1 ? " cur" : "") + (urgent ? " crit" : "") + '">' + escapeHTML(text) + "</div>";
+      var t = (m && typeof m === "object" && stampMap.has(m)) ? stampMap.get(m) : (vw.turn || 0);
+      return '<div class="line ' + tierOf(m) + '"><span class="tn">T' + t + "</span> " + escapeHTML(text) + "</div>";
     }).join("");
-    logEl.scrollTop = logEl.scrollHeight;
+    msglogEl.scrollTop = msglogEl.scrollHeight;
+  }
+  function maybeBanner(vw) {
+    var msgs = vw.messages || [], m = msgs[msgs.length - 1];
+    if (m && m.urgent && m !== lastCrit) {
+      lastCrit = m;
+      bannerEl.textContent = m.text;
+      bannerEl.classList.remove("show"); void bannerEl.offsetWidth; bannerEl.classList.add("show");
+    }
   }
 
+  // =========================================================== OVERLAYS ======
   function renderPack(vw) {
     var inv = vw.inventory || [], sel = vw.invSel || 0;
     var items = inv.map(function (it, i) {
@@ -251,42 +425,32 @@
         letter + ") " + escapeHTML(it.name) + "</li>";
     }).join("");
     var desc = inv.length ? escapeHTML(inv[sel] ? inv[sel].desc : "") : "Your pack is empty.";
-    overlay.innerHTML = '<div class="panel pack"><div class="head">YOUR PACK</div>' +
+    overlay.innerHTML = '<div class="scrim"><div class="panel pack"><div class="head">Your Pack</div>' +
       '<div class="ttl">What the visitor carries</div>' +
       (items ? "<ul>" + items + "</ul>" : "<p><i>empty</i></p>") +
       '<div class="desc">' + desc + "</div>" +
-      '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div>';
+      '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div></div>';
   }
-
-  function itemColor(kind) { return kind === "ration" ? "#caa15a" : kind === "bandage" ? "#d8d2c0" : "#b07acc"; }
-  function creatureColor(kind) { return kind === "lurker" ? "#d24a3a" : kind === "chaser" ? "#e07020" : "#d98f4a"; }
-
-  function dim(hex) {
-    var c = hex.replace("#", ""); var r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
-    return "rgb(" + Math.floor(r * 0.5) + "," + Math.floor(g * 0.5) + "," + Math.floor(b * 0.5) + ")";
-  }
-  function escapeHTML(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
-
   function showPostmortem() {
     var pm = sim.postmortem();
     var doors = (pm.attributions || []).map(function (a) { return "<li>" + escapeHTML(a) + "</li>"; }).join("");
-    var spatial = (pm.spatial || []).map(function (s) { return '<p class="crumb" style="color:#7a5c3a;font-style:italic">' + escapeHTML(s) + "</p>"; }).join("");
-    overlay.innerHTML = '<div class="panel"><div class="head">' + escapeHTML(pm.heading) + '</div>' +
+    var spatial = (pm.spatial || []).map(function (s) { return '<p style="color:#7a5c3a;font-style:italic">' + escapeHTML(s) + "</p>"; }).join("");
+    overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">' + escapeHTML(pm.heading) + '</div>' +
       '<div class="ttl">' + escapeHTML(pm.title) + '</div>' +
       '<p>' + escapeHTML(pm.cause) + '</p>' + spatial +
       (doors ? '<div><b>Doors your choices closed:</b><ul>' + doors + '</ul></div>' : "") +
       '<div class="foot">' + escapeHTML(pm.footer) + '</div>' +
       '<p><button class="ctl" id="again">Begin a new character (the world remembers)</button> ' +
-      '<button class="ctl" id="newd">A new dungeon</button></p></div>';
+      '<button class="ctl" id="newd">A new dungeon</button></p></div></div>';
     document.getElementById("again").addEventListener("click", nextCharacter);
     document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
   }
   function showWin() {
-    overlay.innerHTML = '<div class="panel win"><div class="head">BUREAU OF VISITOR OUTCOMES</div>' +
+    overlay.innerHTML = '<div class="scrim"><div class="panel win"><div class="head">Bureau of Visitor Outcomes</div>' +
       '<div class="ttl">The One True Run is complete</div>' +
       '<p>You have visited every required sight in a single life. The Bureau records this with restrained, municipal surprise.</p>' +
       '<p><button class="ctl" id="again">Begin a new character</button> ' +
-      '<button class="ctl" id="newd">A new dungeon</button></p></div>';
+      '<button class="ctl" id="newd">A new dungeon</button></p></div></div>';
     document.getElementById("again").addEventListener("click", nextCharacter);
     document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
   }
@@ -296,20 +460,24 @@
     var v = sim.view();
     debugBody.textContent = JSON.stringify({
       seed: world.meta.seed, phase: v.phase, level: v.level, turn: v.turn,
-      player: v.player, ticket: v.ticket, meters: v.meters,
+      player: v.player, ticket: v.ticket, meters: v.meters, hunger: v.hunger,
       inventory: (v.inventory || []).map(function (i) { return i.name; }),
-      look: v.look, invOpen: v.invOpen,
+      look: v.look, invOpen: v.invOpen, lastUrgent: v.lastUrgent,
       dead: v.dead, won: v.won
     }, null, 2);
   }
 
-  // ---- input ---------------------------------------------------------------
+  function dim(hex) {
+    var c = hex.replace("#", ""); var r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+    return "rgb(" + Math.floor(r * 0.5) + "," + Math.floor(g * 0.5) + "," + Math.floor(b * 0.5) + ")";
+  }
+  function escapeHTML(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+
+  // =========================================================== INPUT =========
   var MOVE = {
     ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
     y: "ul", u: "ur", b: "dl", n: "dr"
   };
-  // classic numpad, keyed by physical key (e.code) so it works with NumLock ON
-  // (where numpad keys report key="8") or off (key="ArrowUp"); 5 = wait.
   var NUMPAD = {
     Numpad1: "dl", Numpad2: "down", Numpad3: "dr", Numpad4: "left",
     Numpad6: "right", Numpad7: "ul", Numpad8: "up", Numpad9: "ur"
@@ -320,14 +488,12 @@
     if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
     var vw = sim.view();
 
-    // LOOK MODE: movement keys (incl. numpad) move the cursor; l or Esc exits.
     if (vw.look && vw.look.active) {
       if (k === "Escape" || k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
       var ld = MOVE[k] || NUMPAD[code];
       if (ld) { e.preventDefault(); sim.lookMove(ld); draw(); return; }
       return;
     }
-    // INVENTORY MODE: letters select; u use; d drop; i/Esc close.
     if (vw.invOpen) {
       if (k === "Escape" || k === "i") { e.preventDefault(); sim.toggleInventory(); draw(); return; }
       if (k === "u") { e.preventDefault(); sim.useSelected(); draw(); return; }
@@ -337,7 +503,6 @@
       if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.invSelect(k.charCodeAt(0) - 97); draw(); return; }
       return;
     }
-    // NORMAL MODE
     if (k === "Enter" || k === "o") { e.preventDefault(); sim.commit(); draw(); return; }
     if (k === "." || code === "Numpad5") { e.preventDefault(); sim.wait(); draw(); return; }
     if (k === "g") { e.preventDefault(); sim.get(); draw(); return; }
@@ -351,7 +516,7 @@
   document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
 
-  var VERSION = "play-map v6 · verdicts R1 + numpad", BUILD = "1c724e0";
+  var VERSION = "play-map v7 · UI overhaul", BUILD = "72e4394";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();
