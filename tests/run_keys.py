@@ -72,6 +72,11 @@ F.onload = function(){
   function goTo(tx,ty){ var v=view(),p=v.player; if(p.x===tx&&p.y===ty)return true;
     var path=bfs(v,p.x,p.y,tx,ty); if(!path)return false; path.forEach(press);
     var q=view().player; return q.x===tx&&q.y===ty; }
+  function moreShown(){ var m=doc.getElementById('more'); return !!(m&&m.classList.contains('show')); }
+  function clearMore(){ var n=0; while(moreShown()&&n++<6){ pk('Escape'); } }
+  function floorNeighbor(){ var v=view(),p=v.player,ds=[['right',1,0],['left',-1,0],['up',0,-1],['down',0,1]];
+    for(var i=0;i<ds.length;i++){ var nx=p.x+ds[i][1],ny=p.y+ds[i][2],k=nx+','+ny;
+      if(v.grid[ny]&&v.grid[ny][nx]==='.'&&!(v.doors&&v.doors[k])&&!(v.plain&&v.plain[k])) return {dir:ds[i][0],x:nx,y:ny}; } return null; }
   try {
     // ============================ MOVEMENT + DIAGONALS ====================
     var p0=view().player; press('ur'); var p1=view().player;
@@ -122,6 +127,12 @@ F.onload = function(){
     ok('the HUD carries a named hunger stage', typeof (view().hunger&&view().hunger.stage)==='string');
     ok('messages carry an urgency tier (objects with text+urgent)',
        (function(){var m=(view().messages||[]); var x=m[m.length-1]; return x&&typeof x.text==='string'&&typeof x.urgent==='boolean';})());
+    clearMore();   // a one-way descent may raise a --more-- halt; acknowledge it before continuing
+
+    // ============================ AUTO-EXPLORE (x) =======================
+    win.__TD_SIM()._dungeon()._setCreatures([]);
+    var ax0=view().turn; pk('x'); clearMore();
+    ok('auto-explore (x) walks the visitor toward the unknown', view().turn>ax0);
 
     // ============================ TURN-BASED + WAIT ======================
     var t0=view().turn; pk('.');
@@ -194,6 +205,38 @@ F.onload = function(){
     pk('l'); var lc=(doc.getElementById('cue').textContent||'');
     ok('the look cue shows a one-line description in voice', /Look/.test(lc));
     pk('l');
+
+    // =============== ROUND 3: steal-list conceits on the shipped page =====
+    var SIM=win.__TD_SIM(), D=SIM._dungeon();
+
+    // LABEL-EVERYTHING (Tab) — verified through the debug read-out
+    pk('~'); pk('Tab');
+    ok('Tab turns labels on', /"labelsOn":\s*true/.test((doc.getElementById('debugBody')||{}).textContent||''));
+    pk('Tab');
+    ok('Tab turns labels off', /"labelsOn":\s*false/.test((doc.getElementById('debugBody')||{}).textContent||''));
+    pk('~');
+
+    // VISIBLE-THREATS SIDEBAR
+    D._setCreatures([{x:view().player.x+2,y:view().player.y,kind:'lurker',hp:30,maxHp:45,dmg:16,name:'a patient lurker',glyph:'L'}]);
+    pk('Tab'); pk('Tab');                                  // two harmless redraws
+    ok('the threats sidebar lists a creature in view', !!doc.querySelector('#threats .threat'));
+    D._setCreatures([]); pk('Tab'); pk('Tab');
+    ok('the threats sidebar empties when nothing stalks you', !doc.querySelector('#threats .threat'));
+
+    // DAMAGE NUMBERS — a landed blow floats a number on the map
+    var fn=floorNeighbor();
+    if(fn){ D._meters().hp=100; D._setCreatures([{x:fn.x,y:fn.y,kind:'lurker',hp:80,maxHp:80,dmg:6,name:'a patient lurker',glyph:'L'}]);
+      press(fn.dir); clearMore();
+      ok('a landed blow floats a damage number on the map', !!doc.querySelector('.stage .dmgfloat')); }
+    else { ok('damage number (skipped: no floor neighbour to fight into)', true); }
+
+    // THE --more-- STOP — a critical halts the game until acknowledged
+    D._setCreatures([]); D._meters().hp=90; D._meters().satiation=5.2;
+    pk('.');                                               // wait drains into STARVING (critical)
+    ok('a CRITICAL event raises the --more-- halt', moreShown());
+    var hx=view().player.x, hy=view().player.y; press('left');
+    ok('--more-- accepts no input but acknowledgment (the step is eaten)', view().player.x===hx&&view().player.y===hy);
+    ok('after acknowledgment, the halt clears', !moreShown());
 
   } catch(e){ R.push('HARNESS_ERROR '+(e&&e.stack?e.stack:e)); }
   var fails=R.filter(function(x){return x.indexOf('FAIL')===0||x.indexOf('HARNESS')===0;}).length;

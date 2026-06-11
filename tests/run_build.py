@@ -16,6 +16,7 @@ SUITES = [
     ("P1 text instrument", "run.py"),
     ("visual map mode", "run_map.py"),
     ("town + forks + signals", "run_game.py"),
+    ("UI quality-of-life", "run_ui.py"),
     ("E2E real keypresses on play-map.html", "run_keys.py"),
 ]
 

@@ -98,7 +98,7 @@ var TD_MAP = (function () {
       node: interp.state.node,
       grid: null, doors: null, player: null, features: {}, pendingDoor: null,
       items: {}, plain: {}, secrets: {},
-      creatures: [], explored: null,
+      creatures: [], explored: null, fx: [],
       dead: false, won: false, cause: null, lastEvent: null, lastUrgent: false,
       meters: shared.meters || { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 },
       character: shared.character || { ticket: null, signalsSeen: new Set() },
@@ -223,6 +223,7 @@ var TD_MAP = (function () {
         }
         if (move) {
           if (move.x === ctrl.player.x && move.y === ctrl.player.y) {        // it reaches you: it bites
+            ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: cr.dmg, kind: "taken" });
             hurt(cr.dmg, cr);
             if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary by " + cr.dmg + " hit points.", lowHP());
           } else { cr.x = move.x; cr.y = move.y; }
@@ -282,7 +283,7 @@ var TD_MAP = (function () {
     }
 
     function move(dir) {
-      ctrl.lastEvent = null; ctrl.lastUrgent = false;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
       if (ctrl.dead || ctrl.won || !DIRS[dir]) return { moved: false };
       var nx = ctrl.player.x + DIRS[dir][0], ny = ctrl.player.y + DIRS[dir][1];
       if (!inb(nx, ny)) return { moved: false };
@@ -291,6 +292,7 @@ var TD_MAP = (function () {
       // (if it lives) replies on its own turn during creaturesStep — one blow each.
       var cr = creatureAt(nx, ny);
       if (cr) {
+        ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt" });
         cr.hp -= PLAYER_DMG;
         var killed = cr.hp <= 0;
         if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
@@ -335,7 +337,7 @@ var TD_MAP = (function () {
     // wait a turn: the world acts, you do not move. With no enemy in sight this
     // is a rest — fatigue ebbs back (ADOM's '5'/'.').
     function wait() {
-      ctrl.lastEvent = null; ctrl.lastUrgent = false;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
       if (ctrl.dead || ctrl.won) return { waited: false };
       logMsg(enemiesVisible() ? "You hold still, watching the dark move." : "You rest a moment; the ache in your legs eases.", false);
       endTurn("rest");
@@ -344,7 +346,7 @@ var TD_MAP = (function () {
 
     // pick up the item under your feet.
     function get() {
-      ctrl.lastEvent = null; ctrl.lastUrgent = false;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
       if (ctrl.dead || ctrl.won) return { got: false };
       var k = key(ctrl.player.x, ctrl.player.y), it = ctrl.items[k];
       if (!it) { logMsg("There is nothing here to take.", false); return { got: false, event: ctrl.lastEvent }; }
@@ -367,7 +369,7 @@ var TD_MAP = (function () {
 
     // search the adjacent walls for what the wall is hiding.
     function search() {
-      ctrl.lastEvent = null; ctrl.lastUrgent = false;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
       if (ctrl.dead || ctrl.won) return { searched: false };
       var found = [];
       for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
@@ -390,7 +392,7 @@ var TD_MAP = (function () {
 
     // close an adjacent open plain door (so a creature cannot follow).
     function closeDoor() {
-      ctrl.lastEvent = null; ctrl.lastUrgent = false;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
       if (ctrl.dead || ctrl.won) return { closed: false };
       for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
         if (!dx && !dy) continue;
@@ -415,6 +417,7 @@ var TD_MAP = (function () {
     // else open an adjacent plain door if one is shut beside you.
     function openDoor() {
       if (ctrl.dead || ctrl.won) return { opened: false };
+      ctrl.fx = [];
       var p = ctrl.pendingDoor;
       if (p && p.plain) return openPlain(p.x, p.y);
       if (!p) {                                            // no pending edge door
@@ -488,6 +491,7 @@ var TD_MAP = (function () {
         requiredTotal: iv.requiredTotal, requiredDone: iv.requiredDone,
         meters: ctrl.meters, hunger: hungerStage(ctrl.meters), kills: ctrl.kills, ticket: ctrl.character.ticket,
         inventory: ctrl.inventory, messages: ctrl.messages, turn: shared.turn,
+        events: ctrl.fx,
         discoveries: discoveries, lastEvent: ctrl.lastEvent, lastUrgent: ctrl.lastUrgent,
         pendingDoor: ctrl.pendingDoor ? key(ctrl.pendingDoor.x, ctrl.pendingDoor.y) : null,
         dead: ctrl.dead, won: ctrl.won, cause: ctrl.cause

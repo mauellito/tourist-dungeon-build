@@ -7,11 +7,11 @@
 <style>
   :root {
     --paper:#efe7d6; --panel:#f6f1e4; --ink:#1b1812; --faint:#6f675a; --rule:#bcae93;
-    --accent:#7a4f26; --good:#2f6d33; --warn:#b06a1f; --bad:#9a2f23; --void:#07060a;
+    --accent:#7a4f26; --good:#2f6d33; --warn:#b06a1f; --bad:#9a2f23;
   }
   * { box-sizing:border-box; }
   html,body { margin:0; background:var(--paper); color:var(--ink); font-family:"Georgia","Times New Roman",serif; }
-  #wrap { max-width:1200px; margin:0 auto; padding:16px 16px 56px; }
+  #wrap { max-width:1240px; margin:0 auto; padding:16px 16px 56px; }
   header.brand { border-bottom:3px double var(--ink); padding-bottom:6px; display:flex; align-items:baseline; justify-content:space-between; }
   header.brand h1 { font-size:21px; margin:0; letter-spacing:1px; font-variant:small-caps; }
   header.brand .sub { font-size:12px; color:var(--faint); font-style:italic; }
@@ -22,19 +22,16 @@
   .verify { font-size:12px; border:1px solid var(--rule); background:var(--panel); border-radius:4px; padding:5px 10px; margin:0 0 10px; }
   .verify .ok { color:var(--good); } .verify .no { color:var(--bad); font-weight:bold; }
 
-  /* ---- the three-zone screen ---- */
   #game { display:flex; gap:16px; align-items:flex-start; justify-content:center; }
   .stage { position:relative; flex:0 0 auto; }
-  canvas { background:var(--void); border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); }
+  canvas { background:#07060a; border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); }
 
-  /* the sidebar: a municipal "visitor dossier" + a controls legend */
   aside#sidebar { flex:0 0 252px; display:flex; flex-direction:column; gap:12px; }
   .card { border:1px solid var(--rule); background:var(--panel); border-radius:5px; overflow:hidden; }
   .card-h { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--panel);
     background:var(--accent); padding:5px 10px; border-bottom:1px solid var(--rule); }
   .card-b { padding:9px 10px; }
 
-  /* dossier meters + stats */
   .meter { display:grid; grid-template-columns:54px 1fr 56px; align-items:center; gap:6px; margin:3px 0; font:12px "Consolas",monospace; }
   .meter-l { color:var(--faint); text-transform:uppercase; font-size:10px; letter-spacing:.5px; }
   .meter-track { height:11px; background:#e0d6bf; border:1px solid var(--rule); border-radius:2px; overflow:hidden; }
@@ -46,6 +43,14 @@
   .statrow .v { font-weight:bold; }
   .hunger-starving { color:var(--bad); font-weight:bold; }
 
+  /* threats panel */
+  .threat { display:flex; align-items:center; gap:7px; font:12px "Consolas",monospace; padding:3px 0 3px 6px; margin:2px 0; }
+  .threat .g { font-weight:bold; width:12px; text-align:center; }
+  .threat .nm { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .threat .bar { width:42px; height:9px; background:#e0d6bf; border:1px solid var(--rule); border-radius:2px; overflow:hidden; flex:0 0 auto; }
+  .threat .bar i { display:block; height:100%; }
+  .threat .none, #threats .none { color:var(--faint); font-style:italic; font-size:12px; }
+
   .legend { font:11.5px "Consolas",monospace; color:var(--ink); }
   .legend .row { display:flex; justify-content:space-between; padding:1.5px 0; }
   .legend .keys { color:var(--accent); }
@@ -53,14 +58,12 @@
   .glyphkey { display:flex; flex-wrap:wrap; gap:3px 10px; margin-top:4px; }
   .glyphkey span b { font-family:"Consolas",monospace; }
 
-  /* the contextual cue strip — "what can I do here" */
   .cue { margin:12px 0 0; min-height:24px; padding:7px 12px; border:1px solid var(--rule); border-left:4px solid var(--accent);
     background:var(--panel); border-radius:4px; font-size:14px; color:var(--ink); }
   .cue.act { font-weight:bold; }
   .cue.look { border-left-color:#3a6ea5; font-style:italic; }
   .cue .pre { font-family:"Consolas",monospace; color:var(--accent); }
 
-  /* the bottom message panel — a real scrolling field log */
   #msgpanel { margin-top:12px; }
   .log { height:148px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; font:13px/1.5 "Consolas",monospace; }
   .log .line { padding:1px 2px; color:var(--faint); }
@@ -71,15 +74,25 @@
   .log .line.crit { color:var(--bad); font-weight:bold; }
   .log .line.crit .tn { color:var(--bad); }
 
-  /* critical flash banner over the map */
   .banner { position:absolute; top:12px; left:50%; transform:translateX(-50%); max-width:82%; text-align:center;
     background:rgba(140,28,22,.94); color:#fff; font-family:"Georgia",serif; font-weight:bold; font-size:14px;
     padding:7px 16px; border:1px solid #f4e3b0; border-radius:4px; opacity:0; pointer-events:none; box-shadow:0 1px 8px rgba(0,0,0,.4); }
   .banner.show { animation: flashbanner 2s ease forwards; }
   @keyframes flashbanner { 0%{opacity:0;transform:translateX(-50%) translateY(-6px);} 8%{opacity:1;transform:translateX(-50%) translateY(0);} 72%{opacity:1;} 100%{opacity:0;} }
 
-  /* overlays (inventory / postmortem / win) live over the map */
-  .overlay-host { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  /* the --more-- halt */
+  .more { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(14,8,6,.45); z-index:20; }
+  .more.show { display:flex; }
+  .more .box { background:#2a0c08; color:#ffd7cf; border:2px solid #ff2d1f; border-radius:5px; padding:14px 20px;
+    max-width:74%; text-align:center; font-family:"Georgia",serif; font-size:15px; box-shadow:0 2px 14px rgba(0,0,0,.6); }
+  .more .more-tag { display:block; margin-top:8px; font:12px "Consolas",monospace; color:#ff9a8c; letter-spacing:2px; }
+
+  /* floating damage numbers */
+  .dmgfloat { position:absolute; font:bold 15px "Consolas",monospace; pointer-events:none; z-index:15;
+    text-shadow:0 1px 2px #000; transform:translate(-50%,0); animation: dmgrise 0.95s ease-out forwards; }
+  @keyframes dmgrise { 0%{opacity:0;transform:translate(-50%,4px) scale(.8);} 18%{opacity:1;} 100%{opacity:0;transform:translate(-50%,-22px) scale(1.05);} }
+
+  .overlay-host { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:30; }
   .overlay-host:empty { display:none; }
   .scrim { position:absolute; inset:0; background:rgba(16,14,10,.78); display:flex; align-items:center; justify-content:center; }
   .panel { background:var(--panel); border:2px solid var(--ink); padding:16px 18px; max-width:430px; position:relative; }
@@ -95,7 +108,7 @@
   .pack .desc { font-family:"Georgia",serif; font-size:12.5px; color:var(--faint); margin-top:8px; min-height:30px; }
   .pack .hint { font-size:11px; color:var(--faint); margin-top:8px; }
 
-  #debug { position:fixed; right:0; top:0; bottom:0; width:330px; overflow:auto; background:#15130f; color:#cfe3b0; font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:50; }
+  #debug { position:fixed; right:0; top:0; bottom:0; width:330px; overflow:auto; background:#15130f; color:#cfe3b0; font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:60; }
   #debug pre { white-space:pre-wrap; word-break:break-word; margin:0; }
   .vstamp { position:fixed; right:8px; bottom:6px; font:11px "Consolas",monospace; color:#8a7c66; background:rgba(239,231,214,.9); padding:2px 6px; border:1px solid var(--rule); border-radius:3px; }
 </style>
@@ -118,12 +131,17 @@
     <div class="stage">
       <canvas id="cv" width="902" height="506"></canvas>
       <div id="banner" class="banner"></div>
+      <div id="more" class="more"><div class="box"><span id="more-text"></span><span class="more-tag">— press any key to continue —</span></div></div>
       <div id="overlay" class="overlay-host"></div>
     </div>
     <aside id="sidebar">
       <div class="card">
         <div class="card-h">Visitor Dossier</div>
         <div class="card-b" id="dossier"></div>
+      </div>
+      <div class="card">
+        <div class="card-h">Threats in View</div>
+        <div class="card-b" id="threats"></div>
       </div>
       <div class="card">
         <div class="card-h">Controls &amp; Key</div>
@@ -148,38 +166,28 @@
 <script src="interpreter.js"></script>
 <script src="mapmode.js"></script>
 <script src="game.js"></script>
+<script src="ui.js"></script>
 <script>
 (function () {
   var TS = 22, FONT = "18px Consolas, monospace";
+  var P = TD_UI.PALETTE;   // the single palette table — every colour means one thing
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  var stageEl = document.querySelector(".stage");
   var seedInput = document.getElementById("seed"), metaEl = document.getElementById("meta");
   var verifyEl = document.getElementById("verify"), overlay = document.getElementById("overlay");
-  var dossierEl = document.getElementById("dossier"), legendEl = document.getElementById("legend");
-  var cueEl = document.getElementById("cue"), msglogEl = document.getElementById("msglog"), bannerEl = document.getElementById("banner");
+  var dossierEl = document.getElementById("dossier"), threatsEl = document.getElementById("threats"), legendEl = document.getElementById("legend");
+  var cueEl = document.getElementById("cue"), msglogEl = document.getElementById("msglog");
+  var bannerEl = document.getElementById("banner"), moreEl = document.getElementById("more"), moreTextEl = document.getElementById("more-text");
   var debugPanel = document.getElementById("debug"), debugBody = document.getElementById("debugBody");
   var world = null, sim = null, session = { knowledge: new Set(), lives: 0 };
-  var stampMap = new WeakMap();   // message-object -> the turn it first appeared (presentation only)
-  var lastCrit = null;            // last critical message we flashed a banner for
+  // presentation-only state
+  var stampMap = new WeakMap(), lastCrit = null, ackIndex = 0, labelsOn = false;
+  var barker = null, barkPrev = null, lastFx = null;
 
-  // ---- palette: distinct glyph colours by category (higher contrast) -------
-  var COL = {
-    voidc: "#07060a",
-    floorBg: "#574d3c", floorBgDim: "#2a2620", floorDot: "#9b8e72", floorDotDim: "#4a4438",
-    wall: "#c6b48a", wallDim: "#5f564a",
-    water: "#1d3346", waterGlyph: "#6fa0c4",
-    player: "#ffd23a",
-    pendingBg: "#7a5f1e", doorBg: "#403225"
-  };
-  function creatureColor(kind) { return kind === "lurker" ? "#ff5a4a" : kind === "chaser" ? "#ff9e3a" : "#e8c45a"; }
-  function itemColor(kind) { return kind === "ration" ? "#ffd24a" : kind === "bandage" ? "#f0ead6" : "#c98cff"; }
-  function doorColor(d) {
-    if (d.brass) return "#f0c860";
-    if (d.takeable === false) return "#ff6a5a";
-    if (d.type === "stair_down" || d.type === "stair_up") return "#5fdede";
-    if (d.type === "oneway") return "#ffa94a";
-    if (d.glyph) return "#f0c860";                  // town building / gate letters
-    return "#6ee06e";
-  }
+  function creatureColor() { return P.creature; }   // colour = category; glyph = kind
+  function itemColor() { return P.item; }
+  function doorColor() { return P.door; }
+  function catColor(cat) { return cat === "item" ? P.item : cat === "creature" ? P.creature : cat === "signal" ? P.signal : P.door; }
 
   function urlSeed() { var m = /[?&]seed=(\d+)/.exec(location.search); return m ? parseInt(m[1], 10) : null; }
 
@@ -189,14 +197,20 @@
     sim = TD_GAME.create(world, { session: session });
     window.__TD_SIM = function () { return sim; };
     window.__TD_VIEW = function () { return sim.view(); };
-    stampMap = new WeakMap(); lastCrit = null;
+    resetUI();
     seedInput.value = seed;
     metaEl.textContent = "depth " + world.meta.depth + " · arrival day " + world.arrival_day;
     renderVerify(); renderLegend();
     overlay.innerHTML = "";
     draw();
   }
-  function nextCharacter() { sim.newCharacter(); overlay.innerHTML = ""; draw(); }
+  function nextCharacter() { sim.newCharacter(); resetUI(); overlay.innerHTML = ""; draw(); }
+  function resetUI() {
+    stampMap = new WeakMap(); lastCrit = null; ackIndex = 0; labelsOn = false; lastFx = null;
+    barker = TD_UI.Barker(); barkPrev = { level: 0, kill: false, levelTurn: null };
+    Array.prototype.slice.call(stageEl.querySelectorAll(".dmgfloat")).forEach(function (n) { n.remove(); });
+    moreEl.classList.remove("show");
+  }
 
   function renderVerify() {
     var v = TD_CHECK.verify(world);
@@ -210,8 +224,9 @@
   // =========================================================== DRAW =========
   function draw() {
     var vw = sim.view();
+    checkBarks(vw);   // the Bureau may add a line before we render the log
     var vis = new Set(vw.visible), exp = new Set(vw.explored);
-    ctx.fillStyle = COL.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
 
     for (var y = 0; y < vw.h; y++) {
@@ -223,58 +238,54 @@
         var door = (vw.doors || {})[k], plain = (vw.plain || {})[k];
         var glyph = "", col = "#000", bg = null;
         if (door) {
-          bg = (vw.pendingDoor === k) ? COL.pendingBg : COL.doorBg;
-          col = doorColor(door);
+          bg = (vw.pendingDoor === k) ? P.pendingBg : P.doorBg; col = P.door;
           if (door.glyph) glyph = door.glyph;
           else if (door.type === "stair_down") glyph = ">";
           else if (door.type === "stair_up") glyph = "<";
           else if (door.type === "oneway") glyph = "^";
           else glyph = "+";
         } else if (plain) {
-          bg = (vw.pendingDoor === k) ? COL.pendingBg : "#37301f";
-          glyph = plain.open ? "'" : "+"; col = plain.open ? "#8a7c5a" : "#d2a14a";
-        } else if (ch === ".") { bg = bright ? COL.floorBg : COL.floorBgDim; glyph = "·"; col = bright ? COL.floorDot : COL.floorDotDim; }
-        else if (ch === "~") { bg = COL.water; glyph = "≈"; col = COL.waterGlyph; }
-        else if (ch === "#") { glyph = "#"; col = bright ? COL.wall : COL.wallDim; }
+          bg = (vw.pendingDoor === k) ? P.pendingBg : "#37301f"; glyph = plain.open ? "'" : "+"; col = P.door;
+        } else if (ch === ".") { bg = bright ? P.floorBg : P.floorBgDim; glyph = "·"; col = bright ? P.floor : P.floorDim; }
+        else if (ch === "~") { bg = P.water; glyph = "≈"; col = P.waterGlyph; }
+        else if (ch === "#") { glyph = "#"; col = bright ? P.wall : P.wallDim; }
         if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
         if (glyph) { ctx.fillStyle = bright ? col : dim(col); ctx.fillText(glyph, px + TS / 2, py + TS / 2 + 1); }
       }
     }
-    // floor items (visible only)
     Object.keys(vw.items || {}).forEach(function (k) {
       if (!vis.has(k)) return;
       var it = vw.items[k], xy = k.split(","), ix = +xy[0], iy = +xy[1];
-      ctx.fillStyle = itemColor(it.kind); ctx.fillText(it.glyph || "?", ix * TS + TS / 2, iy * TS + TS / 2 + 1);
+      ctx.fillStyle = P.item; ctx.fillText(it.glyph || "?", ix * TS + TS / 2, iy * TS + TS / 2 + 1);
     });
-    // features (town buildings + dungeon signal plaques ¶)
     Object.keys(vw.features || {}).forEach(function (k) {
       if (!vis.has(k)) return;
       var f = vw.features[k], xy = k.split(","), fx = +xy[0], fy = +xy[1];
-      ctx.fillStyle = "#f0c040"; ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
+      ctx.fillStyle = P.signal; ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
     });
-    // creatures (already filtered to visible) with a small HP bar
     vw.creatures.forEach(function (c) {
-      ctx.fillStyle = creatureColor(c.kind);
-      ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
+      ctx.fillStyle = P.creature; ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
       if (typeof c.hp === "number" && typeof c.maxHp === "number" && c.hp < c.maxHp) {
         var frac = Math.max(0, c.hp / c.maxHp);
         ctx.fillStyle = "#2a0d0a"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, TS - 4, 3);
-        ctx.fillStyle = "#ff5a4a"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 3);
+        ctx.fillStyle = P.creature; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 3);
       }
     });
-    // avatar
     var pl = vw.player;
-    ctx.fillStyle = COL.player; ctx.fillText("@", pl.x * TS + TS / 2, pl.y * TS + TS / 2 + 1);
-    // look cursor
+    ctx.fillStyle = P.player; ctx.fillText("@", pl.x * TS + TS / 2, pl.y * TS + TS / 2 + 1);
     if (vw.look && vw.look.active) {
       ctx.strokeStyle = "#f4e3a0"; ctx.lineWidth = 2;
       ctx.strokeRect(vw.look.x * TS + 1, vw.look.y * TS + 1, TS - 2, TS - 2);
     }
+    if (labelsOn) drawLabels(vw);
 
+    spawnDamage(vw);
     renderDossier(vw);
+    renderThreats(vw);
     renderCue(vw);
     renderLog(vw);
     maybeBanner(vw);
+    renderMore(vw);
 
     if (vw.invOpen) renderPack(vw);
     else if (vw.dead) showPostmortem();
@@ -283,18 +294,47 @@
     renderDebug();
   }
 
+  // labels-everything (the Cogmind conceit): every visible notable, at once
+  function drawLabels(vw) {
+    var ls = TD_UI.labels(vw);
+    ctx.font = "11px Consolas, monospace"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ls.forEach(function (L) {
+      var px = L.x * TS, py = L.y * TS, tw = ctx.measureText(L.text).width;
+      var lx = px + TS + 3, ly = py + TS / 2 + 4;
+      if (lx + tw + 4 > cv.width) lx = px - tw - 5;
+      ctx.fillStyle = "rgba(8,6,4,.84)"; ctx.fillRect(lx - 2, ly - 10, tw + 4, 13);
+      ctx.fillStyle = catColor(L.cat); ctx.fillText(L.text, lx, ly);
+    });
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  }
+
+  // floating damage numbers (consistent with the colour rules)
+  function spawnDamage(vw) {
+    if (vw.events === lastFx) return;            // only once per action, not on re-renders
+    lastFx = vw.events;
+    (vw.events || []).forEach(function (ev) {
+      var d = document.createElement("div");
+      d.className = "dmgfloat";
+      d.textContent = "" + ev.amount;
+      d.style.color = (ev.kind === "dealt") ? P.dmgDealt : P.dmgTaken;
+      d.style.left = (ev.x * TS + TS / 2) + "px";
+      d.style.top = (ev.y * TS) + "px";
+      stageEl.appendChild(d);
+      setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 950);
+    });
+  }
+
   // =========================================================== SIDEBAR ======
   function renderDossier(vw) {
     var m = vw.meters || {}, hg = vw.hunger || { stage: "—", critical: false };
-    var hpCol = m.hp < 0.25 * m.hpMax ? "#c25b4f" : m.hp < 0.5 * m.hpMax ? "#b06a1f" : "#2f6d33";
-    var ftCol = m.fatigue > 80 ? "#c25b4f" : m.fatigue > 55 ? "#b06a1f" : "#7a5c3a";
+    var hpCol = m.hp < 0.25 * m.hpMax ? P.dangerHigh : m.hp < 0.5 * m.hpMax ? P.dangerMed : "#2f6d33";
+    var ftCol = m.fatigue > 80 ? P.dangerHigh : m.fatigue > 55 ? P.dangerMed : "#7a5c3a";
     var place = vw.phase === "dungeon" ? ("Level " + vw.level) : (vw.phase === "town" ? "The Harbour" : "Indoors");
-    var hungerCls = hg.critical ? "hunger-starving" : "";
     dossierEl.innerHTML =
       bar("HP", m.hp, m.hpMax, hpCol, true) +
       bar("Fatigue", m.fatigue, m.fatigueMax, ftCol, false) +
       '<div style="height:5px"></div>' +
-      statrow("Hunger", '<span id="sb-hunger" class="' + hungerCls + '">' + escapeHTML(hg.stage) + "</span>") +
+      statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
       statrow("Ticket", '<span id="sb-ticket">' + escapeHTML(vw.ticket || "none") + "</span>") +
       statrow("Place", '<span id="sb-place">' + escapeHTML(place) + "</span>") +
       statrow("Turn", '<span id="sb-turn">' + (vw.turn || 0) + "</span>") +
@@ -308,19 +348,32 @@
   }
   function statrow(k, vHtml) { return '<div class="statrow"><span class="k">' + k + '</span><span class="v">' + vHtml + "</span></div>"; }
 
+  function renderThreats(vw) {
+    var ts = TD_UI.threats(vw);
+    if (!ts.length) { threatsEl.innerHTML = '<div class="none">— nothing stalks you —</div>'; return; }
+    threatsEl.innerHTML = ts.map(function (t) {
+      var dc = t.danger === "high" ? P.dangerHigh : t.danger === "med" ? P.dangerMed : P.dangerLow;
+      var pct = Math.max(0, Math.round(100 * t.hp / t.maxHp));
+      return '<div class="threat" style="border-left:3px solid ' + dc + '">' +
+        '<span class="g" style="color:' + P.creature + '">' + escapeHTML(t.glyph || "?") + "</span>" +
+        '<span class="nm">' + escapeHTML(t.name) + "</span>" +
+        '<span class="bar"><i style="width:' + pct + "%;background:" + dc + '"></i></span></div>';
+    }).join("");
+  }
+
   function renderLegend() {
     legendEl.innerHTML =
       legRow("Move", "← ↑ ↓ → / Y U B N") +
       legRow("Numpad", "7 8 9 · 4 5 6 · 1 2 3") +
-      legRow("Wait", ". or numpad 5") +
-      legRow("Open / use", "o or Enter") +
-      legRow("Close door", "c") + legRow("Search", "s") +
+      legRow("Wait", ". / numpad 5") +
+      legRow("Auto-explore", "x") + legRow("Label all", "Tab") +
+      legRow("Open / use", "o / Enter") + legRow("Close door", "c") + legRow("Search", "s") +
       legRow("Get item", "g") + legRow("Inventory", "i") + legRow("Look", "l") +
       "<hr>" +
       '<div class="glyphkey">' +
-        gk("@", COL.player, "you") + gk("r/L/d", "#ff7a4a", "creatures") +
-        gk("% ! *", "#ffd24a", "items") + gk("+ &gt; ^", "#6ee06e", "doors") +
-        gk("¶", "#f0c040", "signals") +
+        gk("@", P.player, "you") + gk("r L d", P.creature, "creatures") +
+        gk("% ! *", P.item, "items") + gk("+ &gt; ^", P.door, "doors") +
+        gk("¶", P.signal, "signals") +
       "</div>";
   }
   function legRow(k, keys) { return '<div class="row"><span>' + k + '</span><span class="keys">' + keys + "</span></div>"; }
@@ -328,32 +381,22 @@
 
   // =========================================================== CONTEXT CUE ==
   function K(x, y) { return x + "," + y; }
-  function renderCue(vw) {
-    var c = contextCue(vw);
-    cueEl.className = "cue " + (c.kind || "");
-    cueEl.innerHTML = c.html;
-  }
+  function renderCue(vw) { var c = contextCue(vw); cueEl.className = "cue " + (c.kind || ""); cueEl.innerHTML = c.html; }
   function contextCue(vw) {
-    // 1) while looking, echo the look description in voice
     if (vw.look && vw.look.active) return { kind: "look", html: escapeHTML(vw.lastEvent || "Look — …") };
     var p = vw.player;
-    // 2) an item underfoot
     var under = (vw.items || {})[K(p.x, p.y)];
     if (under) return { kind: "act", html: '<span class="pre">g</span> — pick up ' + escapeHTML(under.name) };
-    // 3) a door you are facing (already bumped: Enter acts now)
     if (vw.pendingDoor) {
       var pd = (vw.doors || {})[vw.pendingDoor], pp = (vw.plain || {})[vw.pendingDoor];
       if (pd) return { kind: "act", html: doorEnterCue(pd) };
       if (pp) return { kind: "act", html: '<span class="pre">o</span> / <span class="pre">Enter</span> — open the inner door' };
     }
-    // 4) a sale in progress (you stepped into the counter)
     var pc = sim._pendingCounter ? sim._pendingCounter() : null;
     if (pc) return { kind: "act", html: '<span class="pre">Enter</span> — close the deal · step away to decline' };
-    // 5) scan the eight neighbours for the nearest interactable; cue how to use it
     var adj = scanAdjacent(vw);
     if (adj) return { kind: "", html: adj };
-    // 6) nothing pressing — a quiet reminder of the verbs
-    return { kind: "", html: '<span class="pre">move</span> with the arrows or numpad · <span class="pre">l</span> to look about · <span class="pre">i</span> for your pack' };
+    return { kind: "", html: '<span class="pre">move</span> with the arrows or numpad · <span class="pre">x</span> auto-explore · <span class="pre">l</span> look · <span class="pre">i</span> pack' };
   }
   function scanAdjacent(vw) {
     var p = vw.player, off = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]];
@@ -394,7 +437,7 @@
   }
 
   // =========================================================== MESSAGE LOG ==
-  var NOTE_RE = /(You take|You eat|You apply|You strike|serve .* notice|amends your itinerary|swings open|inner door shut|find a seam|hidden pocket|present your ticket|Standard Admission|Guided Package|wake wonderfully|grow |Enter to accept|set down|put down)/i;
+  var NOTE_RE = /(You take|You eat|You apply|You strike|serve .* notice|amends your itinerary|swings open|inner door shut|find a seam|hidden pocket|present your ticket|Standard Admission|Guided Package|wake wonderfully|grow |Enter to accept|set down|put down|the Bureau)/i;
   function tierOf(m) { if (m.urgent) return "crit"; if (NOTE_RE.test(m.text)) return "note"; return "routine"; }
   function renderLog(vw) {
     var msgs = vw.messages || [];
@@ -410,10 +453,31 @@
   function maybeBanner(vw) {
     var msgs = vw.messages || [], m = msgs[msgs.length - 1];
     if (m && m.urgent && m !== lastCrit) {
-      lastCrit = m;
-      bannerEl.textContent = m.text;
+      lastCrit = m; bannerEl.textContent = m.text;
       bannerEl.classList.remove("show"); void bannerEl.offsetWidth; bannerEl.classList.add("show");
     }
+  }
+  // the --more-- halt: a pending critical shows here; the keydown handler blocks input
+  function renderMore(vw) {
+    var gate = TD_UI.moreGate(vw.messages, ackIndex);
+    if (gate.blocked) { moreTextEl.textContent = gate.text; moreEl.classList.add("show"); }
+    else moreEl.classList.remove("show");
+  }
+
+  // =========================================================== BUREAU BARKS ==
+  function trySay(line) { if (line) { sim.say(line); return true; } return false; }
+  function checkBarks(vw) {
+    if (!vw || vw.phase !== "dungeon" || !barker) return;
+    var turn = vw.turn || 0, m = vw.meters || {};
+    if ((vw.kills || 0) > 0 && !barkPrev.kill) { barkPrev.kill = true; trySay(barker.react("first_kill", turn)); }
+    if (vw.level >= 1 && vw.level > barkPrev.level) {
+      var firstEver = barkPrev.level === 0;
+      barkPrev.level = vw.level; barkPrev.levelTurn = turn;
+      if (firstEver) trySay(barker.react("first_descent", turn));
+      if (vw.hunger && vw.hunger.rung >= 3) trySay(barker.react("famished_entry", turn));
+    }
+    if (!vw.dead && m.hp > 0 && m.hp < 0.25 * (m.hpMax || 100)) trySay(barker.react("low_hp", turn));
+    if (barkPrev.levelTurn != null && (turn - barkPrev.levelTurn) > 80) { if (trySay(barker.react("lingering", turn))) barkPrev.levelTurn = turn; }
   }
 
   // =========================================================== OVERLAYS ======
@@ -461,9 +525,8 @@
     debugBody.textContent = JSON.stringify({
       seed: world.meta.seed, phase: v.phase, level: v.level, turn: v.turn,
       player: v.player, ticket: v.ticket, meters: v.meters, hunger: v.hunger,
-      inventory: (v.inventory || []).map(function (i) { return i.name; }),
-      look: v.look, invOpen: v.invOpen, lastUrgent: v.lastUrgent,
-      dead: v.dead, won: v.won
+      threats: TD_UI.threats(v).length, labelsOn: labelsOn, ackIndex: ackIndex,
+      look: v.look, invOpen: v.invOpen, lastUrgent: v.lastUrgent, dead: v.dead, won: v.won
     }, null, 2);
   }
 
@@ -474,19 +537,19 @@
   function escapeHTML(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
 
   // =========================================================== INPUT =========
-  var MOVE = {
-    ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
-    y: "ul", u: "ur", b: "dl", n: "dr"
-  };
-  var NUMPAD = {
-    Numpad1: "dl", Numpad2: "down", Numpad3: "dr", Numpad4: "left",
-    Numpad6: "right", Numpad7: "ul", Numpad8: "up", Numpad9: "ur"
-  };
+  var MOVE = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", y: "ul", u: "ur", b: "dl", n: "dr" };
+  var NUMPAD = { Numpad1: "dl", Numpad2: "down", Numpad3: "dr", Numpad4: "left", Numpad6: "right", Numpad7: "ul", Numpad8: "up", Numpad9: "ur" };
   document.addEventListener("keydown", function (e) {
     var raw = e.key, code = e.code;
     var k = (raw && raw.length === 1) ? raw.toLowerCase() : raw;
     if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
+
+    // --more-- HALT: a pending critical accepts no input but acknowledgment
+    var gate = TD_UI.moreGate(sim.view().messages, ackIndex);
+    if (gate.blocked) { e.preventDefault(); ackIndex = gate.index + 1; draw(); return; }
+
     var vw = sim.view();
+    if (k === "Tab") { e.preventDefault(); labelsOn = !labelsOn; draw(); return; }
 
     if (vw.look && vw.look.active) {
       if (k === "Escape" || k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
@@ -503,6 +566,7 @@
       if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.invSelect(k.charCodeAt(0) - 97); draw(); return; }
       return;
     }
+    if (k === "x") { e.preventDefault(); var res = TD_UI.autoExplore(sim); if (res && res.say) sim.say(res.say); draw(); return; }
     if (k === "Enter" || k === "o") { e.preventDefault(); sim.commit(); draw(); return; }
     if (k === "." || code === "Numpad5") { e.preventDefault(); sim.wait(); draw(); return; }
     if (k === "g") { e.preventDefault(); sim.get(); draw(); return; }
@@ -516,7 +580,7 @@
   document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
 
-  var VERSION = "play-map v7 · UI overhaul", BUILD = "72e4394";
+  var VERSION = "play-map v8 · steal list", BUILD = "793e95e";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

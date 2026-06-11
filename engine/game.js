@@ -363,7 +363,7 @@ var TD_GAME = (function () {
         phase: placeId === "TOWN" ? "town" : "interior", w: W, h: H,
         grid: P.grid.map(function (r) { return r.join(""); }),
         doors: P.doors, features: P.features, items: {}, plain: {},
-        player: { x: player.x, y: player.y }, creatures: [],
+        player: { x: player.x, y: player.y }, creatures: [], events: [],
         explored: explored, visible: explored,
         level: 0, title: P.title, meters: meters, ticket: character.ticket,
         requiredTotal: 0, requiredDone: 0,
@@ -416,6 +416,7 @@ var TD_GAME = (function () {
       wait: wait, get: get, search: search, closeDoor: closeDoor,
       toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected,
       lookToggle: lookToggle, lookMove: lookMove,
+      say: function (t) { logMsg(t); },   // the Bureau speaks during play (presentation flavour)
       isDead: function () { return dead; }, isComplete: function () { return won; },
       SIG: SIG, brassTarget: brassTarget,
       _interact: function (type) { lastEvent = null; act(type); return { event: lastEvent, phase: placeId === "DUNGEON" ? "dungeon" : "town" }; },
