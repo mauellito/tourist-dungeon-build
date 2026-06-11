@@ -270,7 +270,11 @@
   function draw() {
     var vw = sim.view();
     checkBarks(vw);   // the Bureau may add a line before we render the log
-    if (cv.width !== vw.w * TS || cv.height !== vw.h * TS) { cv.width = vw.w * TS; cv.height = vw.h * TS; }  // the town is larger than the dungeon
+    // dynamic tile size: shrink for the large sprawling town so it fits beside
+    // the sidebar; full size for the dungeon. All draw helpers read this TS/FONT.
+    TS = Math.max(11, Math.min(22, Math.floor(940 / vw.w)));
+    FONT = (TS - 4) + "px Consolas, monospace";
+    if (cv.width !== vw.w * TS || cv.height !== vw.h * TS) { cv.width = vw.w * TS; cv.height = vw.h * TS; }
     var vis = new Set(vw.visible), exp = new Set(vw.explored);
     ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";

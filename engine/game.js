@@ -26,7 +26,7 @@ var TD_GAME = (function () {
     "011": { ch: "OBJ", t: "Behind the cold and rat-less wall, a stair ascends to serve them all." },
     "012": { ch: "OBJ", t: "Across the water the monastery and the graveyard sit in plain view, and just as plainly cannot be reached from here." }
   };
-  var W = 49, H = 25;   // the harbour town (larger than the 41x23 dungeon)
+  var W = 64, H = 40;   // the harbour town — a sprawl (the dungeon stays 41x23)
   var DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], ul: [-1, -1], ur: [1, -1], dl: [-1, 1], dr: [1, 1] };
   function key(x, y) { return x + "," + y; }
   function cheby(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); }
@@ -54,12 +54,13 @@ var TD_GAME = (function () {
     church: { title: "The Church", glyph: "C", act: "blessing", counter: "the rail", sign: ["THE CHURCH", "Open to the living and, by appointment, the lately-living."] },
     tim: { title: "Tim's Tour Guide", glyph: "G", act: "tim", counter: "the desk", sign: ["TIM'S TOUR GUIDE", "Hints sold here. (Closed.)"] },
     tattoo: { title: "The Tattoo Parlor", glyph: "Z", act: "flavor", counter: "the table", sign: ["THE TATTOO PARLOR", "Permanent souvenirs of a temporary visit."] },
-    boat: { title: "Boat Rental", glyph: "Y", act: "boat", counter: "the dock desk", sign: ["BOAT RENTAL", "Rent a boat. The boat goes where the boat goes."] }
+    boat: { title: "Boat Rental", glyph: "Y", act: "boat", counter: "the dock desk", sign: ["BOAT RENTAL", "Rent a boat. The boat goes where the boat goes."] },
+    redshop: { title: "the Red Light Shop", glyph: "x", act: "flavor", counter: "the curtained counter", sign: ["THE RED LIGHT SHOP", "Discreet sundries for the discerning visitor. The Bureau files it under 'sundry'."] }
   };
   // which voice keeps each place (accent map): posh / brooklyn / pastoral / plainspoken / mixed
   var KEEPER = {
     kiosk: "kiosk", agency: "agency", hotel: "hotel", spa: "spa", tavern: "keeper_brooklyn",
-    saloon: "keeper_brooklyn", bodega: "keeper_brooklyn", boat: "keeper_brooklyn",
+    saloon: "keeper_brooklyn", bodega: "keeper_brooklyn", boat: "keeper_brooklyn", redshop: "keeper_brooklyn",
     bank: "keeper_posh", church: "keeper_pastoral",
     blacksmith: "keeper_plain", motel: "keeper_plain", barber: "keeper_plain",
     tim: "keeper_mixed", tattoo: "keeper_mixed", restaurant: "keeper_mixed", coffee: "coffee"
@@ -89,11 +90,11 @@ var TD_GAME = (function () {
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
-      vendor = { x: 24, y: 14, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true };   // mobile
+      vendor = { x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true };   // works the tourist strip
       townsfolk = [                                       // wandering flavor NPCs; the town breathes
-        { id: "nuns", voiceId: "nuns", x: 20, y: 12, glyph: "n", name: "a pair of nuns", frozen: false },
-        { id: "farmers", voiceId: "farmers", x: 28, y: 14, glyph: "f", name: "a farmer", frozen: false },
-        { id: "senorita", voiceId: "senorita", x: 24, y: 18, glyph: "s", name: "a señorita", frozen: false }
+        { id: "nuns", voiceId: "nuns", x: 44, y: 24, glyph: "n", name: "a pair of nuns", frozen: false },     // near the church
+        { id: "farmers", voiceId: "farmers", x: 20, y: 25, glyph: "f", name: "a farmer", frozen: false },     // the mid street
+        { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false }
       ];
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
@@ -197,37 +198,74 @@ var TD_GAME = (function () {
       Object.keys(INTERIORS).forEach(function (id) { places[id] = buildInterior(id); });
     }
 
-    // The harbour town — a main-street spine: the DUNGEON GATE at the top, the
-    // HARBOUR along the bottom, buildings facing the street in pairs, the Rusty
-    // Anchor and Boat Rental at the water, and the red-lit Quay's End (exterior
-    // only). Everything opens onto an open plaza, so every door is reachable.
+    // The harbour town — a SPRAWL. Street hierarchy is town law (TOWN LAW):
+    // 4-wide MAIN streets form a T (vertical stem to the harbour + a top cross
+    // bar); 3-wide SECONDARY streets branch off; the red-light district is
+    // 2-wide alleys plus a 1-wide one. Width signals respectability. The harbour
+    // is the front door (cheap near the water, quality rising inland). Buildings
+    // face the streets; the island folds into the harbour rail (012).
     function buildTown() {
       var g = blank();
-      carve(g, 3, 2, 45, 22);                  // the streets / plaza (open => reachable)
-      fill(g, 3, 23, 45, 24, "~");             // the harbour, curving along the bottom
+      var streets = [], districts = {};
+      function street(id, district, x0, y0, x1, y1) {
+        carve(g, x0, y0, x1, y1);
+        streets.push({ id: id, district: district, width: Math.min(x1 - x0 + 1, y1 - y0 + 1), rect: [x0, y0, x1, y1] });
+      }
+      function zone(name, x0, y0, x1, y1) { districts[name] = { rect: [x0, y0, x1, y1], doors: [] }; }
+      // --- the T: 4-wide main streets ---
+      street("main-bar", "main", 6, 5, 57, 8);        // the cross bar (top)
+      street("main-stem", "main", 30, 5, 33, 37);     // the stem, down to the harbour
+      // --- 3-wide secondary streets ---
+      street("sec-west", "shops", 11, 8, 13, 26);
+      street("sec-east", "civic", 50, 8, 52, 28);
+      street("sec-mid", "shops", 8, 24, 52, 26);       // the mid cross
+      street("dock-st", "waterfront", 6, 32, 57, 34);  // the docks road (cheap, by the water)
+      // --- the red-light district: the streets PINCH as you approach (Novigrad) ---
+      street("red-approach", "redlight", 8, 26, 9, 32);   // 2-wide, narrowing down
+      street("red-alley", "redlight", 8, 34, 15, 35);     // 2-wide
+      street("red-slit", "redlight", 12, 35, 12, 37);     // a 1-wide alley
+      // the harbour, curving along the bottom
+      fill(g, 3, 38, 60, 39, "~");
+      // the fountain plaza where the T crosses (open square; the fountain lands in R3)
+      carve(g, 26, 9, 37, 15);
+
+      zone("main", 6, 2, 57, 8); zone("tourist-strip", 18, 2, 46, 5);
+      zone("shops", 8, 9, 26, 26); zone("waterfront", 6, 30, 57, 37); zone("redlight", 6, 26, 16, 37);
+
       var doors = {}, features = {};
-      function bld(x0, y0, x1, y1, dx, dy, to, glyph, name) { fill(g, x0, y0, x1, y1, "#"); g[dy][dx] = "."; doors[key(dx, dy)] = { to: to, glyph: glyph, label: name }; }
-      bld(22, 2, 26, 3, 24, 4, "DUNGEON", ">", "the Dungeon Gate");
-      // left column | right column (paired, descending the spine)
-      bld(4, 3, 8, 5, 6, 6, "saloon", "S", "the Saloon");          bld(40, 3, 44, 5, 42, 6, "hotel", "H", "the Gilded Kraken Hotel");
-      bld(4, 7, 8, 9, 6, 10, "motel", "M", "the Motel");           bld(40, 7, 44, 9, 42, 10, "tim", "G", "Tim's Tour Guide");
-      bld(4, 11, 8, 13, 6, 14, "bank", "B", "the Bank");           bld(40, 11, 44, 13, 42, 14, "blacksmith", "L", "the Blacksmith");
-      bld(4, 15, 8, 17, 6, 18, "barber", "R", "the Barber");       bld(40, 15, 44, 17, 42, 18, "spa", "P", "the Spa");
-      // the inner street / shops side
-      bld(12, 3, 16, 5, 14, 6, "kiosk", "K", "the Admission Kiosk");   bld(32, 3, 36, 5, 34, 6, "agency", "A", "the Tour Agency");
-      bld(12, 7, 16, 9, 14, 10, "coffee", "O", "the Coffee Shop");     bld(32, 7, 36, 9, 34, 10, "restaurant", "E", "the Restaurant");
-      bld(12, 11, 16, 13, 14, 14, "bodega", "D", "the Bodega");        bld(32, 11, 36, 13, 34, 14, "tattoo", "Z", "the Tattoo Parlor");
-      bld(12, 15, 16, 17, 14, 18, "church", "C", "the Church");
-      // the waterfront row
-      bld(6, 19, 11, 21, 8, 22, "tavern", "T", "the Rusty Anchor");
-      bld(20, 19, 25, 21, 22, 22, "boat", "Y", "Boat Rental");
-      bld(34, 19, 39, 21, 37, 22, "redlit", "Q", "the Quay's End");
-      // the doorman gate (Rusty Anchor) and the ticket gate (Dungeon Gate)
-      doors[key(8, 22)].gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
-      doors[key(24, 4)].gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
+      function bld(dx, dy, to, glyph, name, district) { doors[key(dx, dy)] = { to: to, glyph: glyph, label: name }; if (districts[district]) districts[district].doors.push(key(dx, dy)); }
+
+      // --- main street (posh, inland/top): gate + hotel + bank + spa + saloon ---
+      bld(31, 5, "DUNGEON", ">", "the Dungeon Gate", "main");
+      bld(24, 5, "bank", "B", "the Bank", "main");
+      bld(38, 5, "hotel", "H", "the Gilded Kraken Hotel", "main");
+      bld(46, 5, "spa", "P", "the Spa", "main");
+      bld(10, 5, "saloon", "S", "the Saloon", "tourist-strip");
+      bld(53, 5, "tim", "G", "Tim's Tour Guide", "main");
+      // --- shops district (around the plaza / the west secondary) ---
+      bld(12, 12, "kiosk", "K", "the Admission Kiosk", "shops");
+      bld(12, 16, "agency", "A", "the Tour Agency", "shops");
+      bld(35, 12, "coffee", "O", "the Coffee Shop", "shops");
+      bld(20, 25, "barber", "R", "the Barber", "shops");
+      // --- civic / east secondary ---
+      bld(51, 14, "restaurant", "E", "the Restaurant", "civic");
+      bld(51, 20, "tattoo", "Z", "the Tattoo Parlor", "civic");
+      bld(51, 25, "blacksmith", "L", "the Blacksmith", "civic");
+      bld(44, 25, "church", "C", "the Church", "civic");
+      // --- waterfront (cheap, by the water): motel at the edge, boat, the Anchor, bodega ---
+      bld(53, 33, "motel", "M", "the Motel", "waterfront");
+      bld(40, 33, "boat", "Y", "Boat Rental", "waterfront");
+      bld(26, 33, "tavern", "T", "the Rusty Anchor", "waterfront");
+      bld(15, 33, "bodega", "D", "the Bodega", "redlight");
+      // --- the red-light district (alleys) ---
+      bld(10, 35, "redshop", "x", "the Red Light Shop", "redlight");
+      bld(9, 30, "redlit", "Q", "the Quay's End", "redlight");
+      // gates
+      doors[key(26, 33)].gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
+      doors[key(31, 5)].gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
       // the harbour rail: the island offshore, in plain sight and plainly off-limits (012)
-      features[key(28, 22)] = { type: "lookout", glyph: "≈", label: "harbour rail", text: SIG["012"].t, act: "lookout" };
-      return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 24, y: 12 } };
+      features[key(31, 37)] = { type: "lookout", glyph: "≈", label: "harbour rail", text: SIG["012"].t, act: "lookout" };
+      return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 31, y: 20 }, meta: { streets: streets, districts: districts } };
     }
 
     function buildInterior(id) {
