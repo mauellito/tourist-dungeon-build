@@ -96,11 +96,11 @@ var TD_GAME = (function () {
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; sensedGarden = false;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
-      vendor = { x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true };   // works the tourist strip
-      townsfolk = [                                       // wandering flavor NPCs; the town breathes
-        { id: "nuns", voiceId: "nuns", x: 44, y: 24, glyph: "n", name: "a pair of nuns", frozen: false },     // near the church
-        { id: "farmers", voiceId: "farmers", x: 20, y: 25, glyph: "f", name: "a farmer", frozen: false },     // the mid street
-        { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false }
+      vendor = { x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true, home: { x: 31, y: 7 }, radius: 9 };   // works the tourist strip
+      townsfolk = [                                       // wandering flavor NPCs anchored to a home patch
+        { id: "nuns", voiceId: "nuns", x: 44, y: 24, glyph: "n", name: "a pair of nuns", frozen: false, home: { x: 44, y: 25 }, radius: 6 },   // near the church
+        { id: "farmers", voiceId: "farmers", x: 20, y: 25, glyph: "f", name: "a farmer", frozen: false, home: { x: 20, y: 25 }, radius: 7 },
+        { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false, home: { x: 31, y: 30 }, radius: 8 }
       ];
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
@@ -419,6 +419,7 @@ var TD_GAME = (function () {
       sensedWater = nearW;
       // secret grammar: the hidden church garden is telegraphed by a draft
       if (!sensedGarden && Math.max(Math.abs(nx - 46), Math.abs(ny - 27)) <= 1) { senses("A cool draft slips from behind the church — there is a way around.", "heard", "OBJ"); sensedGarden = true; }
+      maybeGiftDuel();
       return { moved: true };
     }
     function waterAdjacent(P, x, y) {
@@ -442,8 +443,29 @@ var TD_GAME = (function () {
           if (x < 0 || y < 0 || x >= W || y >= H) continue;
           if (T.grid[y][x] === "." && !T.doors[key(x, y)] && !T.features[key(x, y)] && !(x === player.x && y === player.y) && !occupied(list, npc, x, y)) opts.push({ x: x, y: y });
         }
-        if (opts.length) { var p = opts[Math.floor(Math.random() * opts.length)]; npc.x = p.x; npc.y = p.y; }
+        if (!opts.length) return;
+        // route bias: stay within a home patch (the nuns linger by the church,
+        // the vendor works the strip) — keep options inside the radius if any.
+        if (npc.home) {
+          var near = opts.filter(function (o) { return (Math.abs(o.x - npc.home.x) + Math.abs(o.y - npc.home.y)) <= (npc.radius || 6); });
+          if (near.length) opts = near;
+          else opts.sort(function (a, b) { return (Math.abs(a.x - npc.home.x) + Math.abs(a.y - npc.home.y)) - (Math.abs(b.x - npc.home.x) + Math.abs(b.y - npc.home.y)); }).splice(1);
+        }
+        var p = opts[Math.floor(Math.random() * opts.length)]; npc.x = p.x; npc.y = p.y;
       });
+    }
+    // the two gift shops trade dueling barks when the visitor is near both
+    function maybeGiftDuel() {
+      if (placeId !== "TOWN" || typeof TD_VOICES === "undefined") return;
+      if (cheby(player, { x: 28, y: 5 }) > 5 || cheby(player, { x: 34, y: 5 }) > 5) return;
+      session.giftDuel = session.giftDuel || { t: -99, used1: {}, used2: {} };
+      var s = session.giftDuel;
+      if (shared.turn - s.t < 4) return;                  // rate-limited; sparing
+      s.t = shared.turn;
+      var g1 = TD_VOICES.byId("gift1"), g2 = TD_VOICES.byId("gift2");
+      function bark(spec, used) { var a = (spec && spec.barks) || []; for (var i = 0; i < a.length; i++) if (!used[a[i]]) { used[a[i]] = 1; return a[i]; } return null; }
+      var b1 = bark(g1, s.used1); if (b1) senses("Ye Olde Dungeon Gifte: “" + b1 + "”", "said", "SUBJ");
+      var b2 = bark(g2, s.used2); if (b2) senses("Authentic Dungeon Souvenirs: “" + b2 + "”", "said", "SUBJ");
     }
     function buyHotDog() {
       shared.inventory.push(makeHotDog());
@@ -668,6 +690,8 @@ var TD_GAME = (function () {
       _freezeVendor: function (b) { if (vendor) vendor.frozen = !!b; (townsfolk || []).forEach(function (n) { n.frozen = !!b; }); },
       _voice: function (id) { return voice(id); },
       _keepers: function () { return KEEPER; },
+      _townMeta: function () { return places.TOWN.meta; },
+      _warp: function (x, y) { player = { x: x, y: y }; return view(); },
       _playerState: function () { return playerState(); },
       _hunger: function () { return TD_MAP.hungerStage(meters); },
       _inventory: function () { return shared.inventory; },

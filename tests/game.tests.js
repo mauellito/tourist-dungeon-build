@@ -279,6 +279,46 @@ function TD_GAME_TESTS() {
     g.view().creatures.forEach(function (c) { assert(!(c.x === g._player().x && c.y === g._player().y), "no walker ever sits on the player"); });
   });
 
+  // ----------------------------------- TOWN LAW: STREET WIDTHS (v13) --------
+  test("street widths follow the 4/3/2/1 hierarchy, carved as declared", function () {
+    var g = game(); var meta = g._townMeta(), v = g.view();
+    function carvedWidth(seg) {
+      var r = seg.rect, horizontal = (r[2] - r[0]) > (r[3] - r[1]), c;
+      if (horizontal) { var x = Math.floor((r[0] + r[2]) / 2); c = 0; for (var y = r[1]; y <= r[3]; y++) { var t = v.grid[y][x]; if (t === "." || t === "~") c++; } }
+      else { var yy = Math.floor((r[1] + r[3]) / 2); c = 0; for (var xx = r[0]; xx <= r[2]; xx++) { var t2 = v.grid[yy][xx]; if (t2 === "." || t2 === "~") c++; } }
+      return c;
+    }
+    var by = {}; meta.streets.forEach(function (s) { by[s.id] = s; });
+    eq(by["main-bar"].width, 4, "the T's bar is a 4-wide main street");
+    eq(by["main-stem"].width, 4, "the T's stem is a 4-wide main street");
+    assert(by["sec-west"].width === 3 && by["sec-east"].width === 3, "secondary streets are 3 wide");
+    assert(by["red-approach"].width === 2 && by["red-alley"].width === 2, "red-light alleys are 2 wide");
+    eq(by["red-slit"].width, 1, "the red-light district has a 1-wide alley");
+    meta.streets.forEach(function (s) { assert(carvedWidth(s) >= s.width, s.id + ": carved to at least its declared width (" + carvedWidth(s) + ">=" + s.width + ")"); });
+  });
+
+  test("districts are zoned, each with at least one building door", function () {
+    var g = game(); var d = g._townMeta().districts;
+    ["main", "tourist-strip", "shops", "waterfront", "redlight"].forEach(function (name) {
+      assert(d[name] && d[name].doors.length >= 1, name + ": zoned with a door (" + (d[name] ? d[name].doors.length : 0) + ")");
+    });
+  });
+
+  // ----------------------------------- GIFT-SHOP RIVALRY (v13) --------------
+  test("the two gift shops trade rivalry barks near both, never repeating", function () {
+    var g = game();
+    var seen = {}, barks = 0;
+    for (var i = 0; i < 12; i++) {
+      g._warp(31, 6 + (i % 2));                            // stand between the two shops
+      var before = g._shared().messages.length;
+      g.move(i % 2 ? "down" : "up");                       // a step triggers the duel (rate-limited)
+      g._shared().messages.slice(before).forEach(function (m) {
+        if (/Gifte|Authentic Dungeon Souvenirs/.test(m.text)) { assert(!seen[m.text], "no repeated bark: " + m.text); seen[m.text] = 1; barks++; }
+      });
+    }
+    assert(barks >= 2, "the shops bark at each other near the strip (" + barks + ")");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }
