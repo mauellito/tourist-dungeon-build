@@ -206,13 +206,56 @@ function TD_MAP_TESTS() {
     assert(cr.x < 24 || cr.y !== 11, "the chaser advanced from its spot");
   });
 
-  // ------------------------------------------- COMBAT MESSAGE CARRIES HP -----
-  test("a struck-but-living creature reports its remaining HP in the log", function () {
+  // ------------------------------------------- COMBAT NARRATION + HP --------
+  test("combat is narrated: your blow shows HP, the reply is in the Bureau register", function () {
     var g = TD_MAP.create(world(), { creatures: true });
     g._setCreatures([{ x: 21, y: 11, kind: "lurker", hp: 45, maxHp: 45, dmg: 16, name: "a patient lurker", glyph: "L" }]);
-    var r = g.move("right");                               // 20 dmg, it survives (25 left)
+    var r = g.move("right");                               // 20 dmg, it survives (25 left), then replies once
     assert(r.attacked && !r.killed, "it survives the first blow");
-    includes(r.event, "25/45", "the log shows the creature's remaining HP");
+    var texts = g._messages().map(function (m) { return m.text; }).join(" || ");
+    includes(texts, "25/45", "the log shows the creature's remaining HP after your blow");
+    includes(texts, "amends your itinerary", "the creature's single reply is narrated in the register");
+  });
+
+  // ------------------------------------------- MESSAGE URGENCY TIERS --------
+  test("critical events (low HP hit, one-way seal) are flagged urgent in the log", function () {
+    var g = TD_MAP.create(world(), { creatures: true });
+    g._meters().hp = 18;                                   // a hair over a quarter of 100
+    g._setCreatures([{ x: 21, y: 11, kind: "chaser", hp: 200, maxHp: 200, dmg: 8, name: "a fervent docent", glyph: "d" }]);
+    g.move("right");                                       // it survives, replies for 8 -> hp 10 (< 25%)
+    var last = g._messages()[g._messages().length - 1];
+    assert(last.urgent, "the blow that drops you below a quarter is urgent");
+
+    var g2 = TD_MAP.create(world({ one_way: true }), { creatures: false });
+    var ups2 = function (n) { for (var i = 0; i < n; i++) g2.move("up"); };
+    ups2(6); g2.open();                                    // descend the one-way stair
+    var msgs = g2._messages();
+    assert(msgs.some(function (m) { return m.urgent && /seals behind you/.test(m.text); }), "the one-way seal is urgent");
+  });
+
+  // -------------------------------------- HUNGER LADDER + REST RECOVERY -----
+  test("the hunger ladder is named, and only STARVING bites; resting recovers fatigue", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    var m = g._meters();
+    m.satiation = 100; eq(g._hunger().stage, "well fed");
+    m.satiation = 55;  eq(g._hunger().stage, "Peckish");
+    m.satiation = 30;  eq(g._hunger().stage, "Hungry");
+    m.satiation = 12;  eq(g._hunger().stage, "Famished", "Famished does not bite");
+    assert(!g._hunger().critical, "Famished is not critical");
+    m.satiation = 2;   eq(g._hunger().stage, "Starving");
+    assert(g._hunger().critical, "only Starving is critical");
+    // rest recovers fatigue when nothing is in sight
+    m.satiation = 100; m.fatigue = 40;
+    g.wait();
+    assert(m.fatigue < 40, "waiting with no enemy in sight eases fatigue");
+  });
+
+  test("food lasts much longer than before (many steps before it bites)", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    g._meters().satiation = 100;
+    for (var i = 0; i < 40; i++) { g.move(i % 2 ? "left" : "right"); }   // 40 actions
+    assert(g._hunger().stage === "well fed" || g._hunger().stage === "Peckish",
+      "after 40 steps a full character is at worst Peckish (not starving)");
   });
 
   var pass = results.filter(function (r) { return r.ok; }).length;

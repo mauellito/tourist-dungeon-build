@@ -158,6 +158,50 @@ function TD_GAME_TESTS() {
     assert(!g._look().active, "look toggles off");
   });
 
+  // ----------------------------------- PURCHASES ARE CONVERSATIONS ----------
+  test("a purchase is a conversation: contact pitches, only Enter closes the deal", function () {
+    var g = game();
+    g._goto("kiosk");
+    for (var i = 0; i < 6; i++) g.move("up");             // up to the counter's doorstep
+    var r = g.move("up");                                 // bump the desk
+    assert(r.bumpedCounter, "bumping the desk begins a conversation, not a sale");
+    eq(g._character().ticket, null, "no ticket changes hands on contact");
+    eq(g._pendingCounter(), "kiosk", "the kiosk's offer is pending");
+    inc(g._lastEvent(), "Enter to accept", "a clear offer line is shown");
+    g.commit();                                           // Enter closes the deal
+    eq(g._character().ticket, "standard", "Enter completes the purchase");
+  });
+
+  test("stepping away declines the offer — no deal closes", function () {
+    var g = game();
+    g._goto("agency");
+    for (var i = 0; i < 6; i++) g.move("up");
+    g.move("up");                                         // bump the desk
+    eq(g._pendingCounter(), "agency", "the Agency's offer is pending");
+    g.move("down");                                       // step away
+    eq(g._pendingCounter(), null, "stepping away clears the pending sale");
+    g.commit();                                           // nothing to close
+    eq(g._character().ticket, null, "no ticket was bought");
+  });
+
+  // ----------------------------------- FOOD + HUNGER LADDER -----------------
+  test("the tavern deal feeds you now and hands you rations for the road", function () {
+    var g = game();
+    g._meters().satiation = 30;
+    g._interact("food");
+    var rations = g._inventory().filter(function (i) { return i.kind === "ration"; });
+    assert(rations.length >= 2, "two rations land in the pack");
+    eq(g._meters().satiation, 100, "the hot meal fills you now");
+  });
+
+  test("the HUD carries the named hunger stage", function () {
+    var g = game();
+    g._meters().satiation = 12;
+    eq(g.view().hunger.stage, "Famished");
+    g._meters().satiation = 100;
+    eq(g.view().hunger.stage, "well fed");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

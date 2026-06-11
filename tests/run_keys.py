@@ -46,6 +46,8 @@ F.onload = function(){
   function lastMsg(){ var m=(view().messages||[]); return m[m.length-1]||''; }
   // dispatch a real keydown with an exact key value into the shipped page
   function pk(keyStr){ doc.dispatchEvent(new win.KeyboardEvent('keydown',{key:keyStr,bubbles:true,cancelable:true})); }
+  // dispatch with a physical-key code too (numpad; NumLock-on reports key=digit)
+  function pkc(keyStr,codeStr){ doc.dispatchEvent(new win.KeyboardEvent('keydown',{key:keyStr,code:codeStr,bubbles:true,cancelable:true})); }
   var DIR={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',ul:'y',ur:'u',dl:'b',dr:'n'};
   function press(d){ pk(DIR[d]); }
   var DV={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0],ul:[-1,-1],ur:[1,-1],dl:[-1,1],dr:[1,1]};
@@ -75,6 +77,14 @@ F.onload = function(){
     var p0=view().player; press('ur'); var p1=view().player;
     ok('diagonal key (u = up-right) moves both axes', p1.x===p0.x+1 && p1.y===p0.y-1);
 
+    // ============================ NUMPAD (NumLock on) =====================
+    var n0=view().player; pkc('4','Numpad4'); var n1=view().player;
+    ok('numpad 4 moves left', n1.x===n0.x-1 && n1.y===n0.y);
+    pkc('9','Numpad9'); var n2=view().player;
+    ok('numpad 9 moves up-right (diagonal)', n2.x===n1.x+1 && n2.y===n1.y-1);
+    var tt=view().turn; pkc('5','Numpad5');
+    ok('numpad 5 waits a turn', view().turn===tt+1);
+
     // ============================ DOORS: BUMP vs COMMIT (town) ============
     var bd=goAdjacent(8,7); press(bd); var vb=view();
     ok('bumping a building does NOT enter it (still town)', vb.phase==='town');
@@ -82,9 +92,13 @@ F.onload = function(){
     pk('Enter'); var vin=view();
     ok('Enter enters the Kiosk interior', vin.phase==='interior' && /Kiosk/.test(vin.title));
 
-    // ============================ TICKET as an item ======================
-    var cd=goAdjacent(20,5); press(cd);
-    ok('the counter buys a Standard ticket', view().ticket==='standard');
+    // ============== PURCHASE IS A CONVERSATION (contact -> Enter) =========
+    var cd=goAdjacent(20,5); press(cd); var vcounter=view();
+    ok('bumping the counter does NOT buy — it opens a conversation',
+       vcounter.ticket==null && vcounter.phase==='interior');
+    ok('the clerk pitches with a clear offer line', /Enter to accept/.test(vcounter.lastEvent||''));
+    pk('Enter');
+    ok('Enter closes the deal — a Standard ticket', view().ticket==='standard');
     ok('the stats panel exposes a turn counter', typeof view().turn==='number');
     ok('the ticket is carried as an inspectable inventory item',
        (view().inventory||[]).some(function(it){return it.kind==='ticket';}));
@@ -105,6 +119,9 @@ F.onload = function(){
     ok('bumping a dungeon stair does NOT traverse on contact', view().node===nb);
     pk('Enter');
     ok('Enter takes the stair down into the dungeon proper (level >= 1)', view().node!==nb && view().level>=1);
+    ok('the HUD carries a named hunger stage', typeof (view().hunger&&view().hunger.stage)==='string');
+    ok('messages carry an urgency tier (objects with text+urgent)',
+       (function(){var m=(view().messages||[]); var x=m[m.length-1]; return x&&typeof x.text==='string'&&typeof x.urgent==='boolean';})());
 
     // ============================ TURN-BASED + WAIT ======================
     var t0=view().turn; pk('.');

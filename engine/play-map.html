@@ -30,6 +30,8 @@
     font-size:13px; color:var(--accent); height:108px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; }
   .log .line { padding:1px 0; }
   .log .line.cur { color:var(--ink); }
+  .log .line.crit { color:var(--bad); font-weight:bold; }
+  .block.crit { color:var(--bad); font-weight:bold; font-style:normal; }
   .controls { display:flex; gap:14px 18px; flex-wrap:wrap; align-items:center; font-size:12.5px; margin:8px 2px;
     border:1px solid var(--rule); background:#fbf8f1; border-radius:4px; padding:8px 10px; }
   .controls b { color:var(--accent); }
@@ -78,6 +80,7 @@
   <div class="controls">
     <span><b>Move</b> <span class="keys">← ↑ ↓ →</span></span>
     <span><b>Diagonals</b> <span class="keys">Y U B N</span> (↖ ↗ ↙ ↘)</span>
+    <span><b>Numpad</b> <span class="keys">7 8 9 · 4 5 6 · 1 2 3</span> (5 = wait)</span>
     <span><b>Wait</b> <span class="keys">.</span></span>
     <span><b>Open / use</b> <span class="keys">o</span> or <span class="keys">Enter</span></span>
     <span><b>Close door</b> <span class="keys">c</span></span>
@@ -213,26 +216,29 @@
 
   function renderStats(vw) {
     var m = vw.meters || {};
-    var hunger = m.satiationMax ? Math.round(100 * (1 - m.satiation / m.satiationMax)) : 0;
+    var hg = vw.hunger || { stage: "—", critical: false };
     var place = vw.phase === "dungeon" ? ("L" + vw.level) : (vw.phase === "town" ? "Harbour" : "Indoors");
     function s(label, val, color) { return '<span class="s"><b>' + label + '</b> <span style="color:' + (color || "#1c1a17") + '">' + val + "</span></span>"; }
     statsEl.innerHTML =
-      s("HP", Math.round(m.hp) + "/" + m.hpMax, m.hp < 30 ? "#c25b4f" : "#3c6e3c") +
+      s("HP", Math.round(m.hp) + "/" + m.hpMax, m.hp < 0.25 * m.hpMax ? "#c25b4f" : "#3c6e3c") +
       s("Fatigue", Math.round(m.fatigue), m.fatigue > 70 ? "#c25b4f" : "#7a5c3a") +
-      s("Hunger", hunger, hunger > 70 ? "#c25b4f" : "#7a5c3a") +
+      s("Hunger", escapeHTML(hg.stage), hg.critical ? "#c25b4f" : "#7a5c3a") +
       s("Place", place) +
       s("Turn", vw.turn || 0) +
       s("Ticket", vw.ticket || "—", vw.ticket ? "#3c6e3c" : "#9a3b2f");
     placeEl.innerHTML = escapeHTML(vw.title || "") +
       (vw.phase === "dungeon" ? (" &nbsp; required sights: " + vw.requiredDone + " / " + vw.requiredTotal) : "");
     blockEl.textContent = vw.lastEvent || "";
+    blockEl.className = "block" + (vw.lastUrgent ? " crit" : "");
   }
 
   function renderLog(vw) {
     var msgs = vw.messages || [];
     var last = msgs.slice(-12);
     logEl.innerHTML = last.map(function (m, i) {
-      return '<div class="line' + (i === last.length - 1 ? " cur" : "") + '">' + escapeHTML(m) + "</div>";
+      var text = (m && typeof m === "object") ? m.text : m;
+      var urgent = (m && typeof m === "object") ? m.urgent : false;
+      return '<div class="line' + (i === last.length - 1 ? " cur" : "") + (urgent ? " crit" : "") + '">' + escapeHTML(text) + "</div>";
     }).join("");
     logEl.scrollTop = logEl.scrollHeight;
   }
@@ -302,16 +308,22 @@
     ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
     y: "ul", u: "ur", b: "dl", n: "dr"
   };
+  // classic numpad, keyed by physical key (e.code) so it works with NumLock ON
+  // (where numpad keys report key="8") or off (key="ArrowUp"); 5 = wait.
+  var NUMPAD = {
+    Numpad1: "dl", Numpad2: "down", Numpad3: "dr", Numpad4: "left",
+    Numpad6: "right", Numpad7: "ul", Numpad8: "up", Numpad9: "ur"
+  };
   document.addEventListener("keydown", function (e) {
-    var raw = e.key;
+    var raw = e.key, code = e.code;
     var k = (raw && raw.length === 1) ? raw.toLowerCase() : raw;
     if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
     var vw = sim.view();
 
-    // LOOK MODE: movement keys move the cursor; l or Esc exits.
+    // LOOK MODE: movement keys (incl. numpad) move the cursor; l or Esc exits.
     if (vw.look && vw.look.active) {
       if (k === "Escape" || k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
-      var ld = MOVE[k];
+      var ld = MOVE[k] || NUMPAD[code];
       if (ld) { e.preventDefault(); sim.lookMove(ld); draw(); return; }
       return;
     }
@@ -327,19 +339,19 @@
     }
     // NORMAL MODE
     if (k === "Enter" || k === "o") { e.preventDefault(); sim.commit(); draw(); return; }
-    if (k === "." || k === "5") { e.preventDefault(); sim.wait(); draw(); return; }
+    if (k === "." || code === "Numpad5") { e.preventDefault(); sim.wait(); draw(); return; }
     if (k === "g") { e.preventDefault(); sim.get(); draw(); return; }
     if (k === "s") { e.preventDefault(); sim.search(); draw(); return; }
     if (k === "c") { e.preventDefault(); sim.closeDoor(); draw(); return; }
     if (k === "i") { e.preventDefault(); sim.toggleInventory(); draw(); return; }
     if (k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
-    var dir = MOVE[k];
+    var dir = MOVE[k] || NUMPAD[code];
     if (dir) { e.preventDefault(); sim.move(dir); draw(); return; }
   });
   document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
 
-  var VERSION = "play-map v5 · ADOM-minimum", BUILD = "fa1d10d";
+  var VERSION = "play-map v6 · verdicts R1 + numpad", BUILD = "1c724e0";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

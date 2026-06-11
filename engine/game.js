@@ -55,7 +55,7 @@ var TD_GAME = (function () {
       if (m.required && lv > maxL) { maxL = lv; brassTarget = n; }
     });
 
-    var meters, character, shared, placeId, player, pendingDoor, dungeon, lastEvent, dead, won, returnTile, places;
+    var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
     var invOpen, invSel, look;
 
     function freshCharacter() {
@@ -66,14 +66,15 @@ var TD_GAME = (function () {
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
       placeId = "TOWN"; dungeon = null; dead = false; won = false;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
-      returnTile = null;
+      returnTile = null; pendingDoor = null; pendingCounter = null;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
-      lastEvent = null;
+      lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
 
-    function logMsg(t) { if (!t) return; lastEvent = t; shared.messages.push(t); if (shared.messages.length > 80) shared.messages.shift(); }
+    function logMsg(t, urgent) { if (!t) return; lastEvent = t; lastUrgent = !!urgent; shared.messages.push({ text: t, urgent: !!urgent }); if (shared.messages.length > 80) shared.messages.shift(); }
+    function makeRation() { return TD_MAP.makeItem("ration"); }
 
     // ---- effects layer (shared by spatial counters AND the _interact test hook)
     function act(type) {
@@ -95,8 +96,9 @@ var TD_GAME = (function () {
           meters.comfort += 1; meters.fatigue = Math.max(0, meters.fatigue - 30); meters.satiation = Math.min(100, meters.satiation + 20); seen("007");
           logMsg(SIG["007"].t); break;
         case "food":
-          meters.satiation = 100;
-          logMsg("A hot meal and a flat, honest drink. You are fed, if not improved. The fortune cookie says something you do not yet understand."); break;
+          meters.satiation = meters.satiationMax;                       // the hot meal, now
+          shared.inventory.push(makeRation()); shared.inventory.push(makeRation());   // and two for the road
+          logMsg("A hot meal and a flat, honest drink — you are fed, if not improved — and two buns wrapped for the road (2 rations to your pack). The fortune cookie says something you do not yet understand."); break;
         case "anchor":
           if (meters.comfort >= 2) { seen("005"); character.events.anchorRejected = true; logMsg("The doorman, with a nose: “" + SIG["005"].t + "”"); }
           else { logMsg("The doorman loses interest in you, which here is a welcome."); }
@@ -186,6 +188,21 @@ var TD_GAME = (function () {
       return "The entrance to " + base + ". Press Enter to go in.";
     }
 
+    // a sale is a conversation: contact begins the patter, only Enter closes the
+    // deal. Each counter pitches in its house voice, then a plain offer line.
+    var PITCH = {
+      agency: { pitch: "The Agency clerk sweeps a hand over a laminated map: “This pass gets you everywhere worth going!” (Everywhere worth going, the small print clarifies, is a Guided Zone.)",
+        offer: "Take the Guided Package? — Enter to accept; step away to decline." },
+      kiosk: { pitch: "The kiosk hums. A grey ticket waits in the slot, and a notice apologises in advance for the lack of occasion.",
+        offer: "Take a Standard Admission? — Enter to accept; step away to decline." },
+      hotel: { pitch: "The concierge looks you over and remains unmoved: “Nothing down there worth roughing it for, dear.” The bed, he implies, is the only sensible destination.",
+        offer: "Take the night at the Gilded Kraken? — Enter to accept; step away to decline." },
+      spa: { pitch: "The attendant promises you will emerge improved, and — lowering her voice — announced.",
+        offer: "Take the treatment? — Enter to accept; step away to decline." },
+      food: { pitch: "The barman sets down something hot and something flat. Neither is impressed by you, which here passes for welcome.",
+        offer: "Buy a meal, with rations for the road? — Enter to accept; step away to decline." }
+    };
+
     function move(dir) {
       if (!DIRS[dir]) return { moved: false };
       if (placeId === "DUNGEON") { var rd = dungeon.move(dir); afterDungeon(); return rd; }
@@ -193,17 +210,29 @@ var TD_GAME = (function () {
       var nx = player.x + DIRS[dir][0], ny = player.y + DIRS[dir][1];
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) return { moved: false };
       var d = P.doors[key(nx, ny)];
-      if (d) { pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
+      if (d) { pendingCounter = null; pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
       var f = P.features[key(nx, ny)];
-      if (f) { act(f.act); return { moved: false, interacted: f.act, event: lastEvent }; }
+      if (f) {
+        if (f.act === "lookout") { pendingCounter = null; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
+        // a counter/desk: begin the conversation, do NOT transact
+        pendingDoor = null; pendingCounter = { act: f.act, x: nx, y: ny };
+        var p = PITCH[f.act] || { pitch: "The clerk awaits your custom.", offer: "Enter to accept; step away to decline." };
+        logMsg(p.pitch); logMsg(p.offer);
+        return { moved: false, bumpedCounter: true, act: f.act, event: lastEvent };
+      }
       if (P.grid[ny][nx] !== ".") return { moved: false };
-      player.x = nx; player.y = ny; pendingDoor = null; lastEvent = null;
+      player.x = nx; player.y = ny; pendingDoor = null; pendingCounter = null; lastEvent = null;
       shared.turn += 1;
       return { moved: true };
     }
 
     function commit() {       // Enter / o
       if (placeId === "DUNGEON") { var rd = dungeon.open(); afterDungeon(); return rd; }
+      // a pending sale closes only here, and only while you are still at the desk
+      if (pendingCounter) {
+        if (cheby(pendingCounter, player) > 1) { pendingCounter = null; }
+        else { var a = pendingCounter.act; pendingCounter = null; act(a); return { opened: true, dealt: a, event: lastEvent }; }
+      }
       var p = pendingDoor;
       if (!p) { logMsg("There is no door before you."); return { opened: false }; }
       if (cheby(p, player) > 1) { pendingDoor = null; return { opened: false }; }
@@ -352,9 +381,11 @@ var TD_GAME = (function () {
       v.turn = shared.turn; v.messages = shared.messages; v.inventory = invList();
       v.invOpen = invOpen; v.invSel = invSel;
       v.look = { active: look.active, x: look.x, y: look.y };
+      v.hunger = TD_MAP.hungerStage(meters);
       // the latest log line is the unified "current event", whoever wrote it
       // (town counters, dungeon controller, or the top-level verbs here).
-      if (shared.messages.length) v.lastEvent = shared.messages[shared.messages.length - 1];
+      var lastM = shared.messages.length ? shared.messages[shared.messages.length - 1] : null;
+      if (lastM) { v.lastEvent = lastM.text; v.lastUrgent = lastM.urgent; }
       return v;
     }
     function fieldNotes() { return Array.from(session.knowledge).map(function (k) { return "field note: " + k; }); }
@@ -393,6 +424,9 @@ var TD_GAME = (function () {
       _place: function () { return placeId; }, _player: function () { return player; },
       _dungeon: function () { return dungeon; },
       _shared: function () { return shared; },
+      _goto: function (id) { pendingDoor = null; pendingCounter = null; placeId = id; player = { x: places[id].spawn.x, y: places[id].spawn.y }; return view(); },
+      _pendingCounter: function () { return pendingCounter ? pendingCounter.act : null; },
+      _hunger: function () { return TD_MAP.hungerStage(meters); },
       _inventory: function () { return shared.inventory; },
       _invList: function () { return invList(); },
       _turn: function () { return shared.turn; },

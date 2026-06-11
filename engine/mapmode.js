@@ -2,12 +2,14 @@
 // A view/play layer over the engine: it draws a 2D tile view, moves a tile
 // avatar, and crosses an EDGE door ONLY by asking the interpreter (TD_INTERP) — so
 // generation and the checker stay untouched. On top of that it adds the living
-// systems (creatures + bump-to-fight combat, body meters) and the classic
-// roguelike grammar: turn-based world, floor items + inventory, a message log,
-// a turn counter, wait, search for secrets, plain doors that open/close, and a
-// look command (look state itself is owned by the town controller, TD_GAME, and
-// merged over whichever view is active). Town, the two forks, and signal
-// placement live in game.js, layered on the same controller.
+// systems (creatures + bump-to-fight combat narrated in the Bureau register,
+// body meters with a long hunger ladder and rest-recovery) and the classic
+// roguelike grammar: turn-based world, floor items + inventory, a tiered message
+// log, a turn counter, wait, search for secrets, plain doors that open/close, and
+// a look command (look state itself is owned by the town controller, TD_GAME).
+//
+// Messages are objects { text, urgent } so the view can render critical events
+// (HP below a quarter, STARVING, a one-way seal, death) bold + red.
 //
 // Classic script: assigns the global TD_MAP. Requires TD_RNG, TD_INTERP.
 "use strict";
@@ -32,7 +34,7 @@ var TD_MAP = (function () {
   };
   var STEP4 = ["up", "down", "left", "right"];
 
-  // --- living-systems tuning (skeleton; bible §4.13/§4.15 calibration later) --
+  // --- living-systems tuning (bible §4.13/§4.15 calibration) ----------------
   var PLAYER_DMG = 20;
   // three distinct simple behaviours: wanderer (drifts, occasionally toward you),
   // lurker (still until you come close, then hunts), chaser (relentless pursuit).
@@ -41,13 +43,26 @@ var TD_MAP = (function () {
     lurker:   { hp: 45, dmg: 16, name: "a patient lurker",         glyph: "L" },
     chaser:   { hp: 26, dmg: 11, name: "a fervent docent",         glyph: "d" }
   };
-  var FATIGUE_PER_STEP = 2, FATIGUE_PER_FIGHT = 6;
-  var SATIATION_PER_STEP = 1.5, STARVE_HP = 2, EXHAUST_HP = 1;
+  // generous slack: walking is cheap, fighting costs, resting recovers fatigue,
+  // and a full belly carries you across several levels before food matters.
+  var FATIGUE_PER_STEP = 0.5, FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4;
+  var SATIATION_PER_STEP = 0.3, STARVE_HP = 2, EXHAUST_HP = 1;
+
+  // the named hunger ladder (only the bottom rung, STARVING, costs HP).
+  var HUNGER_LADDER = ["well fed", "Peckish", "Hungry", "Famished", "Starving"];
+  function hungerStage(m) {
+    var pct = m.satiationMax ? (m.satiation / m.satiationMax) : 0;
+    if (pct > 0.66) return { stage: "well fed", rung: 0, critical: false };
+    if (pct > 0.40) return { stage: "Peckish", rung: 1, critical: false };
+    if (pct > 0.18) return { stage: "Hungry", rung: 2, critical: false };
+    if (pct > 0.05) return { stage: "Famished", rung: 3, critical: false };
+    return { stage: "Starving", rung: 4, critical: true };
+  }
 
   // --- items (the floor loot + inventory) -----------------------------------
   var ITEMS = {
-    ration:   { glyph: "%", name: "a vendor's bun",        use: "eat",     food: 60,
-      desc: "A cold bun from a harbour cart. Eating it quiets the hunger for a while." },
+    ration:   { glyph: "%", name: "a vendor's bun",        use: "eat",     food: 55,
+      desc: "A cold bun from a harbour cart. Eating it climbs you back up the hunger ladder." },
     bandage:  { glyph: "!", name: "a roll of field bandage", use: "heal",  heal: 30,
       desc: "Municipal-issue field dressing. Apply it to close your wounds." },
     souvenir: { glyph: "*", name: "a chipped harbour charm", use: "inspect",
@@ -59,6 +74,7 @@ var TD_MAP = (function () {
   }
 
   function key(x, y) { return x + "," + y; }
+  function cap(s) { return String(s).charAt(0).toUpperCase() + String(s).slice(1); }
   function newGrid() { var g = []; for (var y = 0; y < H; y++) { var r = []; for (var x = 0; x < W; x++) r.push("#"); g.push(r); } return g; }
   function inb(x, y) { return x >= 0 && x < W && y >= 0 && y < H; }
   function carveRect(g, cx, cy, hw, hh) { for (var y = cy - hh; y <= cy + hh; y++) for (var x = cx - hw; x <= cx + hw; x++) if (inb(x, y)) g[y][x] = "."; }
@@ -83,12 +99,12 @@ var TD_MAP = (function () {
       grid: null, doors: null, player: null, features: {}, pendingDoor: null,
       items: {}, plain: {}, secrets: {},
       creatures: [], explored: null,
-      dead: false, won: false, cause: null, lastEvent: null,
+      dead: false, won: false, cause: null, lastEvent: null, lastUrgent: false,
       meters: shared.meters || { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 },
       character: shared.character || { ticket: null, signalsSeen: new Set() },
       inventory: shared.inventory || (shared.inventory = []),
       messages: shared.messages || (shared.messages = []),
-      kills: 0
+      kills: 0, lastHungerStage: "well fed", wasExhausted: false
     };
     // the turn counter lives on the shared object so town + dungeon agree on it.
     if (typeof shared.turn !== "number") shared.turn = 0;
@@ -98,7 +114,7 @@ var TD_MAP = (function () {
     function curLevel() { return (world.nodes[ctrl.node] || {}).level || 0; }
     function inDungeon() { return curLevel() >= 1; }
 
-    function logMsg(t) { if (!t) return; ctrl.lastEvent = t; ctrl.messages.push(t); if (ctrl.messages.length > 80) ctrl.messages.shift(); }
+    function logMsg(t, urgent) { if (!t) return; ctrl.lastEvent = t; ctrl.lastUrgent = !!urgent; ctrl.messages.push({ text: t, urgent: !!urgent }); if (ctrl.messages.length > 80) ctrl.messages.shift(); }
 
     function reveal(px, py) {
       for (var dy = -REVEAL; dy <= REVEAL; dy++)
@@ -180,9 +196,16 @@ var TD_MAP = (function () {
       return cand[Math.floor(rng.next() * cand.length)];
     }
 
+    function visibleSet() {
+      var s = new Set();
+      for (var dy = -REVEAL; dy <= REVEAL; dy++) for (var dx = -REVEAL; dx <= REVEAL; dx++) { var x = ctrl.player.x + dx, y = ctrl.player.y + dy; if (inb(x, y)) s.add(key(x, y)); }
+      return s;
+    }
+    function enemiesVisible() { var vis = visibleSet(); return ctrl.creatures.some(function (c) { return vis.has(key(c.x, c.y)); }); }
+
     // ---- the world acts only when the player acts (turn-based) ---------------
-    function endTurn(fight) {
-      meterTick(fight);
+    function endTurn(mode) {
+      meterTick(mode);
       if (!ctrl.dead) creaturesStep();
       shared.turn += 1;
     }
@@ -199,8 +222,10 @@ var TD_MAP = (function () {
           move = rng.chance(0.7) ? greedy(cr) : wander(cr);  // wanderer drifts toward you
         }
         if (move) {
-          if (move.x === ctrl.player.x && move.y === ctrl.player.y) { hurt(cr.dmg, cr); }   // it reaches you: it bites
-          else { cr.x = move.x; cr.y = move.y; }
+          if (move.x === ctrl.player.x && move.y === ctrl.player.y) {        // it reaches you: it bites
+            hurt(cr.dmg, cr);
+            if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary by " + cr.dmg + " hit points.", lowHP());
+          } else { cr.x = move.x; cr.y = move.y; }
         }
       });
     }
@@ -224,35 +249,53 @@ var TD_MAP = (function () {
       return null;
     }
 
+    function lowHP() { return ctrl.meters.hp > 0 && ctrl.meters.hp < 0.25 * ctrl.meters.hpMax; }
     function hurt(amount, source) {
       ctrl.meters.hp -= amount;
       if (ctrl.meters.hp <= 0) { ctrl.meters.hp = 0; die(combatCause(source)); }
     }
-    function die(cause) { if (!ctrl.dead) { ctrl.dead = true; ctrl.cause = cause; logMsg(cause); } }
+    function die(cause) { if (!ctrl.dead) { ctrl.dead = true; ctrl.cause = cause; logMsg(cause, true); } }
 
-    // body meters tick on each dungeon action (bible §4.13 anti-scum)
-    function meterTick(fight) {
+    // body meters tick on each dungeon action (bible §4.13 anti-scum).
+    // mode: "step" (walk), "fight", "rest" (wait — recovers fatigue if safe).
+    function meterTick(mode) {
       if (!inDungeon()) return;
-      ctrl.meters.fatigue = Math.min(ctrl.meters.fatigueMax, ctrl.meters.fatigue + (fight ? FATIGUE_PER_FIGHT : FATIGUE_PER_STEP));
-      ctrl.meters.satiation = Math.max(0, ctrl.meters.satiation - SATIATION_PER_STEP);
-      if (ctrl.meters.satiation <= 0) hurt(STARVE_HP, { name: "hunger", starve: true });
-      if (ctrl.meters.fatigue >= ctrl.meters.fatigueMax) hurt(EXHAUST_HP, { name: "exhaustion", exhaust: true });
+      var m = ctrl.meters;
+      if (mode === "rest") { if (!enemiesVisible()) m.fatigue = Math.max(0, m.fatigue - REST_RECOVER); }
+      else m.fatigue = Math.min(m.fatigueMax, m.fatigue + (mode === "fight" ? FATIGUE_PER_FIGHT : FATIGUE_PER_STEP));
+      m.satiation = Math.max(0, m.satiation - SATIATION_PER_STEP);
+
+      // hunger-ladder transitions (announce only on the way DOWN; STARVING is critical)
+      var st = hungerStage(m).stage;
+      if (st !== ctrl.lastHungerStage) {
+        var worse = HUNGER_LADDER.indexOf(st) > HUNGER_LADDER.indexOf(ctrl.lastHungerStage);
+        if (st === "Starving") logMsg("You are STARVING. The Bureau records your dwindling with professional detachment.", true);
+        else if (worse) logMsg("You grow " + st.toLowerCase() + ".", false);
+        ctrl.lastHungerStage = st;
+      }
+      if (hungerStage(m).critical) hurt(STARVE_HP, { name: "hunger", starve: true });
+
+      if (m.fatigue >= m.fatigueMax) {
+        if (!ctrl.wasExhausted) { logMsg("You are spent past prudence; exhaustion sets in.", true); ctrl.wasExhausted = true; }
+        hurt(EXHAUST_HP, { name: "exhaustion", exhaust: true });
+      } else { ctrl.wasExhausted = false; }
     }
 
     function move(dir) {
-      ctrl.lastEvent = null;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false;
       if (ctrl.dead || ctrl.won || !DIRS[dir]) return { moved: false };
       var nx = ctrl.player.x + DIRS[dir][0], ny = ctrl.player.y + DIRS[dir][1];
       if (!inb(nx, ny)) return { moved: false };
 
-      // bump-to-fight
+      // bump-to-fight (narrated in the Bureau register). You strike; the creature
+      // (if it lives) replies on its own turn during creaturesStep — one blow each.
       var cr = creatureAt(nx, ny);
       if (cr) {
         cr.hp -= PLAYER_DMG;
         var killed = cr.hp <= 0;
-        if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You put down " + cr.name + "."); }
-        else { ctrl.meters.hp -= cr.dmg; logMsg("You strike " + cr.name + "; it strikes back (" + cr.hp + "/" + cr.maxHp + ")."); if (ctrl.meters.hp <= 0) { ctrl.meters.hp = 0; die(combatCause(cr)); } }
-        meterTick(true);
+        if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
+        else logMsg("You serve " + cr.name + " notice (" + PLAYER_DMG + " hp; " + cr.hp + "/" + cr.maxHp + " stands).", false);
+        meterTick("fight");
         if (!ctrl.dead) creaturesStep();
         shared.turn += 1;
         return { moved: false, attacked: true, killed: killed, event: ctrl.lastEvent, dead: ctrl.dead };
@@ -263,7 +306,7 @@ var TD_MAP = (function () {
       var d = ctrl.doors[key(nx, ny)];
       if (d) {
         ctrl.pendingDoor = { meta: d, x: nx, y: ny };
-        logMsg(doorReveal(d));
+        logMsg(doorReveal(d), false);
         return { moved: false, bumpedDoor: true, event: ctrl.lastEvent };
       }
 
@@ -272,7 +315,7 @@ var TD_MAP = (function () {
       var pd = plainAt(nx, ny);
       if (pd && !pd.open) {
         ctrl.pendingDoor = { plain: true, x: nx, y: ny };
-        logMsg("A plain inner door, shut. Press o (or Enter) to open it.");
+        logMsg("A plain inner door, shut. Press o (or Enter) to open it.", false);
         return { moved: false, bumpedDoor: true, plain: true, event: ctrl.lastEvent };
       }
 
@@ -282,31 +325,32 @@ var TD_MAP = (function () {
       ctrl.pendingDoor = null;
       reveal(nx, ny);
       var f = featureAt(nx, ny);
-      if (f) { if (f.id) ctrl.character.signalsSeen.add(f.id); logMsg(f.text); }
+      if (f) { if (f.id) ctrl.character.signalsSeen.add(f.id); logMsg(f.text, false); }
       var it = itemAt(nx, ny);
-      if (it) logMsg("Here lies " + it.name + ". Press g to take it.");
-      endTurn(false);
+      if (it) logMsg("Here lies " + it.name + ". Press g to take it.", false);
+      endTurn("step");
       return { moved: true, dead: ctrl.dead, feature: f || undefined, item: it || undefined };
     }
 
-    // wait a turn: the world acts, you do not move (ADOM's '5'/'.').
+    // wait a turn: the world acts, you do not move. With no enemy in sight this
+    // is a rest — fatigue ebbs back (ADOM's '5'/'.').
     function wait() {
-      ctrl.lastEvent = null;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false;
       if (ctrl.dead || ctrl.won) return { waited: false };
-      logMsg("You wait. The dark keeps its own schedule.");
-      endTurn(false);
-      return { waited: true, dead: ctrl.dead };
+      logMsg(enemiesVisible() ? "You hold still, watching the dark move." : "You rest a moment; the ache in your legs eases.", false);
+      endTurn("rest");
+      return { waited: true, rested: !enemiesVisible(), dead: ctrl.dead };
     }
 
     // pick up the item under your feet.
     function get() {
-      ctrl.lastEvent = null;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false;
       if (ctrl.dead || ctrl.won) return { got: false };
       var k = key(ctrl.player.x, ctrl.player.y), it = ctrl.items[k];
-      if (!it) { logMsg("There is nothing here to take."); return { got: false, event: ctrl.lastEvent }; }
+      if (!it) { logMsg("There is nothing here to take.", false); return { got: false, event: ctrl.lastEvent }; }
       delete ctrl.items[k];
       ctrl.inventory.push(it);
-      logMsg("You take " + it.name + ".");
+      logMsg("You take " + it.name + ".", false);
       return { got: true, item: it, event: ctrl.lastEvent };
     }
 
@@ -315,15 +359,15 @@ var TD_MAP = (function () {
       var spots = [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]];
       for (var i = 0; i < spots.length; i++) {
         var x = ctrl.player.x + spots[i][0], y = ctrl.player.y + spots[i][1];
-        if (isFloor(x, y) && !itemAt(x, y) && !creatureAt(x, y)) { ctrl.items[key(x, y)] = item; logMsg("You set down " + item.name + "."); return { dropped: true, event: ctrl.lastEvent }; }
+        if (isFloor(x, y) && !itemAt(x, y) && !creatureAt(x, y)) { ctrl.items[key(x, y)] = item; logMsg("You set down " + item.name + ".", false); return { dropped: true, event: ctrl.lastEvent }; }
       }
-      logMsg("There is no room to set it down.");
+      logMsg("There is no room to set it down.", false);
       return { dropped: false, event: ctrl.lastEvent };
     }
 
     // search the adjacent walls for what the wall is hiding.
     function search() {
-      ctrl.lastEvent = null;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false;
       if (ctrl.dead || ctrl.won) return { searched: false };
       var found = [];
       for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
@@ -338,22 +382,22 @@ var TD_MAP = (function () {
           found.push(k);
         }
       }
-      if (found.length) logMsg("Your fingers find a seam — a hidden pocket gives way.");
-      else logMsg("You run your hands over the nearby stone and find nothing.");
-      endTurn(false);
+      if (found.length) logMsg("Your fingers find a seam — a hidden pocket gives way.", false);
+      else logMsg("You run your hands over the nearby stone and find nothing.", false);
+      endTurn("step");
       return { searched: true, found: found.length, event: ctrl.lastEvent };
     }
 
     // close an adjacent open plain door (so a creature cannot follow).
     function closeDoor() {
-      ctrl.lastEvent = null;
+      ctrl.lastEvent = null; ctrl.lastUrgent = false;
       if (ctrl.dead || ctrl.won) return { closed: false };
       for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
         if (!dx && !dy) continue;
         var x = ctrl.player.x + dx, y = ctrl.player.y + dy, p = plainAt(x, y);
-        if (p && p.open && !creatureAt(x, y)) { p.open = false; logMsg("You pull the inner door shut."); endTurn(false); return { closed: true, event: ctrl.lastEvent }; }
+        if (p && p.open && !creatureAt(x, y)) { p.open = false; logMsg("You pull the inner door shut.", false); endTurn("step"); return { closed: true, event: ctrl.lastEvent }; }
       }
-      logMsg("There is no open door beside you to close.");
+      logMsg("There is no open door beside you to close.", false);
       return { closed: false, event: ctrl.lastEvent };
     }
 
@@ -379,16 +423,16 @@ var TD_MAP = (function () {
           var px = ctrl.player.x + dx, py = ctrl.player.y + dy, pl = plainAt(px, py);
           if (pl && !pl.open) return openPlain(px, py);
         }
-        logMsg("There is no door before you.");
+        logMsg("There is no door before you.", false);
         return { opened: false };
       }
       if (Math.max(Math.abs(p.x - ctrl.player.x), Math.abs(p.y - ctrl.player.y)) > 1) { ctrl.pendingDoor = null; return { opened: false }; }
       var d = p.meta;
-      if (onCross) { var oc = onCross(d, ctrl); if (oc && oc.block) { logMsg(oc.block); return { opened: false, blocked: oc.block }; } }
+      if (onCross) { var oc = onCross(d, ctrl); if (oc && oc.block) { logMsg(oc.block, false); return { opened: false, blocked: oc.block }; } }
       var r = interp.choose(d.edgeId);
-      if (!r.ok) { logMsg(d.reason || "the way is barred"); return { opened: false, blocked: ctrl.lastEvent }; }
-      if (d.type === "oneway") logMsg("The way seals behind you with a click.");
-      else ctrl.lastEvent = null;
+      if (!r.ok) { logMsg(d.reason || "the way is barred", false); return { opened: false, blocked: ctrl.lastEvent }; }
+      if (d.type === "oneway") logMsg("The way seals behind you with a click. It will not open from this side.", true);
+      else { ctrl.lastEvent = null; ctrl.lastUrgent = false; }
       ctrl.node = interp.state.node; ctrl.won = !!r.complete; ctrl.pendingDoor = null;
       shared.turn += 1;
       buildView();
@@ -400,8 +444,8 @@ var TD_MAP = (function () {
       if (Math.max(Math.abs(x - ctrl.player.x), Math.abs(y - ctrl.player.y)) > 1) { ctrl.pendingDoor = null; return { opened: false }; }
       p.open = true; ctrl.pendingDoor = null;
       reveal(x, y);
-      logMsg("The inner door swings open.");
-      endTurn(false);
+      logMsg("The inner door swings open.", false);
+      endTurn("step");
       return { opened: true, plain: true };
     }
 
@@ -423,12 +467,6 @@ var TD_MAP = (function () {
       };
     }
 
-    function visibleSet() {
-      var s = new Set();
-      for (var dy = -REVEAL; dy <= REVEAL; dy++) for (var dx = -REVEAL; dx <= REVEAL; dx++) { var x = ctrl.player.x + dx, y = ctrl.player.y + dy; if (inb(x, y)) s.add(key(x, y)); }
-      return s;
-    }
-
     function visibleItems(vis) { var o = {}; Object.keys(ctrl.items).forEach(function (k) { if (vis.has(k)) o[k] = ctrl.items[k]; }); return o; }
     function visiblePlain(vis) { var o = {}; Object.keys(ctrl.plain).forEach(function (k) { if (vis.has(k)) o[k] = ctrl.plain[k]; }); return o; }
 
@@ -448,9 +486,9 @@ var TD_MAP = (function () {
         explored: Array.from(ctrl.explored), visible: Array.from(vis),
         level: curLevel(), node: ctrl.node, title: iv.title,
         requiredTotal: iv.requiredTotal, requiredDone: iv.requiredDone,
-        meters: ctrl.meters, kills: ctrl.kills, ticket: ctrl.character.ticket,
+        meters: ctrl.meters, hunger: hungerStage(ctrl.meters), kills: ctrl.kills, ticket: ctrl.character.ticket,
         inventory: ctrl.inventory, messages: ctrl.messages, turn: shared.turn,
-        discoveries: discoveries, lastEvent: ctrl.lastEvent,
+        discoveries: discoveries, lastEvent: ctrl.lastEvent, lastUrgent: ctrl.lastUrgent,
         pendingDoor: ctrl.pendingDoor ? key(ctrl.pendingDoor.x, ctrl.pendingDoor.y) : null,
         dead: ctrl.dead, won: ctrl.won, cause: ctrl.cause
       };
@@ -476,8 +514,11 @@ var TD_MAP = (function () {
       _plain: function () { return ctrl.plain; },
       _secrets: function () { return ctrl.secrets; },
       _inventory: function () { return ctrl.inventory; },
+      _messages: function () { return ctrl.messages; },
       _turn: function () { return shared.turn; },
       _node: function () { return ctrl.node; },
+      _hunger: function () { return hungerStage(ctrl.meters); },
+      _enemiesVisible: function () { return enemiesVisible(); },
       _addSecret: function (x, y, kind) { addSecret(x, y, kind); },
       _addPlain: function (x, y) { ctrl.plain[key(x, y)] = { open: false }; },
       _setItem: function (x, y, kind) { ctrl.items[key(x, y)] = makeItem(kind); },
@@ -486,7 +527,7 @@ var TD_MAP = (function () {
     return api;
   }
 
-  return { create: create, _W: W, _H: H, _CREATURE: CREATURE, _ITEMS: ITEMS };
+  return { create: create, _W: W, _H: H, _CREATURE: CREATURE, _ITEMS: ITEMS, makeItem: makeItem, hungerStage: hungerStage };
 })();
 
 if (typeof module !== "undefined" && module.exports) { module.exports = TD_MAP; }
