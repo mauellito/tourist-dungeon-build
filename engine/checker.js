@@ -17,6 +17,18 @@ var TD_CHECK = (function () {
   function subset(a, bSet) { for (var i = 0; i < a.length; i++) { if (!bSet.has(a[i])) return false; } return true; }
   function union(flagsSet, arr) { var s = new Set(flagsSet); (arr || []).forEach(function (x) { s.add(x); }); return s; }
   function hasWindows(w) { return w.edges.some(function (e) { return e.window; }); }
+  // The only calendar days that change behaviour are those up to the LAST window
+  // close; past it every windowed edge is shut for good, so all later days are
+  // equivalent. Clamp the search's day to maxWindowHi+1 — this collapses the
+  // wait-loop's 365 days to a handful, the key optimization that keeps the
+  // reachability/One-True-Run proofs fast once vaults add nodes to windowed
+  // worlds. Sound: the boolean result is identical (no window can reopen).
+  function dayCap(w) {
+    if (!hasWindows(w)) return yl(w) + 1;
+    var m = 0;
+    w.edges.forEach(function (e) { if (e.window) m = Math.max(m, e.window[1]); });
+    return Math.min(m + 1, yl(w) + 1);
+  }
   // Day only matters when some edge is windowed; otherwise collapse it out of
   // the state key so the search space does not multiply by the calendar.
   function keyOf(node, flags, day, hw) {
@@ -31,7 +43,7 @@ var TD_CHECK = (function () {
 
   // reachable nodes/states from a starting (node,flags,day)
   function reachFrom(w, startNode, startFlags, startDay, respectWindows) {
-    var cap = yl(w) + 1;
+    var cap = dayCap(w);
     var hw = hasWindows(w);
     var seen = new Set([keyOf(startNode, startFlags, startDay, hw)]);
     var stack = [[startNode, startFlags, startDay]];
@@ -148,11 +160,41 @@ var TD_CHECK = (function () {
     return true;
   }
 
+  // SKIPPABLE nodes — a sound prune that keeps the One-True-Run proof fast when
+  // optional pendants (vaults, inert loops) are spliced in. A node is skippable
+  // for the OTR if it is not the start, not required, grants no flag on ANY
+  // incident edge, and removing it strands no required node from the start.
+  // Such a node can never help complete the run, so any OTR can route around it;
+  // pruning it yields the IDENTICAL existence result, just faster. (The proof is
+  // optimized, never weakened.)
+  function skippableNodes(w, req) {
+    function reachReqCount(excl) {
+      var seen = new Set([w.start]), st = [w.start];
+      while (st.length) {
+        var n = st.pop();
+        for (var i = 0; i < w.edges.length; i++) {
+          var e = w.edges[i];
+          if (e.from === n && e.to !== excl && !seen.has(e.to)) { seen.add(e.to); st.push(e.to); }
+        }
+      }
+      var c = 0; req.forEach(function (r) { if (seen.has(r)) c++; }); return c;
+    }
+    var base = reachReqCount(null), skip = new Set();
+    Object.keys(w.nodes).forEach(function (N) {
+      if (N === w.start || req.has(N)) return;
+      var grantsTouch = w.edges.some(function (e) { return (e.from === N || e.to === N) && (e.grants || []).length > 0; });
+      if (grantsTouch) return;
+      if (reachReqCount(N) === base) skip.add(N);
+    });
+    return skip;
+  }
+
   // OBL-06 — returns a path (array of edge ids) visiting all required, or null.
   function solve(w) {
     var req = requiredSet(w);
-    var cap = yl(w) + 1;
+    var cap = dayCap(w);
     var hw = hasWindows(w);
+    var skip = skippableNodes(w, req);
     var startVis = new Set(); if (req.has(w.start)) startVis.add(w.start);
     if (isSubset(req, startVis)) return [];
     function visKey(node, flags, day, vis) {
@@ -168,6 +210,7 @@ var TD_CHECK = (function () {
       for (var i = 0; i < outs.length; i++) {
         var e = outs[i];
         if (!canTake(e, flags, day, true)) continue;
+        if (skip.has(e.to)) continue;                    // prune OTR-inert detours (vaults, dead loops)
         var nf = union(flags, e.grants);
         var nvis = new Set(vis); if (req.has(e.to)) nvis.add(e.to);
         var nd = Math.min(day + 1, cap);

@@ -202,6 +202,7 @@
 
 <script src="rng.js"></script>
 <script src="checker.js"></script>
+<script src="vaults.js"></script>
 <script src="generator.js"></script>
 <script src="interpreter.js"></script>
 <script src="mapmode.js"></script>
@@ -291,6 +292,7 @@
           bg = (vw.pendingDoor === k) ? P.pendingBg : "#37301f"; glyph = plain.open ? "'" : "+"; col = P.door;
         } else if (ch === ".") { bg = bright ? P.floorBg : P.floorBgDim; glyph = "·"; col = bright ? P.floor : P.floorDim; }
         else if (ch === "~") { bg = P.water; glyph = "≈"; col = P.waterGlyph; }
+        else if (ch === "X") { bg = "#0a0a0c"; glyph = vw.pendingFall === k ? "▼" : "·"; col = "#3a3a44"; }
         else if (ch === "#") { glyph = "#"; col = bright ? P.wall : P.wallDim; }
         if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
         if (glyph) { ctx.fillStyle = bright ? col : dim(col); ctx.fillText(glyph, px + TS / 2, py + TS / 2 + 1); }
@@ -662,7 +664,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v9 · senses channel", BUILD = "6ff21b1";
+  var VERSION = "play-map v10 · vaults & terrain", BUILD = "d3f58b8";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

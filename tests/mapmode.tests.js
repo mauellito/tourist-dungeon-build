@@ -277,6 +277,58 @@ function TD_MAP_TESTS() {
     assert(g._messages().some(function (m) { return m.ch === "senses" && m.kind === "heard" && /click/.test(m.text); }), "the seal click is a heard senses line");
   });
 
+  // -------------------------------------------- TERRAIN (Round 5) -----------
+  function worldDown() {
+    return {
+      start: "a", year_length: 365, arrival_day: 1, meta: { seed: 1 },
+      nodes: { a: { level: 1, title: "Room A" }, b: { level: 2, required: true, title: "Room B" } },
+      edges: [{ id: "ab", from: "a", to: "b", label: "a shaft down" }], signals: {}
+    };
+  }
+  test("WATER slows a step; CHASM is impassable and offers a prompted fall down", function () {
+    var g = TD_MAP.create(worldDown(), { creatures: false });
+    g._setWater(19, 11);
+    var t0 = g._turn(); g.move("left");
+    eq(g._player().x, 19, "you wade into the water");
+    eq(g._turn(), t0 + 2, "water slows: two beats pass for the one step");
+    g._setChasm(19, 10);
+    var r = g.move("up");
+    assert(!r.moved && r.chasm, "the chasm blocks the step and prompts a fall");
+    eq(g._player().y, 11, "you do not walk into the drop by contact");
+    var hp0 = g._meters().hp, fr = g.open();
+    assert(fr.fell, "Enter throws you down the chasm");
+    eq(g.state.node, "b", "you land on the level below");
+    assert(g._meters().hp < hp0, "the fall hurts");
+  });
+
+  // -------------------------------------------- SECRET GRAMMAR (Round 5) ----
+  test("every secret carries a vocabulary tell; nearing one telegraphs it; search confirms hollow", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    var VOCAB = ["draft", "rhyme", "hollow"], secs = g._secrets();
+    Object.keys(secs).forEach(function (k) { assert(VOCAB.indexOf(secs[k].tell) >= 0, "secret " + k + " has a tell from the vocabulary"); });
+    g._addSecret(15, 11, "ration", "rhyme");              // a wall secret beside the y=11 row
+    g.move("left"); g.move("left"); g.move("left"); g.move("left");  // to x16, adjacent to (15,11)
+    eq(g._player().x, 16);
+    assert(g._messages().some(function (m) { return m.ch === "senses" && /couplet|secret of its own/.test(m.text); }), "the rhyme tell is perceived on approach");
+    var r = g.search();
+    assert(r.found >= 1 && g._messages().some(function (m) { return m.ch === "senses" && /hollow/.test(m.text); }), "search confirms with the hollow tell");
+  });
+
+  // -------------------------------------------- VAULT RENDER (Round 5) ------
+  test("a vault node renders its hand-authored room: terrain laid, secret telegraphed", function () {
+    var w = {
+      start: "v", year_length: 365, arrival_day: 1, meta: { seed: 1 },
+      nodes: { v: { level: 1, vault: "flooded-antechamber", title: "V" }, h: { level: 1, required: true, title: "H" } },
+      edges: [{ id: "vh", from: "v", to: "h", label: "leave" }], signals: {}
+    };
+    var g = TD_MAP.create(w, { creatures: false });
+    var grid = g.view().grid, anyWater = false;
+    for (var y = 0; y < grid.length; y++) if (grid[y].indexOf("~") >= 0) anyWater = true;
+    assert(anyWater, "the flooded antechamber lays down water tiles");
+    var secs = g._secrets(), keys = Object.keys(secs);
+    assert(keys.length >= 1 && ["draft", "rhyme", "hollow"].indexOf(secs[keys[0]].tell) >= 0, "the vault's secret is telegraphed by a vocabulary tell");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

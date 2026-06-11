@@ -47,6 +47,13 @@ var TD_MAP = (function () {
   // and a full belly carries you across several levels before food matters.
   var FATIGUE_PER_STEP = 0.5, FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4;
   var SATIATION_PER_STEP = 0.3, STARVE_HP = 2, EXHAUST_HP = 1;
+  var FALL_DMG = 25;   // the chasm exit: a desperate fall to the level below
+  // the secret-grammar vocabulary (CLAUDE.md): a fixed, learnable set of tells
+  var TELLS = (typeof TD_VAULTS !== "undefined" && TD_VAULTS.TELLS) || {
+    draft:  { text: "A cold draft slides from a seam in the wall.", kind: "heard", obj: "OBJ" },
+    rhyme:  { text: "A scratched couplet hints the wall keeps a secret of its own.", kind: "seen", obj: "OBJ" },
+    hollow: { text: "Your knuckles find a hollow note in the stone.", kind: "heard", obj: "OBJ" }
+  };
 
   // the named hunger ladder (only the bottom rung, STARVING, costs HP).
   var HUNGER_LADDER = ["well fed", "Peckish", "Hungry", "Famished", "Starving"];
@@ -99,6 +106,7 @@ var TD_MAP = (function () {
       grid: null, doors: null, player: null, features: {}, pendingDoor: null,
       items: {}, plain: {}, secrets: {},
       creatures: [], explored: null, fx: [],
+      water: {}, chasm: {}, pendingFall: null, sensedSecret: {},
       dead: false, won: false, cause: null, lastEvent: null, lastUrgent: false,
       meters: shared.meters || { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 },
       character: shared.character || { ticket: null, signalsSeen: new Set() },
@@ -142,6 +150,18 @@ var TD_MAP = (function () {
       if (skit && !ctrl.sensedSkitter) senses("Something skitters past, just beyond the lamplight.", "heard", "OBJ");
       ctrl.sensedSkitter = skit;
     }
+    // secret grammar: a hidden space is ALWAYS telegraphed, by the fixed tell
+    // vocabulary, when you come near it. (No untelegraphed secret.)
+    function emitSecretTells() {
+      Object.keys(ctrl.secrets).forEach(function (k) {
+        var sec = ctrl.secrets[k]; if (sec.found || ctrl.sensedSecret[k]) return;
+        var xy = k.split(","), sx = +xy[0], sy = +xy[1];
+        if (Math.max(Math.abs(sx - ctrl.player.x), Math.abs(sy - ctrl.player.y)) <= 1) {
+          var tl = TELLS[sec.tell] || TELLS.hollow;
+          senses(tl.text, tl.kind, tl.obj); ctrl.sensedSecret[k] = 1;
+        }
+      });
+    }
 
     function reveal(px, py) {
       for (var dy = -REVEAL; dy <= REVEAL; dy++)
@@ -149,6 +169,10 @@ var TD_MAP = (function () {
     }
 
     function buildView() {
+      ctrl.water = {}; ctrl.chasm = {}; ctrl.pendingFall = null; ctrl.sensedSecret = {};
+      var meta = world.nodes[ctrl.node] || {};
+      var vd = (typeof TD_VAULTS !== "undefined" && meta.vault) ? TD_VAULTS.byId(meta.vault) : null;
+      if (vd) { buildVaultView(vd); return; }
       var g = newGrid();
       carveRect(g, CX, CY, 4, 3);
       var doors = {};
@@ -183,14 +207,52 @@ var TD_MAP = (function () {
         // a plain inner door (a chokepoint you can shut behind you) and a hidden
         // pocket in the wall above it, found only by searching.
         addPlain(18, 9);
-        addSecret(18, 7, "ration");
+        addSecret(18, 7, "ration", "draft");
       }
       spawnCreatures();
       if (decorate) decorate(ctrl, { CX: CX, CY: CY, key: key, isFloor: isFloor });
     }
+
+    // a hand-authored vault room (the splice payoff): stamp its layout centered,
+    // map '+' connection tiles to this node's edges, lay its terrain + contents.
+    function buildVaultView(vd) {
+      var g = newGrid(), rows = vd.layout, H0 = rows.length, W0 = rows[0].length;
+      var ox = Math.floor((W - W0) / 2), oy = Math.floor((H - H0) / 2);
+      var conns = [], entry = null, doors = {};
+      for (var y = 0; y < H0; y++) for (var x = 0; x < W0; x++) {
+        var ch = rows[y].charAt(x), gx = ox + x, gy = oy + y;
+        if (ch === "#") g[gy][gx] = "#";
+        else if (ch === "~") { g[gy][gx] = "~"; ctrl.water[key(gx, gy)] = 1; }
+        else if (ch === "X") { g[gy][gx] = "X"; ctrl.chasm[key(gx, gy)] = 1; }
+        else g[gy][gx] = ".";
+        if (ch === "@") entry = { x: gx, y: gy };
+        if (ch === "+") conns.push({ x: gx, y: gy });
+      }
+      var iv = interp.view(), cl = curLevel();
+      iv.options.forEach(function (o, i) {
+        var c = conns[i] || conns[0]; if (!c) return;
+        var toLevel = (world.nodes[o.to] || {}).level;
+        var type = (typeof toLevel === "number" && toLevel < cl) ? "stair_up" : (typeof toLevel === "number" && toLevel > cl) ? "stair_down" : (o.one_way ? "oneway" : "door");
+        doors[key(c.x, c.y)] = { edgeId: o.id, type: type, takeable: o.takeable, reason: o.reason, one_way: o.one_way, to: o.to, label: o.label, tells: o.tells || [] };
+      });
+      ctrl.grid = g; ctrl.doors = doors; ctrl.features = {}; ctrl.items = {}; ctrl.plain = {}; ctrl.secrets = {};
+      ctrl.player = entry || { x: ox + (W0 >> 1), y: oy + (H0 >> 1) };
+      ctrl.explored = new Set(); reveal(ctrl.player.x, ctrl.player.y); ctrl.pendingDoor = null;
+      (vd.features || []).forEach(function (f) { ctrl.features[key(ox + f.x, oy + f.y)] = { glyph: f.glyph || "¶", channel: f.channel, kind: f.kind, obj: f.obj, text: f.text, label: "a notice" }; });
+      (vd.items || []).forEach(function (it) { var iy = oy + it.y, ix = ox + it.x; if (g[iy] && g[iy][ix] === ".") ctrl.items[key(ix, iy)] = makeItem(it.kind); });
+      if (vd.secret) ctrl.secrets[key(ox + vd.secret.x, oy + vd.secret.y)] = { kind: vd.secret.kind, found: false, tell: vd.secret.tell || "hollow" };
+      ctrl.creatures = [];
+      if (livingOn && inDungeon()) (vd.creatures || []).forEach(function (c) {
+        var def = CREATURE[c.kind]; if (!def) return;
+        ctrl.creatures.push({ x: ox + c.x, y: oy + c.y, kind: c.kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph });
+      });
+      if (decorate) decorate(ctrl, { CX: CX, CY: CY, key: key, isFloor: isFloor });
+    }
     function tryItem(x, y, kind) { if (isFloor(x, y) && !(x === ctrl.player.x && y === ctrl.player.y)) ctrl.items[key(x, y)] = makeItem(kind); }
     function addPlain(x, y) { if (isFloor(x, y)) ctrl.plain[key(x, y)] = { open: false }; }
-    function addSecret(x, y, kind) { if (inb(x, y) && ctrl.grid[y][x] === "#") ctrl.secrets[key(x, y)] = { kind: kind, found: false }; }
+    function addSecret(x, y, kind, tell) { if (inb(x, y) && ctrl.grid[y][x] === "#") ctrl.secrets[key(x, y)] = { kind: kind, found: false, tell: tell || "hollow" }; }
+    function isWater(x, y) { return !!ctrl.water[key(x, y)]; }
+    function isChasm(x, y) { return !!ctrl.chasm[key(x, y)]; }
 
     function featureAt(x, y) { return ctrl.features[key(x, y)] || null; }
     function itemAt(x, y) { return ctrl.items[key(x, y)] || null; }
@@ -353,18 +415,28 @@ var TD_MAP = (function () {
         return { moved: false, bumpedDoor: true, plain: true, event: ctrl.lastEvent };
       }
 
-      if (ctrl.grid[ny][nx] !== ".") return { moved: false };
+      // CHASM: impassable terrain; bumping it prompts a desperate fall (Enter).
+      if (isChasm(nx, ny)) {
+        ctrl.pendingFall = { x: nx, y: ny };
+        logMsg("A sheer drop yawns. Press Enter to throw yourself down — a fall to the level below.", false);
+        senses("A draft rises from the dark below, steady as a held breath.", "heard", "OBJ");
+        return { moved: false, chasm: true, event: ctrl.lastEvent };
+      }
+      var onWater = isWater(nx, ny);
+      if (ctrl.grid[ny][nx] !== "." && !onWater) return { moved: false };
 
       ctrl.player.x = nx; ctrl.player.y = ny;
-      ctrl.pendingDoor = null;
+      ctrl.pendingDoor = null; ctrl.pendingFall = null;
       reveal(nx, ny);
       var f = featureAt(nx, ny);
-      if (f) { if (f.id) ctrl.character.signalsSeen.add(f.id); logMsg(f.text, false); }
+      if (f) { if (f.id) ctrl.character.signalsSeen.add(f.id); if (f.kind) senses(f.text, f.kind, f.obj); else logMsg(f.text, false); }
       var it = itemAt(nx, ny);
       if (it) logMsg("Here lies " + it.name + ". Press g to take it.", false);
+      if (onWater) logMsg("You wade in; it is slow going.", false);
       endTurn("step");
-      emitSenses();
-      return { moved: true, dead: ctrl.dead, feature: f || undefined, item: it || undefined };
+      if (onWater) endTurn("step");                      // WATER slows: the world gets an extra beat
+      emitSenses(); emitSecretTells();
+      return { moved: true, dead: ctrl.dead, feature: f || undefined, item: it || undefined, water: onWater };
     }
 
     // wait a turn: the world acts, you do not move. With no enemy in sight this
@@ -418,7 +490,7 @@ var TD_MAP = (function () {
           found.push(k);
         }
       }
-      if (found.length) logMsg("Your fingers find a seam — a hidden pocket gives way.", false);
+      if (found.length) { logMsg("Your fingers find a seam — a hidden pocket gives way.", false); senses(TELLS.hollow.text, TELLS.hollow.kind, TELLS.hollow.obj); }
       else logMsg("You run your hands over the nearby stone and find nothing.", false);
       endTurn("step");
       return { searched: true, found: found.length, event: ctrl.lastEvent };
@@ -449,9 +521,25 @@ var TD_MAP = (function () {
 
     // Enter / o: commit the pending door (an edge stair OR a plain inner door),
     // else open an adjacent plain door if one is shut beside you.
+    function fallDescend() {
+      ctrl.pendingFall = null;
+      var iv = interp.view(), down = null;
+      iv.options.forEach(function (o) { var tl = (world.nodes[o.to] || {}).level; if (typeof tl === "number" && tl > curLevel()) down = o; });
+      if (!down) { logMsg("You peer over the edge; there is no bottom worth reaching from here.", false); return { fell: false }; }
+      ctrl.meters.hp = Math.max(0, ctrl.meters.hp - FALL_DMG);
+      logMsg("You throw yourself into the dark and land badly (−" + FALL_DMG + ").", true);
+      senses("Wind, then floor; the level above closes overhead.", "heard", "OBJ");
+      if (ctrl.meters.hp <= 0) { die("The visitor took the chasm for an exit; the chasm took the visitor."); return { fell: true, dead: true }; }
+      var r = interp.choose(down.id);
+      ctrl.node = interp.state.node; ctrl.won = !!r.complete; shared.turn += 1;
+      buildView();
+      return { fell: true, recenter: true, to: ctrl.node };
+    }
+
     function openDoor() {
       if (ctrl.dead || ctrl.won) return { opened: false };
       ctrl.fx = [];
+      if (ctrl.pendingFall) return fallDescend();
       var p = ctrl.pendingDoor;
       if (p && p.plain) return openPlain(p.x, p.y);
       if (!p) {                                            // no pending edge door
@@ -525,7 +613,9 @@ var TD_MAP = (function () {
         requiredTotal: iv.requiredTotal, requiredDone: iv.requiredDone,
         meters: ctrl.meters, hunger: hungerStage(ctrl.meters), kills: ctrl.kills, ticket: ctrl.character.ticket,
         inventory: ctrl.inventory, messages: ctrl.messages, turn: shared.turn,
-        events: ctrl.fx,
+        events: ctrl.fx, water: ctrl.water, chasm: ctrl.chasm,
+        pendingFall: ctrl.pendingFall ? key(ctrl.pendingFall.x, ctrl.pendingFall.y) : null,
+        vault: (world.nodes[ctrl.node] || {}).vault || null,
         discoveries: discoveries, lastEvent: ctrl.lastEvent, lastUrgent: ctrl.lastUrgent,
         pendingDoor: ctrl.pendingDoor ? key(ctrl.pendingDoor.x, ctrl.pendingDoor.y) : null,
         dead: ctrl.dead, won: ctrl.won, cause: ctrl.cause
@@ -557,9 +647,11 @@ var TD_MAP = (function () {
       _node: function () { return ctrl.node; },
       _hunger: function () { return hungerStage(ctrl.meters); },
       _enemiesVisible: function () { return enemiesVisible(); },
-      _addSecret: function (x, y, kind) { addSecret(x, y, kind); },
+      _addSecret: function (x, y, kind, tell) { addSecret(x, y, kind, tell); },
       _addPlain: function (x, y) { ctrl.plain[key(x, y)] = { open: false }; },
       _setItem: function (x, y, kind) { ctrl.items[key(x, y)] = makeItem(kind); },
+      _setWater: function (x, y) { ctrl.water[key(x, y)] = 1; ctrl.grid[y][x] = "~"; },
+      _setChasm: function (x, y) { ctrl.chasm[key(x, y)] = 1; ctrl.grid[y][x] = "X"; },
       _passable: function (x, y) { return passable(x, y); }
     };
     return api;

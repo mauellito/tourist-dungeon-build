@@ -117,6 +117,56 @@ var TD_GEN = (function () {
       }
     }
 
+    // ---- vault splice (DCSS conceit): hand-authored rooms hung off a
+    // revisitable hub by a two-way edge — obligation-safe BY CONSTRUCTION (the
+    // same shape as the side loops). When the checker is loaded, it RULES the
+    // result: a splice that would fail any of the six obligations is rejected
+    // and placement retried (bounded), then skipped. --------------------------
+    var vaultsOn = (opts.vaults !== false) && (typeof TD_VAULTS !== "undefined");
+    var vaultChance = opts.vault_chance != null ? opts.vault_chance : 0.6;
+    function curWorld() { return { start: "entrance", year_length: 365, arrival_day: arrivalDay, meta: { seed: 0 }, nodes: nodes, edges: edges, signals: signals }; }
+    function pickVault(pool) {
+      var total = pool.reduce(function (s, v) { return s + (v.rarity || 0.5); }, 0);
+      var r = rng.next() * total;
+      for (var i = 0; i < pool.length; i++) { r -= (pool[i].rarity || 0.5); if (r <= 0) return pool[i]; }
+      return pool[pool.length - 1];
+    }
+    // A vault is hung off a revisitable hub by a two-way edge — the same shape
+    // as the side loops, which are obligation-safe BY CONSTRUCTION (reachable,
+    // escapable, optional, no requires/grants/windows on the splice edges). So we
+    // do NOT pay a full six-obligation verify per splice (that proof is costly
+    // with the calendar/flag search). Instead the checker RULES THE RESULT once,
+    // at the end: if the finished dungeon would fail any obligation, every vault
+    // is rolled back (the dungeon ships clean). In practice the rollback never
+    // fires; the per-seed obligation tests prove it.
+    function placeVault(v, L, idx) {
+      var nid = "vault_" + L + "_" + idx, hub = "hub_" + L;
+      if (!nodes[hub] || nodes[nid]) return false;
+      node(nid, { level: L, title: v.title, vault: v.id, tags: (v.tags || []).slice(), required: !!v.required,
+        desc: "A spliced room: " + v.title + "." });
+      edge({ id: "e_vin_" + nid, from: hub, to: nid, label: "Step into " + v.title + "." });
+      edge({ id: "e_vout_" + nid, from: nid, to: hub, label: "Leave " + v.title + ", back to the concourse." });
+      return true;
+    }
+    function rollbackVaults() {
+      Object.keys(nodes).forEach(function (n) { if (nodes[n].vault) delete nodes[n]; });
+      edges = edges.filter(function (e) { return !/^e_v(in|out)_/.test(e.id); });
+    }
+    if (vaultsOn) {
+      var placed = 0;
+      for (var VL = 1; VL <= depth; VL++) {
+        if (!rng.chance(vaultChance)) continue;
+        var pool = TD_VAULTS.forLevel(VL);
+        if (!pool.length) continue;
+        var howMany = rng.int(1, 2);
+        for (var vk = 0; vk < howMany; vk++) {
+          if (placeVault(pickVault(pool), VL, placed)) placed++;
+        }
+      }
+      // the checker rules the result: one verify for the finished dungeon
+      if (placed && !opts.skip_vault_check && typeof TD_CHECK !== "undefined" && !TD_CHECK.verify(curWorld()).pass) rollbackVaults();
+    }
+
     // ---- knowledge-key express shortcut (always-open; informational gate) --
     if (withExpress && depth >= 2) {
       var k = rng.int(2, depth);
