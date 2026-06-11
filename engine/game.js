@@ -56,7 +56,7 @@ var TD_GAME = (function () {
     });
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
-    var invOpen, invSel, look, sensedWater;
+    var invOpen, invSel, look, sensedWater, vendor, pendingVendor;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
@@ -66,9 +66,10 @@ var TD_GAME = (function () {
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
       placeId = "TOWN"; dungeon = null; dead = false; won = false;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
-      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false;
+      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
+      vendor = { x: 12, y: 12, frozen: false };          // the mobile hot dog vendor, on his route
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
@@ -83,6 +84,33 @@ var TD_GAME = (function () {
     }
     function senses(t, kind, obj, urgent) { logMsg(t, !!urgent, { ch: "senses", kind: kind, obj: obj }); }
     function makeRation() { return TD_MAP.makeItem("ration"); }
+    function makeHotDog() { return { kind: "ration", glyph: "%", name: "a hot dog", desc: "A street hot dog, Bureau-permitted (permit eleven-and-three-quarters). A solid climb up the hunger ladder.", use: "eat", food: 60 }; }
+
+    // session-scoped voice boxes (a line used this session is retired; the NPC
+    // "remembers" across lives, which is what famous-from-deaths is built on)
+    function voice(id) {
+      if (typeof TD_VOICES === "undefined") return null;
+      session.voices = session.voices || {};
+      if (!session.voices[id]) session.voices[id] = TD_VOICES.box(id);
+      return session.voices[id];
+    }
+    function speak(vb, trigger, state) {
+      if (!vb || !vb.spec || vb.spec.placeholder) return false;
+      var l = vb.say(trigger, state); if (!l) return false;
+      senses(l.text, l.kind || "said", l.obj); return true;
+    }
+    // the most salient player state, for NPC reactions
+    function playerState() {
+      var hg = TD_MAP.hungerStage(meters);
+      if (hg.stage === "Starving") return "starving";
+      if (meters.hp < 0.5 * meters.hpMax) return "wounded";
+      if (session.lives > 2) return "famous";
+      if (meters.comfort >= 2) return "comfortable";
+      if (character.ticket) return "ticketed";
+      if (meters.fatigue > 70) return "fatigued";
+      if (session.lives <= 1) return "fresh";
+      return "fed";
+    }
 
     // ---- effects layer (shared by spatial counters AND the _interact test hook)
     function act(type) {
@@ -222,21 +250,33 @@ var TD_GAME = (function () {
       var P = cur();
       var nx = player.x + DIRS[dir][0], ny = player.y + DIRS[dir][1];
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) return { moved: false };
+      // the mobile hot dog vendor: contact begins the conversation (only Enter buys)
+      if (placeId === "TOWN" && vendor && nx === vendor.x && ny === vendor.y) {
+        pendingDoor = null; pendingCounter = null; pendingVendor = true;
+        var vb = voice("vendor");
+        if (!speak(vb, "greeting")) logMsg("The vendor waves you over to the cart.");
+        speak(vb, "pitch"); speak(vb, "reaction", playerState());
+        logMsg("Buy a hot dog? — Enter to accept; step away to decline.");
+        return { moved: false, bumpedVendor: true, event: lastEvent };
+      }
       var d = P.doors[key(nx, ny)];
-      if (d) { pendingCounter = null; pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
+      if (d) { pendingCounter = null; pendingVendor = false; pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
       var f = P.features[key(nx, ny)];
       if (f) {
-        if (f.act === "lookout") { pendingCounter = null; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
-        // a counter/desk: begin the conversation, do NOT transact
-        pendingDoor = null; pendingCounter = { act: f.act, x: nx, y: ny };
+        if (f.act === "lookout") { pendingCounter = null; pendingVendor = false; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
+        // a counter/desk: begin the conversation in the keeper's own voice
+        pendingDoor = null; pendingVendor = false; pendingCounter = { act: f.act, x: nx, y: ny };
+        var vbc = voice(f.act), spoke = false;
+        if (speak(vbc, "greeting")) { spoke = true; speak(vbc, "pitch"); speak(vbc, "reaction", playerState()); }
         var p = PITCH[f.act] || { pitch: "The clerk awaits your custom.", offer: "Enter to accept; step away to decline.", obj: "SUBJ" };
-        senses(p.pitch, "said", p.obj || "SUBJ");   // the patter is perceived speech
+        if (!spoke) senses(p.pitch, "said", p.obj || "SUBJ");
         logMsg(p.offer);                            // the offer is a mechanical prompt
         return { moved: false, bumpedCounter: true, act: f.act, event: lastEvent };
       }
       if (P.grid[ny][nx] !== ".") return { moved: false };
-      player.x = nx; player.y = ny; pendingDoor = null; pendingCounter = null; lastEvent = null;
+      player.x = nx; player.y = ny; pendingDoor = null; pendingCounter = null; pendingVendor = false; lastEvent = null;
       shared.turn += 1;
+      vendorStep();
       // the senses emitter (town): the harbour makes itself heard near the water
       var nearW = waterAdjacent(P, nx, ny);
       if (nearW && !sensedWater) senses("Down at the quay the water laps at the stone, patient and cold.", "heard", "OBJ");
@@ -250,13 +290,34 @@ var TD_GAME = (function () {
       }
       return false;
     }
+    // the vendor wanders the streets turn-by-turn (frozen during tests)
+    function vendorStep() {
+      if (!vendor || vendor.frozen || placeId !== "TOWN") return;
+      var T = places.TOWN, opts = [], ds = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+      for (var i = 0; i < ds.length; i++) {
+        var x = vendor.x + ds[i][0], y = vendor.y + ds[i][1];
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        if (T.grid[y][x] === "." && !T.doors[key(x, y)] && !T.features[key(x, y)] && !(x === player.x && y === player.y)) opts.push({ x: x, y: y });
+      }
+      if (opts.length) { var p = opts[Math.floor(Math.random() * opts.length)]; vendor.x = p.x; vendor.y = p.y; }
+    }
+    function buyHotDog() {
+      shared.inventory.push(makeHotDog());
+      if (!speak(voice("vendor"), "accept")) logMsg("The vendor hands you a hot dog.");
+      logMsg("You take a hot dog. (Free, for now — the cart's economy is still in committee.)");   // PLACEHOLDER price
+    }
 
     function commit() {       // Enter / o
       if (placeId === "DUNGEON") { var rd = dungeon.open(); afterDungeon(); return rd; }
-      // a pending sale closes only here, and only while you are still at the desk
+      // a pending hot-dog sale closes here, while still beside the cart
+      if (pendingVendor) {
+        if (!vendor || cheby(vendor, player) > 1) { pendingVendor = false; }
+        else { pendingVendor = false; buyHotDog(); return { opened: true, dealt: "vendor", event: lastEvent }; }
+      }
+      // a pending counter sale closes only here, while you are still at the desk
       if (pendingCounter) {
         if (cheby(pendingCounter, player) > 1) { pendingCounter = null; }
-        else { var a = pendingCounter.act; pendingCounter = null; act(a); return { opened: true, dealt: a, event: lastEvent }; }
+        else { var a = pendingCounter.act; pendingCounter = null; act(a); speak(voice(a), "accept"); return { opened: true, dealt: a, event: lastEvent }; }
       }
       var p = pendingDoor;
       if (!p) { logMsg("There is no door before you."); return { opened: false }; }
@@ -388,7 +449,9 @@ var TD_GAME = (function () {
         phase: placeId === "TOWN" ? "town" : "interior", w: W, h: H,
         grid: P.grid.map(function (r) { return r.join(""); }),
         doors: P.doors, features: P.features, items: {}, plain: {},
-        player: { x: player.x, y: player.y }, creatures: [], events: [],
+        player: { x: player.x, y: player.y },
+        creatures: (placeId === "TOWN" && vendor) ? [{ x: vendor.x, y: vendor.y, kind: "vendor", glyph: "v", name: "the hot dog vendor", hp: 1, maxHp: 1, dmg: 0 }] : [],
+        events: [],
         explored: explored, visible: explored,
         level: 0, title: P.title, meters: meters, ticket: character.ticket,
         requiredTotal: 0, requiredDone: 0,
@@ -450,8 +513,14 @@ var TD_GAME = (function () {
       _place: function () { return placeId; }, _player: function () { return player; },
       _dungeon: function () { return dungeon; },
       _shared: function () { return shared; },
-      _goto: function (id) { pendingDoor = null; pendingCounter = null; placeId = id; player = { x: places[id].spawn.x, y: places[id].spawn.y }; return view(); },
+      _goto: function (id) { pendingDoor = null; pendingCounter = null; pendingVendor = false; placeId = id; player = { x: places[id].spawn.x, y: places[id].spawn.y }; return view(); },
       _pendingCounter: function () { return pendingCounter ? pendingCounter.act : null; },
+      _pendingVendor: function () { return pendingVendor; },
+      _vendor: function () { return vendor; },
+      _setVendor: function (x, y) { vendor = { x: x, y: y, frozen: true }; return vendor; },
+      _freezeVendor: function (b) { if (vendor) vendor.frozen = !!b; },
+      _voice: function (id) { return voice(id); },
+      _playerState: function () { return playerState(); },
       _hunger: function () { return TD_MAP.hungerStage(meters); },
       _inventory: function () { return shared.inventory; },
       _invList: function () { return invList(); },

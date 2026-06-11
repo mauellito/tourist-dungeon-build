@@ -206,6 +206,7 @@
 <script src="generator.js"></script>
 <script src="interpreter.js"></script>
 <script src="mapmode.js"></script>
+<script src="voices.js"></script>
 <script src="game.js"></script>
 <script src="ui.js"></script>
 <script>
@@ -664,7 +665,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v10 · vaults & terrain", BUILD = "d3f58b8";
+  var VERSION = "play-map v11 · voices & vendor", BUILD = "b198a25";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

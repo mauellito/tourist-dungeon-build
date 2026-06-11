@@ -218,6 +218,28 @@ function TD_GAME_TESTS() {
     eq(g.view().hunger.stage, "well fed");
   });
 
+  // ------------------------------------- THE HOT DOG VENDOR (Round 6) -------
+  test("the vendor is a conversation: bump pitches in his voice, only Enter buys", function () {
+    var g = game();
+    g._setVendor(21, 11);                                 // park him beside the spawn (frozen)
+    var r = g.move("right");                              // bump the cart
+    assert(r.bumpedVendor, "bumping the cart begins a conversation, not a sale");
+    eq(g._inventory().filter(function (i) { return i.name === "a hot dog"; }).length, 0, "no hot dog changes hands on contact");
+    inc(g._lastEvent(), "Enter to accept", "a clear offer line is shown");
+    var spoke = g._shared().messages.filter(function (m) { return m.ch === "senses"; });
+    assert(spoke.length >= 1, "the vendor speaks on the senses channel");
+    g.commit();                                           // Enter closes the deal
+    assert(g._inventory().some(function (i) { return i.name === "a hot dog"; }), "Enter buys a carryable hot dog");
+  });
+
+  test("voice lines are channelled and never repeat within a session", function () {
+    var g = game();
+    var vb = g._voice("vendor");
+    var seen = {}, n = 0, l;
+    while ((l = vb.say("pitch"))) { assert(!seen[l.text], "no repeat"); assert(l.ch === "senses" && l.obj, "channelled"); seen[l.text] = 1; if (++n > 20) break; }
+    assert(n >= 4, "at least 4 pitch variants");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

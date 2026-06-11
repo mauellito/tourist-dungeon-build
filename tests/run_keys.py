@@ -90,6 +90,17 @@ F.onload = function(){
     var tt=view().turn; pkc('5','Numpad5');
     ok('numpad 5 waits a turn', view().turn===tt+1);
 
+    // ============== HOT DOG VENDOR (mobile NPC; contact -> Enter buys) =====
+    win.__TD_SIM()._freezeVendor(true);
+    var pp=view().player; win.__TD_SIM()._setVendor(pp.x+1, pp.y);
+    press('right');
+    ok('bumping the vendor cart does NOT buy — it opens a conversation',
+       !((view().inventory||[]).some(function(i){return i.name==='a hot dog';})));
+    ok('the vendor pitches with a clear offer line', /Enter to accept/.test(view().lastEvent||''));
+    pk('Enter');
+    ok('Enter buys a carryable hot dog', (view().inventory||[]).some(function(i){return i.name==='a hot dog';}));
+    win.__TD_SIM()._setVendor(5,18);   // park him out of the rest of the route
+
     // ============================ DOORS: BUMP vs COMMIT (town) ============
     var bd=goAdjacent(8,7); press(bd); var vb=view();
     ok('bumping a building does NOT enter it (still town)', vb.phase==='town');
@@ -155,9 +166,10 @@ F.onload = function(){
 
     // ============================ INVENTORY: use/consume =================
     pk('i'); ok('i opens the pack', view().invOpen);
-    pk('a'); pk('u'); var vu=view();
-    ok('selecting the ration and pressing u eats it (consumed)',
-       !(vu.inventory||[]).some(function(it){return it.kind==='ration';}));
+    var inv0=view().inventory||[]; var bi=-1; for(var ii=0;ii<inv0.length;ii++){ if(inv0[ii].name==="a vendor's bun"){ bi=ii; break; } }
+    pk(String.fromCharCode(97+bi)); pk('u'); var vu=view();
+    ok('selecting the bun and pressing u eats it (consumed)',
+       !(vu.inventory||[]).some(function(it){return it.name==="a vendor's bun";}));
     pk('i'); ok('i closes the pack again', !view().invOpen);
 
     // ============================ DOORS: open / close (plain) ============
