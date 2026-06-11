@@ -83,7 +83,7 @@ var TD_GAME = (function () {
     });
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
-    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, townsfolk;
+    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, townsfolk, sensedGarden;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
@@ -93,7 +93,7 @@ var TD_GAME = (function () {
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
       placeId = "TOWN"; dungeon = null; dead = false; won = false;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
-      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false;
+      returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; sensedGarden = false;
       buildPlaces();
       player = { x: places.TOWN.spawn.x, y: places.TOWN.spawn.y };
       vendor = { x: 31, y: 9, frozen: false, glyph: "v", name: "the hot dog vendor", voiceId: "vendor", isVendor: true };   // works the tourist strip
@@ -189,6 +189,8 @@ var TD_GAME = (function () {
           logMsg("The clerk nods at the island offshore. “Rentals resume when the tide and the Bureau agree.”"); break;   // goes nowhere yet (FLAG)
         case "flavor":
           logMsg("You browse. Nothing changes hands today, which is its own kind of transaction."); break;
+        case "shrine":
+          logMsg("A small peace, off the record."); senses("You bow your head. The Bureau keeps no record of this corner.", "intuition", "SUBJ"); break;
       }
     }
     function restore(hp, fat, sat) { meters.hp = hp; meters.fatigue = fat; meters.satiation = sat; }
@@ -281,6 +283,25 @@ var TD_GAME = (function () {
       doors[key(31, 5)].gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
       // the harbour rail: the island offshore, in plain sight and plainly off-limits (012)
       features[key(31, 37)] = { type: "lookout", glyph: "≈", label: "harbour rail", text: SIG["012"].t, act: "lookout" };
+
+      // --- OPEN SPACE: a fountain, a public garden, a stable, a dead-end view ---
+      g[12][31] = "~"; g[12][32] = "~"; g[13][31] = "~"; g[13][32] = "~";        // the fountain (you walk around it)
+      features[key(31, 11)] = { type: "view", glyph: "≈", col: "water", label: "the fountain plaza", text: "The fountain mutters to itself, municipal and content. Coins glint in it, unclaimed.", act: "look" };
+      carve(g, 40, 9, 47, 14);                                                   // the public garden, off the bar
+      ["41,10", "45,11", "43,13", "46,9"].forEach(function (t) { var p = t.split(","); g[+p[1]][+p[0]] = "t"; });   // trees
+      features[key(43, 12)] = { type: "view", glyph: "t", col: "nature", label: "the public garden", text: "A square of deliberate green: a bench, two trees, and a sign forbidding the obvious.", act: "look" };
+      bld(57, 33, "empty", "u", "the Stable", "waterfront");                     // a stable on the road out of town
+      carve(g, 57, 34, 57, 37);                                                  // a dead-end down to the water
+      features[key(57, 37)] = { type: "view", glyph: "=", col: "signal", label: "a quiet railing", text: "A railing, a bench, the harbour breathing below. The island sits offshore, indifferent. The wrong turn was the right one.", act: "look" };
+      // the red-light archway — you feel the threshold (Clock Town)
+      features[key(8, 27)] = { type: "view", glyph: "∩", col: "redlight", label: "the red-light archway", text: "An arch of dim red glass. Past it the streets pinch and the lamps go pink. You are somewhere else now.", act: "look" };
+      [key(10, 35), key(9, 30), key(15, 33)].forEach(function (kk) { if (doors[kk]) doors[kk].red = true; });   // red-tinted doors
+
+      // --- THE CURIOSITY (Dragon Quest): a hidden garden behind the church,
+      // found by a curious detour, telegraphed by a draft (secret grammar law) ---
+      carve(g, 45, 28, 48, 30); g[27][46] = ".";                                 // the gap + the pocket garden
+      features[key(46, 29)] = { type: "shrine", glyph: "¶", col: "nature", label: "a forgotten shrine", text: "Behind the church, out of the Bureau's sightline: a small shrine, two candles, and a quiet you may keep.", act: "shrine" };
+
       return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 31, y: 20 }, meta: { streets: streets, districts: districts } };
     }
 
@@ -377,6 +398,8 @@ var TD_GAME = (function () {
       var f = P.features[key(nx, ny)];
       if (f) {
         if (f.act === "lookout") { pendingCounter = null; pendingVendor = false; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
+        if (f.act === "look") { pendingCounter = null; pendingVendor = false; senses(f.text, "seen", "OBJ"); return { moved: false, interacted: "look", event: lastEvent }; }
+        if (f.act === "shrine") { pendingCounter = null; pendingVendor = false; act("shrine"); return { moved: false, interacted: "shrine", event: lastEvent }; }
         // a counter/desk: begin the conversation in the keeper's own voice
         pendingDoor = null; pendingVendor = false; pendingCounter = { act: f.act, x: nx, y: ny };
         var vbc = voice(f.act), spoke = false;
@@ -394,6 +417,8 @@ var TD_GAME = (function () {
       var nearW = waterAdjacent(P, nx, ny);
       if (nearW && !sensedWater) senses("Down at the quay the water laps at the stone, patient and cold.", "heard", "OBJ");
       sensedWater = nearW;
+      // secret grammar: the hidden church garden is telegraphed by a draft
+      if (!sensedGarden && Math.max(Math.abs(nx - 46), Math.abs(ny - 27)) <= 1) { senses("A cool draft slips from behind the church — there is a way around.", "heard", "OBJ"); sensedGarden = true; }
       return { moved: true };
     }
     function waterAdjacent(P, x, y) {

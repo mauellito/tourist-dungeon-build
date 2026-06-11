@@ -22,6 +22,8 @@ var TD_UI = (function () {
     signal:   "#b98cff",   // violet — any signal plaque / lookout
     critical: "#ff2d1f",   // pure red — critical messages, the --more-- halt, damage taken
     senses:   "#7fa8c9",   // steel blue — the SENSES channel (perceived atmosphere)
+    redlight:  "#e0559a",  // pink — the red-light district (its doors, its archway)
+    nature:    "#5a8a4a",  // green — trees, gardens, the park
     // damage-number meanings (kept consistent with the category rules)
     dmgDealt: "#f5c542",   // = player gold (your output)
     dmgTaken: "#ff2d1f",   // = critical red (harm to you)
