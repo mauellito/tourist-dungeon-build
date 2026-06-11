@@ -316,8 +316,8 @@
       ctx.fillStyle = (f.col && P[f.col]) ? P[f.col] : P.signal; ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
     });
     vw.creatures.forEach(function (c) {
-      ctx.fillStyle = P.creature; ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
-      if (typeof c.hp === "number" && typeof c.maxHp === "number" && c.hp < c.maxHp) {
+      ctx.fillStyle = c.friendly ? P.npc : P.creature; ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
+      if (!c.friendly && typeof c.hp === "number" && typeof c.maxHp === "number" && c.hp < c.maxHp) {
         var frac = Math.max(0, c.hp / c.maxHp);
         ctx.fillStyle = "#2a0d0a"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, TS - 4, 3);
         ctx.fillStyle = P.creature; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 3);

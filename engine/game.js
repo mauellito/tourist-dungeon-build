@@ -126,7 +126,8 @@ var TD_GAME = (function () {
         { id: "senorita", voiceId: "senorita", x: 31, y: 30, glyph: "s", name: "a señorita", frozen: false, type: "townsfolk", home: { x: 31, y: 30 }, speed: 90, energy: 0, acts: 0 },
         { id: "guard1", voiceId: "guard", x: 31, y: 14, glyph: "G", name: "a Bureau patrol", frozen: false, type: "guard", route: GUARD_ROUTE, home: { x: 31, y: 14 }, speed: 100, energy: 0, acts: 0 }
       ];
-      crowd = [];                                         // the filler population (R3)
+      crowd = [];
+      spawnPopulation();                                  // the filler crowd + the school troop
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
@@ -330,6 +331,12 @@ var TD_GAME = (function () {
       return { id: "TOWN", title: "The Harbour", grid: g, doors: doors, features: features, spawn: { x: 31, y: 20 }, meta: { streets: streets, districts: districts } };
     }
 
+    function occupantName(spec) {
+      if (spec.act === "hotel" || spec.act === "rest") return "a hotel guest";
+      if (spec.act === "food") return "a diner";
+      if (spec.act === "spa") return "a spa client";
+      return "a browsing customer";
+    }
     function buildInterior(id) {
       var spec = INTERIORS[id];
       var g = blank();
@@ -337,7 +344,13 @@ var TD_GAME = (function () {
       var doors = {}, features = {};
       if (spec.counter) features[key(20, 5)] = { type: "counter", glyph: "$", label: spec.counter, act: spec.act };   // empty stubs have no counter
       doors[key(20, 14)] = { to: "TOWN", glyph: "<", label: "the way out, back to the harbour" };
-      return { id: id, title: spec.title, sign: spec.sign, grid: g, doors: doors, features: features, spawn: { x: 20, y: 12 } };
+      // every enterable establishment has 2-4 occupants (stationary patrons)
+      var occupants = [];
+      if (spec.counter) {
+        var n = 2 + (id.length % 3), oxs = [11, 15, 25, 29], onm = occupantName(spec);
+        for (var i = 0; i < n; i++) occupants.push({ x: oxs[i % oxs.length], y: 8 + (i % 3), glyph: "o", name: onm, friendly: true, hp: 1, maxHp: 1, dmg: 0 });
+      }
+      return { id: id, title: spec.title, sign: spec.sign, grid: g, doors: doors, features: features, occupants: occupants, spawn: { x: 20, y: 12 } };
     }
 
     function cur() { return places[placeId]; }
@@ -444,7 +457,7 @@ var TD_GAME = (function () {
       sensedWater = nearW;
       // secret grammar: the hidden church garden is telegraphed by a draft
       if (!sensedGarden && Math.max(Math.abs(nx - 46), Math.abs(ny - 27)) <= 1) { senses("A cool draft slips from behind the church — there is a way around.", "heard", "OBJ"); sensedGarden = true; }
-      maybeGiftDuel();
+      maybeGiftDuel(); maybeAmbientBark();
       return { moved: true };
     }
     function waterAdjacent(P, x, y) {
@@ -481,10 +494,24 @@ var TD_GAME = (function () {
       return null;
     }
     function pickErrand(npc) {
-      if (npc.type === "guard") { npc.wp = ((npc.wp == null ? -1 : npc.wp) + 1) % npc.route.length; return DEST[npc.route[npc.wp]] || npc.home; }
+      if (npc.route) { npc.wp = ((npc.wp == null ? -1 : npc.wp) + 1) % npc.route.length; return DEST[npc.route[npc.wp]] || npc.home; }   // guard + chaperone cycle a fixed route
       var pool = POOLS[npc.type] || ["home"];
       var name = pool[Math.floor(Math.random() * pool.length)];
       return name === "home" ? npc.home : (DEST[name] || npc.home);
+    }
+    function nearestStreetAdj(T, lx, ly, fx, fy) {
+      var ds = [[0, -1], [0, 1], [-1, 0], [1, 0]], best = null, bd = 1e9;
+      for (var i = 0; i < ds.length; i++) { var x = lx + ds[i][0], y = ly + ds[i][1]; if (streetTile(T, x, y)) { var dd = Math.abs(x - fx) + Math.abs(y - fy); if (dd < bd) { bd = dd; best = { x: x, y: y }; } } }
+      return best;
+    }
+    // the school kids FOLLOW the chaperone, clustering within a few tiles
+    function followStep(npc, T, list) {
+      var leader = null; list.forEach(function (a) { if (a.id === npc.follow) leader = a; });
+      if (!leader) return;
+      if (Math.abs(npc.x - leader.x) + Math.abs(npc.y - leader.y) <= 2) { npc.path = null; return; }
+      var tgt = nearestStreetAdj(T, leader.x, leader.y, npc.x, npc.y);
+      npc.path = tgt ? bfsStreets(T, npc.x, npc.y, tgt.x, tgt.y) : null;
+      if (npc.path && npc.path.length) { var n = npc.path[0]; if (npcWalkable(T, list, npc, n.x, n.y)) { npc.x = n.x; npc.y = n.y; npc.path.shift(); } else npc.path = null; }
     }
     function wobbleStep(npc, T, list) {
       var ds = [[0, -1], [0, 1], [-1, 0], [1, 0]], o = [];
@@ -494,6 +521,7 @@ var TD_GAME = (function () {
     // ONE movement action: the ERRAND LOOP — go to a destination via streets,
     // dwell, then pick the next. (No pure random wander.)
     function actorStep(npc, T, list) {
+      if (npc.follow) { return followStep(npc, T, list); }
       if (npc.dwell > 0) { npc.dwell--; return; }
       if (!npc.path || !npc.path.length) {
         var d = pickErrand(npc);
@@ -514,6 +542,37 @@ var TD_GAME = (function () {
         var guard = 0;
         while (npc.energy >= 100 && guard++ < 4) { actorStep(npc, T, list); npc.energy -= 100; npc.acts = (npc.acts || 0) + 1; }   // each 100 energy = one action (move or dwell)
       });
+    }
+    // --- POPULATION: the filler crowd, sized to feel busy, by district -------
+    function spawnPopulation() {
+      var T = places.TOWN, D = T.meta.districts;
+      function freeIn(zone) { var r = zone.rect, out = []; for (var y = r[1]; y <= r[3]; y++) for (var x = r[0]; x <= r[2]; x++) if (streetTile(T, x, y)) out.push({ x: x, y: y }); return out; }
+      function take(a) { return a.length ? a.splice(Math.floor(Math.random() * a.length), 1)[0] : null; }
+      function add(type, glyph, name, voiceId, speed, tiles, n, extra) {
+        for (var i = 0; i < n; i++) { var t = take(tiles); if (!t) break; var a = { id: type + "_" + crowd.length, type: type, glyph: glyph, name: name, voiceId: voiceId, speed: speed, energy: 0, acts: 0, x: t.x, y: t.y, home: { x: t.x, y: t.y }, frozen: false, barksUsed: {} }; if (extra) for (var k in extra) a[k] = extra[k]; crowd.push(a); }
+      }
+      var water = freeIn(D.waterfront), main = freeIn(D.main), strip = freeIn(D["tourist-strip"]), shops = freeIn(D.shops);
+      add("dockworker", "w", "a dock worker", "dockworker", 90, water, 5);
+      add("sailor", "j", "a drunk sailor", "sailor", 60, water, 3, { wobble: true });
+      add("townsfolk", "c", "a townsperson", "shopper", 90, main, 4);
+      add("shopper", "p", "a shopper", "shopper", 90, shops, 3);
+      add("visitor", "i", "a visitor", "visitor", 90, strip, 4);
+      add("guard", "G", "a Bureau patrol", "guard", 100, main, 1, { route: GUARD_ROUTE });
+      spawnTroop();
+    }
+    function spawnTroop() {                                // the school trip troop (kids + chaperone)
+      var T = places.TOWN, cx = 31, cy = streetTile(T, 31, 8) ? 8 : 7;
+      crowd.push({ id: "chaperone", type: "chaperone", glyph: "C", name: "a Bureau chaperone", voiceId: "chaperone", speed: 90, energy: 0, acts: 0, x: cx, y: cy, route: ["plaza", "giftshops", "rail"], home: { x: cx, y: cy }, frozen: false, barksUsed: {} });
+      for (var i = 0; i < 5; i++) crowd.push({ id: "kid_" + i, type: "kid", glyph: "k", name: "a school kid", voiceId: "kids", speed: 130, energy: 0, acts: 0, x: cx, y: cy, follow: "chaperone", home: { x: cx, y: cy }, frozen: false, barksUsed: {} });
+    }
+    // ambient barks: a passing crowd member occasionally speaks (never a stop)
+    function maybeAmbientBark() {
+      if (typeof TD_VOICES === "undefined" || Math.random() > 0.18) return;
+      var near = npcs().filter(function (a) { return a.voiceId && !a.isVendor && cheby(player, a) <= 4; });
+      if (!near.length) return;
+      var a = near[Math.floor(Math.random() * near.length)], spec = TD_VOICES.byId(a.voiceId), barks = (spec && spec.barks) || [];
+      a.barksUsed = a.barksUsed || {};
+      for (var i = 0; i < barks.length; i++) if (!a.barksUsed[barks[i]]) { a.barksUsed[barks[i]] = 1; senses(a.name + ": “" + barks[i] + "”", "said", "SUBJ"); return; }
     }
     // the two gift shops trade dueling barks when the visitor is near both
     function maybeGiftDuel() {
@@ -559,7 +618,7 @@ var TD_GAME = (function () {
     // ---- the new ADOM verbs (top-level; spatial ones delegate underground) ---
     function wait() {
       if (placeId === "DUNGEON") { var r = dungeon.wait(); afterDungeon(); return r; }
-      shared.turn += 1; walkersStep();   // a wait is a player turn; the town keeps moving
+      shared.turn += 1; walkersStep(); maybeGiftDuel(); maybeAmbientBark();   // a wait is a player turn; the town keeps moving
       logMsg("You pause. The harbour goes about its business."); return { waited: true };
     }
     function get() {
@@ -681,7 +740,9 @@ var TD_GAME = (function () {
         grid: P.grid.map(function (r) { return r.join(""); }),
         doors: P.doors, features: P.features, items: {}, plain: {},
         player: { x: player.x, y: player.y },
-        creatures: npcs().map(function (n) { return { x: n.x, y: n.y, kind: "vendor", glyph: n.glyph, name: n.name, hp: 1, maxHp: 1, dmg: 0 }; }),
+        creatures: placeId === "TOWN"
+          ? npcs().map(function (n) { return { x: n.x, y: n.y, kind: "npc", glyph: n.glyph, name: n.name, hp: 1, maxHp: 1, dmg: 0, friendly: true }; })
+          : (P.occupants || []).slice(),
         events: [],
         explored: explored, visible: explored,
         level: 0, title: P.title, meters: meters, ticket: character.ticket,

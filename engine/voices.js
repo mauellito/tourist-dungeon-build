@@ -206,6 +206,36 @@ var TD_VOICES = (function () {
   SPECS.gift1.barks = ["Do not listen to number two — those are knockoffs!", "GENUINE artefacts here, not that imported nonsense next door!", "We were here FIRST, whatever their sign says!"];
   SPECS.gift2.barks = ["Number one sells gravel in a jar — come see the REAL thing!", "Authentic! Certified! Unlike SOME shops on this strip!", "Their 'olde' is spelled with an extra e and a lie!"];
 
+  // --- the filler crowd + the school troop (ambient barks; flagged for export) ---
+  SPECS.dockworker = flavorSpec("a dock worker", "labourer", "brooklyn",
+    ["Mind the ropes.", "Cargo waits for nobody.", "You lost, friend?"],
+    ["Twelve hours on the dock and the Bureau still wants a form.", "Tide is coming; so is my shift.", "The warehouse eats men like me for paperwork."], RX_BKLN);
+  SPECS.dockworker.barks = ["Coming through!", "Heavy load, make a hole.", "Another crate, another century."];
+  SPECS.sailor = flavorSpec("a drunk sailor", "sailor", "brooklyn",
+    ["Heyyy. Buy a man a drink?", "The sea is honest. The town is not.", "I been everywhere, twice."],
+    ["The tavern knows my name better than my mother.", "Solid ground keeps moving on me.", "Do not trust a calm harbour."], RX_BKLN);
+  SPECS.sailor.barks = ["To the tavern! Again!", "Whoa — who moved the street?", "One more, then I swear I am done."];
+  SPECS.shopper = flavorSpec("a shopper", "townsperson", "mixed",
+    ["So many shops, so little sense.", "I am only browsing.", "Have you seen the prices?"],
+    ["The bodega is a crime and a comfort.", "I came for one thing and left with five.", "Everything is 'genuine' now."], RX_MIX);
+  SPECS.shopper.barks = ["Is this genuine, do you think?", "Two for one, surely.", "I will think about it."];
+  SPECS.visitor = flavorSpec("a visitor", "tourist", "mixed",
+    ["Is THIS the dungeon? It is smaller than the brochure.", "Where does one get a ticket?", "Which gift shop is the real one?"],
+    ["The brochure promised more graveyard.", "I have a guided package, you know.", "We are doing the whole town by lunch."], RX_MIX);
+  SPECS.visitor.barks = ["Which gift shop is real?!", "Take the photo, take the photo!", "Is the island included?"];
+  SPECS.guard = flavorSpec("a Bureau patrol", "patrol", "mixed",
+    ["Move along; nothing is, by definition, happening.", "Keep to the lit streets.", "The Bureau sees you. The Bureau sees everyone."],
+    ["A quiet beat is a successful beat.", "The red-light end is somebody else's paperwork.", "Order is mostly a matter of signage."], RX_MIX);
+  SPECS.guard.barks = ["Move along.", "Nothing to see; that is the point.", "Mind the bylaws."];
+  SPECS.chaperone = flavorSpec("a Bureau chaperone", "tour chaperone", "mixed",
+    ["This way, children — and in single file, the Bureau prefers a line.", "Eyes front, hands to yourselves, questions at the end.", "We are AHEAD of schedule, which the Bureau distrusts."],
+    ["On your left, a fountain; do not climb the fountain.", "The gift shops are a lesson in commerce, children.", "No, we are not going IN the dungeon."], RX_MIX);
+  SPECS.chaperone.barks = ["Single file, please!", "Do NOT feed the vendor.", "Count off — one, two, where is three?"];
+  SPECS.kids = flavorSpec("a school kid", "schoolchild", "mixed",
+    ["Are we there yet?", "I can see the island!", "Can we go in the dungeon? Please?"],
+    ["My feet hurt.", "That sailor smells funny.", "I want a hot dog."], RX_MIX);
+  SPECS.kids.barks = ["Are we there yet?!", "I saw a monster, I SAW one!", "Can we get souvenirs?"];
+
   // dungeon cast — reserved voices, NO lines yet (canon arrives as design data)
   var DUNGEON_CAST = ["janitor", "elevator_operator", "oracle", "bookie"];
   DUNGEON_CAST.forEach(function (id) { SPECS[id] = { name: id, role: "dungeon NPC", accent: "mixed", placeholder: true, bible: { register: "TBD", rhythm: "TBD", tic: "TBD", neverSays: [] }, lines: {} }; });

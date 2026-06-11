@@ -24,6 +24,7 @@ var TD_UI = (function () {
     senses:   "#7fa8c9",   // steel blue — the SENSES channel (perceived atmosphere)
     redlight:  "#e0559a",  // pink — the red-light district (its doors, its archway)
     nature:    "#5a8a4a",  // green — trees, gardens, the park
+    npc:       "#d9b36a",  // warm tan — friendly townsfolk (the crowd, not a threat)
     // damage-number meanings (kept consistent with the category rules)
     dmgDealt: "#f5c542",   // = player gold (your output)
     dmgTaken: "#ff2d1f",   // = critical red (harm to you)
@@ -150,7 +151,7 @@ var TD_UI = (function () {
   // =========================================================== THREATS =======
   // Every creature in view, with HP and a danger severity.
   function threats(v) {
-    return (v.creatures || []).map(function (c) {
+    return (v.creatures || []).filter(function (c) { return !c.friendly; }).map(function (c) {   // friendly townsfolk are not threats
       return {
         name: c.name, glyph: c.glyph, kind: c.kind, x: c.x, y: c.y,
         hp: c.hp, maxHp: c.maxHp,

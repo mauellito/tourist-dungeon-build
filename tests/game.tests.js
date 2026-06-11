@@ -306,12 +306,12 @@ function TD_GAME_TESTS() {
 
   // ----------------------------------- GIFT-SHOP RIVALRY (v13) --------------
   test("the two gift shops trade rivalry barks near both, never repeating", function () {
-    var g = game();
+    var g = game(); g._freezeVendor(true);                // hush the crowd so the duel isn't blocked
     var seen = {}, barks = 0;
-    for (var i = 0; i < 12; i++) {
-      g._warp(31, 6 + (i % 2));                            // stand between the two shops
+    for (var i = 0; i < 16; i++) {
+      g._warp(31, 6);                                      // stand between the two shops
       var before = g._shared().messages.length;
-      g.move(i % 2 ? "down" : "up");                       // a step triggers the duel (rate-limited)
+      g.wait();                                            // a town turn triggers the duel (rate-limited)
       g._shared().messages.slice(before).forEach(function (m) {
         if (/Gifte|Authentic Dungeon Souvenirs/.test(m.text)) { assert(!seen[m.text], "no repeated bark: " + m.text); seen[m.text] = 1; barks++; }
       });
@@ -353,12 +353,43 @@ function TD_GAME_TESTS() {
   test("the Bureau patrol walks its full route over time", function () {
     var g = game();
     var wp = { main: [31, 14], plaza: [31, 10], "strip-a": [28, 6], alley: [8, 28] }, hit = {};
-    for (var i = 0; i < 700; i++) {
+    for (var i = 0; i < 1000; i++) {
       g.wait();
       var gd = g._actors().filter(function (a) { return a.id === "guard1"; })[0];
-      Object.keys(wp).forEach(function (n) { if (gd.x === wp[n][0] && gd.y === wp[n][1]) hit[n] = true; });
+      Object.keys(wp).forEach(function (n) { if (Math.max(Math.abs(gd.x - wp[n][0]), Math.abs(gd.y - wp[n][1])) <= 1) hit[n] = true; });   // within a tile (busy streets)
     }
     Object.keys(wp).forEach(function (n) { assert(hit[n], "the guard visited waypoint " + n); });
+  });
+
+  // ----------------------------------- POPULATION + OCCUPANCY (v14 R3) -----
+  function cd(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); }
+
+  test("every enterable establishment has 2-4 occupants (friendly)", function () {
+    var g = game();
+    ["hotel", "restaurant", "coffee", "bodega", "saloon", "bank", "church", "spa"].forEach(function (id) {
+      g._goto(id); var v = g.view();
+      assert(v.creatures.length >= 2 && v.creatures.length <= 4, id + ": 2-4 occupants (" + v.creatures.length + ")");
+      assert(v.creatures.every(function (c) { return c.friendly; }), id + ": occupants are friendly, not threats");
+    });
+  });
+
+  test("the exterior crowd is sized to feel busy, skewed by district", function () {
+    var g = game();
+    var ext = g._actors().filter(function (a) { return !a.isVendor && a.type !== "kid" && a.type !== "chaperone"; });
+    assert(ext.length >= 18 && ext.length <= 26, "18-25ish exterior crowd (" + ext.length + ")");
+    var dockSailor = ext.filter(function (a) { return a.type === "dockworker" || a.type === "sailor"; }).length;
+    assert(dockSailor >= 6, "the waterfront skews dock workers + sailors (" + dockSailor + ")");
+    assert(ext.filter(function (a) { return a.type === "visitor"; }).length >= 3, "the tourist strip has visitors");
+    assert(ext.filter(function (a) { return a.type === "guard"; }).length >= 2, "patrols are out");
+  });
+
+  test("the school troop stays together — no kid more than 3 tiles from the chaperone", function () {
+    var g = game();
+    for (var i = 0; i < 250; i++) {
+      g.wait();
+      var as = g._actors(), chap = as.filter(function (a) { return a.id === "chaperone"; })[0];
+      as.filter(function (a) { return a.type === "kid"; }).forEach(function (k) { assert(cd(k, chap) <= 3, "a kid drifted to " + cd(k, chap) + " tiles from the chaperone"); });
+    }
   });
 
   var pass = results.filter(function (r) { return r.ok; }).length;
