@@ -344,6 +344,7 @@ var TD_MAP = (function () {
       ctrl.composition = comp;
       ctrl.explored = new Set(); reveal(comp.spawn.x, comp.spawn.y);
       ctrl.pendingDoor = null;
+      placeTerrain(comp);
       if (inDungeon()) placeDefaults(comp);
       placeGlimpses();
       spawnCreatures();
@@ -362,6 +363,47 @@ var TD_MAP = (function () {
         for (var k = 0; k < ds.length; k++) if (inb(ds[k][0], ds[k][1]) && g[ds[k][1]][ds[k][0]] === "#") { wn = ds[k]; break; }
         if (wn) { addSecret(wn[0], wn[1], "ration", R.pick(["draft", "rhyme", "hollow"])); break; }
       }
+    }
+
+    // v18 R3 (outcome #3): terrain on the OPEN FLOOR that forces path decisions.
+    // Water is PASSABLE (a step costs more) — laying it never disconnects the
+    // room — so we flood off-route pockets: the spawn->door skeleton is protected
+    // (the floor-only path to every exit survives, in game and in tests), and we
+    // only pool water on the floor that is NOT on that skeleton. Decision created:
+    // wade the pool to reach the loot/secret beyond it, or take the dry way round.
+    // (Chasm — impassable — lives in the every-level vault rooms, R3a.) Small
+    // rooms (and the minimal test worlds) fall under the candidate floor and stay
+    // terrain-free.
+    function placeTerrain(comp) {
+      if (!inDungeon()) return;
+      var g = ctrl.grid, sp = ctrl.player, R = nodeRng(seed, ctrl.node + ":terrain");
+      var prev = {}, seen = {}, q = [[sp.x, sp.y]]; seen[key(sp.x, sp.y)] = 1;
+      while (q.length) { var c = q.shift(); DIRS4(c[0], c[1]).forEach(function (n) { var k = key(n[0], n[1]); if (!seen[k] && g[n[1]] && g[n[1]][n[0]] === ".") { seen[k] = 1; prev[k] = { x: c[0], y: c[1] }; q.push(n); } }); }
+      var protect = {}; protect[key(sp.x, sp.y)] = 1;
+      Object.keys(ctrl.doors).forEach(function (dk) {
+        var xy = dk.split(","), dx = +xy[0], dy = +xy[1];
+        DIRS4(dx, dy).forEach(function (n) { var k = key(n[0], n[1]); if (seen[k]) { var cur = k; while (cur) { protect[cur] = 1; var p = prev[cur]; cur = p ? key(p.x, p.y) : null; } } });
+      });
+      var cand = [];
+      for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+        var k = key(x, y);
+        if (g[y][x] !== "." || protect[k] || ctrl.doors[k]) continue;
+        if (Math.abs(x - sp.x) <= 1 && Math.abs(y - sp.y) <= 1) continue;
+        cand.push([x, y]);
+      }
+      if (cand.length < 30) return;   // small/corridor rooms stay dry (no forced clutter)
+      var budget = Math.min(cand.length >> 2, 14), laid = 0, tries = 0;
+      function blob(s, size) {
+        var open = [s], n2 = 0;
+        while (open.length && n2 < size) {
+          var c = open.shift(), k = key(c[0], c[1]);
+          if (!(g[c[1]] && g[c[1]][c[0]] === ".") || protect[k] || ctrl.doors[k]) continue;
+          g[c[1]][c[0]] = "~"; ctrl.water[k] = 1; n2++;
+          DIRS4(c[0], c[1]).forEach(function (nn) { if (R.chance(0.6)) open.push(nn); });
+        }
+        return n2;
+      }
+      while (laid < budget && tries < 8) { laid += blob(cand[R.int(0, cand.length - 1)], R.int(3, 6)); tries++; }
     }
 
     // v18 R2: seat a glimpse grate beside each looping / shortcut door, naming

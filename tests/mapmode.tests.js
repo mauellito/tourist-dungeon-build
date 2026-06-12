@@ -518,6 +518,33 @@ function TD_MAP_TESTS() {
     }
   });
 
+  test("R3: water pools the open floor while every exit keeps a dry route (outcome #3)", function () {
+    var everWater = false;
+    for (var s = 1; s <= 12; s++) {
+      var w = {
+        start: "a", year_length: 365, arrival_day: 1, meta: { seed: s },
+        nodes: { a: { level: 1, title: "Big Hall" }, b: { level: 1, required: true, title: "B" }, c: { level: 1, title: "C" }, d: { level: 1, title: "D" }, e: { level: 1, title: "E" } },
+        edges: [{ id: "ab", from: "a", to: "b", label: "north" }, { id: "ac", from: "a", to: "c", label: "east" }, { id: "ad", from: "a", to: "d", label: "south" }, { id: "ae", from: "a", to: "e", label: "west" }], signals: {}
+      };
+      var g = TD_MAP.create(w, { creatures: false, hazards: false });
+      var v = g.view(), grid = v.grid, p = v.player, water = 0;
+      grid.forEach(function (r) { for (var i = 0; i < r.length; i++) if (r[i] === "~") water++; });
+      if (water > 0) everWater = true;
+      function reach(set) {
+        var seen = {}, q = [[p.x, p.y]]; seen[p.x + "," + p.y] = 1;
+        while (q.length) { var c = q.shift();[[c[0], c[1] - 1], [c[0], c[1] + 1], [c[0] - 1, c[1]], [c[0] + 1, c[1]]].forEach(function (n) { var k = n[0] + "," + n[1], ch = grid[n[1]] && grid[n[1]][n[0]]; if (!seen[k] && set.indexOf(ch) >= 0) { seen[k] = 1; q.push(n); } }); }
+        return seen;
+      }
+      var wade = reach([".", "~"]), dry = reach(["."]);
+      Object.keys(v.doors).forEach(function (dk) {
+        var xy = dk.split(",").map(Number), nb = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        assert(nb.some(function (d) { return wade[(xy[0] + d[0]) + "," + (xy[1] + d[1])]; }), "seed " + s + ": door " + dk + " unreachable even wading");
+        assert(nb.some(function (d) { return dry[(xy[0] + d[0]) + "," + (xy[1] + d[1])]; }), "seed " + s + ": door " + dk + " lost its dry route (skeleton broke)");
+      });
+    }
+    assert(everWater, "water never pooled in a large hall across 12 seeds");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }
