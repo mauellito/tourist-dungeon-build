@@ -17,6 +17,7 @@ SUITES = [
     ("visual map mode", "run_map.py"),
     ("town + forks + signals", "run_game.py"),
     ("UI quality-of-life", "run_ui.py"),
+    ("town composition law (TD_TOWN)", "run_towncompose.py"),
     ("E2E real keypresses on play-map.html", "run_keys.py"),
 ]
 
