@@ -155,10 +155,13 @@ var TD_GEN = (function () {
     if (vaultsOn) {
       var placed = 0;
       for (var VL = 1; VL <= depth; VL++) {
-        if (!rng.chance(vaultChance)) continue;
         var pool = TD_VAULTS.forLevel(VL);
         if (!pool.length) continue;
-        var howMany = rng.int(1, 2);
+        // v18 R3 (outcome #4): a vault EVERY level. Guarantee one per level
+        // (was a per-level coin-flip, so levels often had none); a second is
+        // still rolled for. Splices are obligation-safe by construction (a
+        // two-way hub annex), and the end-of-build checker rules the result.
+        var howMany = 1 + (rng.chance(vaultChance) ? 1 : 0);
         for (var vk = 0; vk < howMany; vk++) {
           if (placeVault(pickVault(pool), VL, placed)) placed++;
         }

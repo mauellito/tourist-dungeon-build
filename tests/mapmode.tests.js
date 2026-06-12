@@ -509,6 +509,15 @@ function TD_MAP_TESTS() {
     assert(withLoops === 20, "every generated dungeon weaves at least one loop (" + withLoops + "/20)");
   });
 
+  test("R3: a vault is spliced into EVERY level of a generated dungeon (outcome #4)", function () {
+    for (var seed = 1; seed <= 30; seed++) {
+      var w = TD_GEN.generate(seed), depth = w.meta.depth, byLevel = {};
+      Object.keys(w.nodes).forEach(function (nk) { var nd = w.nodes[nk]; if (nd.vault) byLevel[nd.level] = (byLevel[nd.level] || 0) + 1; });
+      for (var L = 1; L <= depth; L++) assert(byLevel[L] >= 1, "seed " + seed + ": level " + L + " has no vault");
+      assert(TD_CHECK.verify(w).pass, "seed " + seed + " stays obligation-green with a vault on every level");
+    }
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }
