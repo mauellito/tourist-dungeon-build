@@ -492,6 +492,7 @@
   }
   function featureCue(f) {
     if (f.act === "lookout") return 'Beside you: ' + escapeHTML(f.label || "the rail") + ' — step over to read the view.';
+    if (f.act === "glimpse") return 'A grate in the wall: ' + escapeHTML(f.text || "a route bends away beyond it") + '';
     return 'Beside you: ' + escapeHTML(f.label || "the desk") + ' — step in to hear them out.';
   }
 
@@ -698,7 +699,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map town-composition vA", BUILD = "a3754c8";
+  var VERSION = "play-map town-composition vA", BUILD = "9ccec98";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

@@ -432,6 +432,83 @@ function TD_MAP_TESTS() {
     eq(GEO.unreach, 0, "unreachable doors across 50 seeds: " + GEO.unreach);
   });
 
+  // ===================================================== v18 R2: LOOPS READ ==
+  // Routes that loop are telegraphed in space (glimpse-before-reach). Pure
+  // presentation: the graph/checker are untouched, so obligations stay green.
+  function loopWorld() {
+    return {
+      start: "a", year_length: 365, arrival_day: 1, meta: { seed: 1 },
+      nodes: { a: { level: 1, title: "Concourse A" }, b: { level: 1, required: true, title: "the Far Turn" } },
+      edges: [{ id: "ab", from: "a", to: "b", label: "round the gallery" },
+      { id: "ba", from: "b", to: "a", label: "back to the concourse" }],
+      signals: {}
+    };
+  }
+  function hubWorld() {
+    return {
+      start: "h", year_length: 365, arrival_day: 1, meta: { seed: 1 },
+      nodes: { h: { level: 1, title: "Concourse" }, g: { level: 1, required: true, title: "the Stamping Office" }, l: { level: 1, title: "a Looping Gallery" } },
+      edges: [{ id: "hg", from: "h", to: "g", label: "attend the office" },
+      { id: "hl", from: "h", to: "l", label: "wander the gallery" },
+      { id: "lh", from: "l", to: "h", label: "return to the concourse" }],
+      signals: {}
+    };
+  }
+
+  test("R2: edges on a directed cycle are detected as loops; dead-ends are not", function () {
+    var g = TD_MAP.create(loopWorld(), { creatures: false, hazards: false });
+    var ce = g._loopEdges();
+    assert(ce["ab"] && ce["ba"], "the a<->b cycle is detected as loop edges");
+    var g2 = TD_MAP.create(world(), { creatures: false, hazards: false });   // a->b only, b a dead end
+    assert(!g2._loopEdges()["ab"], "a one-way dead-end edge is NOT a loop");
+  });
+
+  test("R2: a looping room seats a glimpse grate that names the place beyond", function () {
+    var g = TD_MAP.create(loopWorld(), { creatures: false, hazards: false });
+    var feats = g.view().features, grate = null;
+    Object.keys(feats).forEach(function (k) { if (feats[k].act === "glimpse") grate = feats[k]; });
+    assert(grate, "a glimpse grate is seated on the loop");
+    eq(grate.glyph, "▦", "the grate has its own glyph");
+    assert(grate.kind === "seen" && grate.obj === "OBJ", "the glimpse rides SENSES/seen, OBJ-true (a real sightline)");
+    includes(grate.text, "the Far Turn", "the glimpse names the place the route bends toward");
+    assert(g._glimpses().length >= 1, "the glimpse is recorded");
+  });
+
+  test("R2: entering a looping room logs a 'seen' glimpse on the senses channel", function () {
+    var g = TD_MAP.create(loopWorld(), { creatures: false, hazards: false });
+    var sens = g.view().messages.filter(function (m) { return m.ch === "senses" && m.kind === "seen" && /glimpse/i.test(m.text); });
+    assert(sens.length >= 1, "a glimpse-before-reach senses line on entry");
+  });
+
+  test("R2: two route-options and a glimpse are visible at once (the loop reads)", function () {
+    var g = TD_MAP.create(hubWorld(), { creatures: false, hazards: false });
+    var v = g.view();
+    assert(Object.keys(v.doors).length >= 2, "two routes leave the concourse at once (" + Object.keys(v.doors).length + ")");
+    var grates = Object.keys(v.features).filter(function (k) { return v.features[k].act === "glimpse"; });
+    assert(grates.length >= 1, "and one of them is telegraphed as a loop");
+    includes(v.features[grates[0]].text, "Looping Gallery", "the loop door, not the dead-end office, is the one glimpsed");
+  });
+
+  test("R2: dead-end test worlds get NO glimpse (no orphaned tells, no regressions)", function () {
+    [world(), world({ one_way: true }), world({ requires: ["key"] })].forEach(function (w) {
+      var g = TD_MAP.create(w, { creatures: false, hazards: false });
+      var any = Object.keys(g.view().features).some(function (k) { return g.view().features[k].act === "glimpse"; });
+      assert(!any, "a single dead-end edge raises no glimpse");
+    });
+  });
+
+  test("R2: generated dungeons actually contain loops for the telegraph to mark", function () {
+    var withLoops = 0;
+    for (var seed = 1; seed <= 20; seed++) {
+      var w = TD_GEN.generate(seed);
+      var g = TD_MAP.create(w, { creatures: false, hazards: false });
+      var ce = g._loopEdges(), n = Object.keys(ce).length;
+      if (n >= 1) withLoops++;
+      assert(TD_CHECK.verify(w).pass, "seed " + seed + " still passes all six obligations (R2 touched no graph)");
+    }
+    assert(withLoops === 20, "every generated dungeon weaves at least one loop (" + withLoops + "/20)");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

@@ -241,6 +241,38 @@ var TD_MAP = (function () {
     function curLevel() { return (world.nodes[ctrl.node] || {}).level || 0; }
     function inDungeon() { return curLevel() >= 1; }
 
+    // v18 R2 — ROUTES THAT LOOP. The cyclic generator already weaves loops,
+    // returns, and express shortcuts into the graph; here we make them READ in
+    // space: a route that closes a cycle (or a shortcut that opens) is
+    // TELEGRAPHED with a grate you can see through, naming the place beyond —
+    // glimpsed before it is reached (v18 outcome #2). This is presentational
+    // ONLY: no node, edge, or signal is touched, so the six obligations are
+    // untouched (the checker still rules generation; this never runs there).
+    // An edge u->v is a LOOP edge iff v can reach u again by directed travel.
+    function buildLoopIndex() {
+      var adj = {};
+      (world.edges || []).forEach(function (e) { (adj[e.from] = adj[e.from] || []).push(e.to); });
+      function reaches(src, dst) {
+        var seen = {}, q = [src]; seen[src] = 1;
+        while (q.length) { var n = q.shift(); if (n === dst) return true;
+          (adj[n] || []).forEach(function (m) { if (!seen[m]) { seen[m] = 1; q.push(m); } }); }
+        return false;
+      }
+      var cyc = {};
+      (world.edges || []).forEach(function (e) { if (reaches(e.to, e.from)) cyc[e.id] = true; });
+      return cyc;
+    }
+    ctrl.cycleEdges = buildLoopIndex();
+    // classify a rendered door: "loop" (closes a cycle) or "shortcut" (an
+    // always-open express, or an annex that opens once the depths grant a token).
+    function routeKind(d) {
+      if (!d) return null;
+      if (ctrl.cycleEdges[d.edgeId]) return "loop";
+      if (/express/.test(d.edgeId || "")) return "shortcut";
+      if (/breadth/.test(d.edgeId || "") || (d.takeable === false && /annex|breadth/.test(d.to || ""))) return "shortcut";
+      return null;
+    }
+
     // every player-facing line declares a CHANNEL (Channel Law, CLAUDE.md):
     // "event" = what mechanically happens (always true); "senses" = what the
     // character perceives (heard/said/seen are true; intuition may mislead).
@@ -313,6 +345,7 @@ var TD_MAP = (function () {
       ctrl.explored = new Set(); reveal(comp.spawn.x, comp.spawn.y);
       ctrl.pendingDoor = null;
       if (inDungeon()) placeDefaults(comp);
+      placeGlimpses();
       spawnCreatures();
       if (decorate) decorate(ctrl, { CX: comp.spawn.x, CY: comp.spawn.y, key: key, isFloor: isFloor });
     }
@@ -329,6 +362,35 @@ var TD_MAP = (function () {
         for (var k = 0; k < ds.length; k++) if (inb(ds[k][0], ds[k][1]) && g[ds[k][1]][ds[k][0]] === "#") { wn = ds[k]; break; }
         if (wn) { addSecret(wn[0], wn[1], "ration", R.pick(["draft", "rhyme", "hollow"])); break; }
       }
+    }
+
+    // v18 R2: seat a glimpse grate beside each looping / shortcut door, naming
+    // the place the route bends toward — perceived (SENSES/seen, OBJ-true)
+    // before it is reached. A grate is a SIGHTLINE, not a secret: it is open
+    // and named, the opposite of the telegraphed-hidden vocabulary (TD_VAULTS).
+    function placeGlimpses() {
+      ctrl.glimpses = [];
+      if (!inDungeon()) return;
+      var first = null;
+      Object.keys(ctrl.doors).forEach(function (k) {
+        var d = ctrl.doors[k], kind = routeKind(d);
+        if (!kind || d.to === ctrl.node) return;   // a self-loop (e.g. wait-a-day) glimpses nowhere new
+        var dest = (world.nodes[d.to] || {}).title || "a place the route bends toward";
+        var xy = k.split(","), dx = +xy[0], dy = +xy[1], spot = null, nbrs = DIRS4(dx, dy);
+        for (var i = 0; i < nbrs.length; i++) {
+          var nx = nbrs[i][0], ny = nbrs[i][1], nk = key(nx, ny);
+          if (isFloor(nx, ny) && !ctrl.features[nk] && !ctrl.doors[nk] && !(nx === ctrl.player.x && ny === ctrl.player.y)) { spot = { x: nx, y: ny, k: nk }; break; }
+        }
+        if (!spot) return;
+        var text = (kind === "loop")
+          ? "Through an iron grate you glimpse " + dest + " — you have not been there, yet the route bends back toward it."
+          : "Through a barred gap you glimpse " + dest + " — a way that opens once the route grants it.";
+        ctrl.features[spot.k] = { glyph: "▦", col: "signal", channel: "SENSES", kind: "seen", obj: "OBJ",
+          act: "glimpse", loopTo: d.to, routeKind: kind, label: "a grate", text: text };
+        ctrl.glimpses.push({ k: spot.k, to: d.to, kind: kind, text: text });
+        if (!first) first = text;
+      });
+      if (first) senses(first, "seen", "OBJ");
     }
 
     // a hand-authored vault room (the splice payoff): stamp its layout centered,
@@ -359,6 +421,7 @@ var TD_MAP = (function () {
       (vd.features || []).forEach(function (f) { ctrl.features[key(ox + f.x, oy + f.y)] = { glyph: f.glyph || "¶", channel: f.channel, kind: f.kind, obj: f.obj, text: f.text, label: "a notice" }; });
       (vd.items || []).forEach(function (it) { var iy = oy + it.y, ix = ox + it.x; if (g[iy] && g[iy][ix] === ".") ctrl.items[key(ix, iy)] = makeItem(it.kind); });
       if (vd.secret) ctrl.secrets[key(ox + vd.secret.x, oy + vd.secret.y)] = { kind: vd.secret.kind, found: false, tell: vd.secret.tell || "hollow" };
+      placeGlimpses();
       ctrl.creatures = [];
       if (livingOn && inDungeon()) (vd.creatures || []).forEach(function (c) {
         var def = CREATURE[c.kind]; if (!def) return;
@@ -772,7 +835,9 @@ var TD_MAP = (function () {
       _setChasm: function (x, y) { ctrl.chasm[key(x, y)] = 1; ctrl.grid[y][x] = "X"; },
       _passable: function (x, y) { return passable(x, y); },
       _composition: function () { return ctrl.composition || null; },
-      _compose: function (nodeKey, numDoors) { return composeNode(seed, nodeKey, numDoors); }
+      _compose: function (nodeKey, numDoors) { return composeNode(seed, nodeKey, numDoors); },
+      _loopEdges: function () { return ctrl.cycleEdges; },
+      _glimpses: function () { return ctrl.glimpses || []; }
     };
     return api;
   }
