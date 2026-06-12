@@ -386,8 +386,9 @@ function TD_MAP_TESTS() {
     if (c.mainFill < 0.55) return "sparse";
     return "irregular";
   }
+  // Round 1.5 survey — a node is a FLOOR (cluster of rooms), measured per instance
   function surveyGeometry() {
-    var buckets = {}, cross = 0, nodes = 0, comNear = 0, unreach = 0, lens = [], w2 = 0;
+    var buckets = {}, nodes = 0, unreach = 0, lens = [], wtally = { 1: 0, 2: 0, 3: 0 }, dens = [], roomCounts = [], symmetric = 0, totalRooms = 0;
     for (var seed = 1; seed <= 50; seed++) {
       var w = TD_GEN.generate(seed), inc = {};
       w.edges.forEach(function (e) { inc[e.from] = (inc[e.from] || 0) + 1; inc[e.to] = (inc[e.to] || 0) + 1; });
@@ -395,37 +396,44 @@ function TD_MAP_TESTS() {
       Object.keys(w.nodes).forEach(function (nk) {
         var nd = Math.max(1, Math.min(8, inc[nk] || 1)), c = g._compose(nk, nd); nodes++;
         buckets[bucketOf(c)] = (buckets[bucketOf(c)] || 0) + 1;
-        if (c.tag === "cross" && Math.abs(c.comX - CXc) <= 2 && Math.abs(c.comY - CYc) <= 2) cross++;
-        if (Math.abs(c.comX - CXc) <= 3 && Math.abs(c.comY - CYc) <= 2) comNear++;
+        dens.push(c.floorDensity); roomCounts.push(c.rooms);
+        (c.roomList || []).forEach(function (rm) { totalRooms++; if (rm.tag === "cross" || (rm.tag === "rect" && rm.aspect >= 0.7 && rm.aspect <= 1.4)) symmetric++; });
         var grid2 = c.grid, seen = {}, q = [[c.spawn.x, c.spawn.y]]; seen[c.spawn.x + "," + c.spawn.y] = 1;
         while (q.length) { var p = q.shift();[[p[0], p[1] - 1], [p[0], p[1] + 1], [p[0] - 1, p[1]], [p[0] + 1, p[1]]].forEach(function (n) { if (grid2[n[1]] && grid2[n[1]][n[0]] === "." && !seen[n[0] + "," + n[1]]) { seen[n[0] + "," + n[1]] = 1; q.push(n); } }); }
         c.doorPts.forEach(function (d) { if (!seen[d.x + "," + d.y]) unreach++; });
-        c.corrLens.forEach(function (l) { lens.push(l); }); c.corrWidths.forEach(function (x) { if (x === 2) w2++; });
+        c.corrLens.forEach(function (l) { lens.push(l); }); c.corrWidths.forEach(function (x) { if (wtally[x] !== undefined) wtally[x]++; });
       });
     }
-    return { buckets: buckets, cross: cross, nodes: nodes, comNear: comNear, unreach: unreach, lens: lens, w2: w2 };
+    return { buckets: buckets, nodes: nodes, unreach: unreach, lens: lens, wtally: wtally, dens: dens, roomCounts: roomCounts, symmetric: symmetric, totalRooms: totalRooms };
   }
   var GEO = surveyGeometry();
+  function median(a) { a = a.slice().sort(function (x, y) { return x - y; }); return a[Math.floor(a.length / 2)]; }
 
   test("CONSTRUCTION LAW: at least 5 distinct room footprint classes appear (50 seeds)", function () {
     var n = Object.keys(GEO.buckets).length;
     assert(n >= 5, "only " + n + " footprint classes: " + JSON.stringify(GEO.buckets));
   });
 
-  test("the centred-symmetric plus-sign layout occurs in under 10% of nodes", function () {
-    var pct = 100 * GEO.cross / GEO.nodes;
-    assert(pct < 10, "centred-cross share is " + pct.toFixed(1) + "% (" + GEO.cross + "/" + GEO.nodes + ")");
+  test("R1.5 FLOOR DENSITY: a level fills 25-40% of the screen (not one room at ~12%)", function () {
+    var md = median(GEO.dens);
+    assert(md >= 0.25 && md <= 0.40, "median floor density is " + (100 * md).toFixed(0) + "% (target 25-40%)");
   });
 
-  test("room centre-of-mass is not clustered at screen centre", function () {
-    var pct = 100 * GEO.comNear / GEO.nodes;
-    assert(pct < 50, "share of nodes with COM near centre is " + pct.toFixed(1) + "% (should be a minority)");
+  test("R1.5 CLUSTER: every level is 3-6 rooms (not a single chamber)", function () {
+    var mn = Math.min.apply(null, GEO.roomCounts), mx = Math.max.apply(null, GEO.roomCounts);
+    assert(mn >= 3 && mx <= 6, "rooms per level span " + mn + "-" + mx + " (law: 3-6)");
+    assert(median(GEO.roomCounts) >= 4, "the typical level has several spaces (median " + median(GEO.roomCounts) + ")");
   });
 
-  test("corridor length and width both vary (above the floors)", function () {
+  test("R1.5 SYMMETRIC LAW (as a test): crosses + symmetric rects < 10% of rooms", function () {
+    var pct = 100 * GEO.symmetric / GEO.totalRooms;
+    assert(pct < 10, "symmetric (cross/square) rooms are " + pct.toFixed(1) + "% of " + GEO.totalRooms + " (law: <10%)");
+  });
+
+  test("R1.5 HALLWAYS: corridors of width 1 AND 2 AND 3 all occur, lengths vary", function () {
+    assert(GEO.wtally[1] >= 1 && GEO.wtally[2] >= 1 && GEO.wtally[3] >= 1, "widths 1/2/3 all appear: " + JSON.stringify(GEO.wtally));
     var mn = Math.min.apply(null, GEO.lens), mx = Math.max.apply(null, GEO.lens);
     assert(mx - mn >= 8, "corridor length spread is only " + (mx - mn));
-    assert(GEO.w2 >= 1, "no 2-wide corridors appeared");
   });
 
   test("every door on every generated node is reachable from spawn (walkability)", function () {

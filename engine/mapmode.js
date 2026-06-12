@@ -18,16 +18,8 @@ var TD_MAP = (function () {
   var W = 41, H = 23, CX = 20, CY = 11;
   var REVEAL = 4;
 
-  var SLOTS = [
-    { mouth: [20, 7],  door: [20, 5],  room: [20, 3] },   // N
-    { mouth: [20, 15], door: [20, 17], room: [20, 19] },  // S
-    { mouth: [25, 11], door: [28, 11], room: [31, 11] },  // E
-    { mouth: [15, 11], door: [12, 11], room: [9, 11] },   // W
-    { mouth: [24, 7],  door: [28, 6],  room: [31, 4] },   // NE
-    { mouth: [16, 7],  door: [12, 6],  room: [9, 4] },    // NW
-    { mouth: [24, 15], door: [28, 16], room: [31, 18] },  // SE
-    { mouth: [16, 15], door: [12, 16], room: [9, 18] }    // SW
-  ];
+  // (the fixed 8-slot door template was removed in Round 1.5 — door mouths now
+  // derive from the carved cluster's own perimeter, not a hardcoded compass.)
   var DIRS = {
     up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0],
     ul: [-1, -1], ur: [1, -1], dl: [-1, 1], dr: [1, 1]
@@ -114,39 +106,34 @@ var TD_MAP = (function () {
     for (var i = 0; i < s.length; i++) h = (Math.imul(h ^ s.charCodeAt(i), 16777619)) >>> 0;
     return TD_RNG.make(h || 1);
   }
-  // carve the MAIN room of a chosen shape; returns its cells + centre + shape tag
-  function carveMainRoom(g, R) {
-    var M = 2, shape = R.pick(["rect", "rect", "rect", "grand", "L", "cross", "cavern", "cavern", "cramped"]);
-    var cx, cy;
-    if (shape === "cramped") {
-      var w = R.int(1, 1), h = R.int(1, 1);
-      cx = clampi(CX + R.int(-13, 13), M + 1, W - 2 - M); cy = clampi(CY + R.int(-7, 7), M + 1, H - 2 - M);
-      carveBox(g, cx - w, cy - h, cx + w, cy + h);
-    } else if (shape === "grand") {
-      var ghw = R.int(7, 11), ghh = R.int(4, 6);
-      cx = clampi(CX + R.int(-6, 6), M + ghw, W - 1 - M - ghw); cy = clampi(CY + R.int(-3, 3), M + ghh, H - 1 - M - ghh);
-      carveBox(g, cx - ghw, cy - ghh, cx + ghw, cy + ghh);
-    } else if (shape === "rect") {
-      var hw = R.int(2, 7), hh = R.int(1, 4);
-      cx = clampi(CX + R.int(-11, 11), M + hw, W - 1 - M - hw); cy = clampi(CY + R.int(-6, 6), M + hh, H - 1 - M - hh);
-      carveBox(g, cx - hw, cy - hh, cx + hw, cy + hh);
-    } else if (shape === "L") {
-      var lhw = R.int(3, 6), lhh = R.int(2, 4);
-      cx = clampi(CX + R.int(-9, 9), M + lhw, W - 1 - M - lhw); cy = clampi(CY + R.int(-5, 5), M + lhh, H - 1 - M - lhh);
-      carveBox(g, cx - lhw, cy - lhh, cx + lhw, cy + lhh);
-      var ahw = R.int(2, 4), ahh = R.int(2, 4), sx = R.chance(0.5) ? cx - lhw : cx + lhw, sy = R.chance(0.5) ? cy - lhh : cy + lhh;
-      var ax = clampi(sx, M + ahw, W - 1 - M - ahw), ay = clampi(sy, M + ahh, H - 1 - M - ahh);
-      carveBox(g, ax - ahw, ay - ahh, ax + ahw, ay + ahh);
-    } else if (shape === "cross") {
-      var xhw = R.int(4, 8), xhh = R.int(3, 5), aw = R.int(1, 2);
-      cx = clampi(CX + R.int(-7, 7), M + xhw, W - 1 - M - xhw); cy = clampi(CY + R.int(-4, 4), M + xhh, H - 1 - M - xhh);
-      carveBox(g, cx - xhw, cy - aw, cx + xhw, cy + aw); carveBox(g, cx - aw, cy - xhh, cx + aw, cy + xhh);
-    } else {   // cavern — a drunkard's-walk blob
-      cx = clampi(CX + R.int(-10, 10), 4, W - 5); cy = clampi(CY + R.int(-5, 5), 3, H - 4);
-      var steps = R.int(40, 140), x = cx, y = cy;
-      for (var s = 0; s < steps; s++) { g[y][x] = "."; var d = R.pick([[1, 0], [-1, 0], [0, 1], [0, -1]]); x = clampi(x + d[0], 2, W - 3); y = clampi(y + d[1], 2, H - 3); }
-    }
-    return { cells: floorCells(g), cx: cx, cy: cy, tag: shape };
+  // pick a room CLASS; CROSS and square (symmetric) rects are deliberately RARE
+  // (Round 1.5 symmetric law: crosses + symmetric rects < 10% of instances).
+  function pickShape(R) {
+    var r = R.next();
+    if (r < 0.07) return "cross";
+    if (r < 0.22) return "cavern";
+    if (r < 0.37) return "L";
+    if (r < 0.53) return "wide";    // asymmetric rect
+    if (r < 0.69) return "tall";    // asymmetric rect
+    if (r < 0.82) return "grand";
+    if (r < 0.92) return "cramped";
+    return "rect";                  // a general (kept asymmetric) rect
+  }
+  // carve one room of a class near (cx,cy); rect classes are ALWAYS asymmetric so
+  // they never read as a symmetric chamber. Returns bbox + tag + aspect.
+  function carveRoomAt(g, R, cx, cy, shape) {
+    var x0, y0, x1, y1, tag = shape;
+    function cl() { x0 = clampi(x0, 1, W - 2); y0 = clampi(y0, 1, H - 2); x1 = clampi(x1, 1, W - 2); y1 = clampi(y1, 1, H - 2); }
+    if (shape === "grand") { var gw = R.int(5, 8), gh = R.int(3, 5); x0 = cx - gw; y0 = cy - gh; x1 = cx + gw; y1 = cy + gh; cl(); carveBox(g, x0, y0, x1, y1); }
+    else if (shape === "wide") { var ww = R.int(5, 9), wh = R.int(1, 2); x0 = cx - ww; y0 = cy - wh; x1 = cx + ww; y1 = cy + wh; tag = "rect"; cl(); carveBox(g, x0, y0, x1, y1); }
+    else if (shape === "tall") { var tw = R.int(1, 2), th = R.int(3, 6); x0 = cx - tw; y0 = cy - th; x1 = cx + tw; y1 = cy + th; tag = "rect"; cl(); carveBox(g, x0, y0, x1, y1); }
+    else if (shape === "rect") { var wide = R.chance(0.5), rw = wide ? R.int(4, 7) : R.int(1, 2), rh = wide ? R.int(1, 2) : R.int(3, 5); x0 = cx - rw; y0 = cy - rh; x1 = cx + rw; y1 = cy + rh; tag = "rect"; cl(); carveBox(g, x0, y0, x1, y1); }
+    else if (shape === "cramped") { var cw2 = R.int(0, 1), ch2 = R.int(0, 1); x0 = cx - cw2; y0 = cy - ch2; x1 = cx + cw2; y1 = cy + ch2; cl(); carveBox(g, x0, y0, x1, y1); }
+    else if (shape === "L") { var lw = R.int(3, 5), lh = R.int(2, 3); x0 = cx - lw; y0 = cy - lh; x1 = cx + lw; y1 = cy + lh; cl(); carveBox(g, x0, y0, x1, y1); var aw = R.int(2, 3), ah = R.int(2, 3), apx = R.chance(0.5) ? x0 : x1, apy = R.chance(0.5) ? y0 : y1; carveBox(g, clampi(apx - aw, 1, W - 2), clampi(apy - ah, 1, H - 2), clampi(apx + aw, 1, W - 2), clampi(apy + ah, 1, H - 2)); }
+    else if (shape === "cross") { var xw = R.int(3, 6), xh = R.int(2, 4); x0 = cx - xw; y0 = cy - xh; x1 = cx + xw; y1 = cy + xh; cl(); carveBox(g, clampi(cx - xw, 1, W - 2), cy, clampi(cx + xw, 1, W - 2), cy); carveBox(g, cx, clampi(cy - xh, 1, H - 2), cx, clampi(cy + xh, 1, H - 2)); carveBox(g, clampi(cx - 1, 1, W - 2), clampi(cy - 1, 1, H - 2), clampi(cx + 1, 1, W - 2), clampi(cy + 1, 1, H - 2)); }
+    else { var steps = R.int(28, 75), x = cx, y = cy, mnx = cx, mny = cy, mxx = cx, mxy = cy; for (var s = 0; s < steps; s++) { g[y][x] = "."; if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (y < mny) mny = y; if (y > mxy) mxy = y; var d = R.pick([[1, 0], [-1, 0], [0, 1], [0, -1]]); x = clampi(x + d[0], 2, W - 3); y = clampi(y + d[1], 2, H - 3); } x0 = mnx; y0 = mny; x1 = mxx; y1 = mxy; tag = "cavern"; }
+    var bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    return { cx: cx, cy: cy, x0: x0, y0: y0, x1: x1, y1: y1, area: bw * bh, aspect: bw / Math.max(1, bh), tag: tag };
   }
   // place numDoors door tiles on varied outward stubs off the room (all reachable)
   function placeDoors(g, mainCells, numDoors, R) {
@@ -175,37 +162,57 @@ var TD_MAP = (function () {
       if (inb(x - 1, y) && inb(x + 1, y) && inb(x, y - 1) && inb(x, y + 1) && g[y - 1][x] === "." && g[y + 1][x] === "." && g[y][x - 1] === "." && g[y][x + 1] === ".") g[y][x] = "#";
     }
   }
-  // compose a node's full walkable screen (deterministic per seed+node)
+  // connect every carved pocket to the spawn (one walkable component)
+  function connectAll(g, spawn, R) {
+    for (var guard = 0; guard < 14; guard++) {
+      var seen = {}, q = [[spawn.x, spawn.y]]; seen[spawn.x + "," + spawn.y] = 1;
+      while (q.length) { var c = q.shift(); DIRS4(c[0], c[1]).forEach(function (n) { if (g[n[1]] && g[n[1]][n[0]] === "." && !seen[n[0] + "," + n[1]]) { seen[n[0] + "," + n[1]] = 1; q.push([n[0], n[1]]); } }); }
+      var iso = null, all = floorCells(g);
+      for (var i = 0; i < all.length; i++) if (!seen[all[i][0] + "," + all[i][1]]) { iso = all[i]; break; }
+      if (!iso) return;
+      carveCorridor(g, iso[0], iso[1], spawn.x, spawn.y, 1, R);
+    }
+  }
+  // compose a node's full walkable FLOOR (Round 1.5): a CLUSTER of 3-6 rooms of
+  // mixed shape classes, spread across the screen and joined by hallways of
+  // VARIED width (1/2/3). Reads as a floor you route across, not one chamber.
   function composeNode(seed, nodeKey, numDoors) {
     var R = nodeRng(seed, nodeKey), g = newGrid();
-    var main = carveMainRoom(g, R);
-    var spawn = { x: main.cx, y: main.cy };
-    if (g[spawn.y][spawn.x] !== ".") { var fc = main.cells[0]; spawn = { x: fc[0], y: fc[1] }; }
-    var corrLens = [], corrWidths = [], rooms = 1;
-    var nExtra = R.int(0, 2);
-    for (var e = 0; e < nExtra; e++) {
-      var w = R.int(1, 3), h = R.int(1, 2);
-      var ex = clampi(CX + R.int(-15, 15), 3 + w, W - 4 - w), ey = clampi(CY + R.int(-8, 8), 2 + h, H - 3 - h);
-      carveBox(g, ex - w, ey - h, ex + w, ey + h);
-      var cw = R.chance(0.25) ? 2 : 1; carveCorridor(g, ex, ey, main.cx, main.cy, cw, R);
-      corrLens.push(Math.abs(ex - main.cx) + Math.abs(ey - main.cy)); corrWidths.push(cw); rooms++;
+    var nRooms = R.int(3, 6), cols = 3, rowsN = Math.ceil(nRooms / cols);
+    var cellList = []; for (var ccx = 0; ccx < cols; ccx++) for (var rry = 0; rry < rowsN; rry++) cellList.push([ccx, rry]);
+    for (var i = cellList.length - 1; i > 0; i--) { var j = R.int(0, i), t = cellList[i]; cellList[i] = cellList[j]; cellList[j] = t; }
+    var rooms = [], cw = W / cols, chh = H / rowsN;
+    for (var k = 0; k < nRooms && k < cellList.length; k++) {
+      var cell = cellList[k];
+      var ax = clampi(Math.round(cell[0] * cw + cw / 2 + R.int(-2, 2)), 4, W - 5);
+      var ay = clampi(Math.round(cell[1] * chh + chh / 2 + R.int(-1, 1)), 3, H - 4);
+      rooms.push(carveRoomAt(g, R, ax, ay, pickShape(R)));
     }
-    if (main.cells.length > 60) pokePillars(g, main.cells, R);
+    // join the rooms — a chain plus an occasional loop link — with varied widths
+    var corrWidths = [], corrLens = [];
+    function link(a, b) { var w = R.pick([1, 1, 2, 2, 3, 3]); carveCorridor(g, a.cx, a.cy, b.cx, b.cy, w, R); corrWidths.push(w); corrLens.push(Math.abs(a.cx - b.cx) + Math.abs(a.cy - b.cy)); }
+    for (var r = 1; r < rooms.length; r++) link(rooms[r], rooms[r - 1]);
+    if (rooms.length >= 3 && R.chance(0.6)) link(rooms[0], rooms[rooms.length - 1]);
+    rooms.forEach(function (rm) { if (rm.area > 70) pokePillars(g, floorCells(g).filter(function (c) { return c[0] >= rm.x0 && c[0] <= rm.x1 && c[1] >= rm.y0 && c[1] <= rm.y1; }), R); });
+    var main = rooms.reduce(function (a, b) { return b.area > a.area ? b : a; }, rooms[0]);
+    var spawn = { x: main.cx, y: main.cy };
+    if (!(g[spawn.y] && g[spawn.y][spawn.x] === ".")) { var f0 = floorCells(g)[0]; if (f0) spawn = { x: f0[0], y: f0[1] }; }
+    connectAll(g, spawn, R);
+    // doors derive from the carved cluster's own perimeter (no fixed template)
     var dd = placeDoors(g, floorCells(g), numDoors, R);
     dd.lens.forEach(function (l) { corrLens.push(l); }); dd.widths.forEach(function (w) { corrWidths.push(w); });
-    // reachability guarantee: spawn must reach every door
-    var seen = {}, q = [[spawn.x, spawn.y]]; seen[spawn.x + "," + spawn.y] = 1;
-    while (q.length) { var c = q.shift(); DIRS4(c[0], c[1]).forEach(function (n) { if (g[n[1]] && g[n[1]][n[0]] === "." && !seen[n[0] + "," + n[1]]) { seen[n[0] + "," + n[1]] = 1; q.push([n[0], n[1]]); } }); }
-    dd.doors.forEach(function (d) { if (!seen[d.x + "," + d.y]) carveCorridor(g, d.x, d.y, spawn.x, spawn.y, 1, R); });
-    // measured main-room footprint signature
-    var mc = main.cells, minx = 99, maxx = -1, miny = 99, maxy = -1, sx = 0, sy = 0;
-    mc.forEach(function (c) { if (c[0] < minx) minx = c[0]; if (c[0] > maxx) maxx = c[0]; if (c[1] < miny) miny = c[1]; if (c[1] > maxy) maxy = c[1]; sx += c[0]; sy += c[1]; });
-    var bw = maxx - minx + 1, bh = maxy - miny + 1, area = mc.length;
-    var all = floorCells(g), ax = 0, ay = 0; all.forEach(function (c) { ax += c[0]; ay += c[1]; });
+    // reachability: spawn reaches every door
+    var seen2 = {}, q2 = [[spawn.x, spawn.y]]; seen2[spawn.x + "," + spawn.y] = 1;
+    while (q2.length) { var c2 = q2.shift(); DIRS4(c2[0], c2[1]).forEach(function (n) { if (g[n[1]] && g[n[1]][n[0]] === "." && !seen2[n[0] + "," + n[1]]) { seen2[n[0] + "," + n[1]] = 1; q2.push([n[0], n[1]]); } }); }
+    dd.doors.forEach(function (d) { if (!seen2[d.x + "," + d.y]) carveCorridor(g, d.x, d.y, spawn.x, spawn.y, 1, R); });
+    var all = floorCells(g), ax2 = 0, ay2 = 0; all.forEach(function (c) { ax2 += c[0]; ay2 += c[1]; });
+    var mcells = all.filter(function (c) { return c[0] >= main.x0 && c[0] <= main.x1 && c[1] >= main.y0 && c[1] <= main.y1; });
     return {
-      grid: g, spawn: spawn, doorPts: dd.doors, tag: main.tag, rooms: rooms,
-      mainArea: area, mainFill: area / (bw * bh), mainAspect: bw / bh,
-      comX: ax / all.length, comY: ay / all.length, corrLens: corrLens, corrWidths: corrWidths
+      grid: g, spawn: spawn, doorPts: dd.doors, tag: main.tag, rooms: rooms.length,
+      roomList: rooms.map(function (rm) { return { tag: rm.tag, aspect: rm.aspect, area: rm.area }; }),
+      mainArea: mcells.length, mainFill: mcells.length / Math.max(1, main.area), mainAspect: main.aspect,
+      comX: ax2 / all.length, comY: ay2 / all.length, corrLens: corrLens, corrWidths: corrWidths,
+      floorDensity: all.length / (W * H)
     };
   }
   function DIRS4(x, y) { return [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]; }

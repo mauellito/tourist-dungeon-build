@@ -185,6 +185,9 @@ F.onload = function(){
     ok('c closes the adjacent inner door', vc.plain && vc.plain[pkk] && !vc.plain[pkk].open);
 
     // ============================ SEARCH (secret) ========================
+    // a Round 1.5 cluster floor can leave the visitor mid-room — walk to a tile
+    // that abuts a wall before searching (the test is geometry-agnostic).
+    if(!wallNeighbor()){ var vsr=view(); for(var sy=1;sy<vsr.h-1;sy++){ for(var sx=1;sx<vsr.w-1;sx++){ if(vsr.grid[sy][sx]!=='.')continue; var abut=[[1,0],[-1,0],[0,1],[0,-1]].some(function(d){return vsr.grid[sy+d[1]]&&vsr.grid[sy+d[1]][sx+d[0]]==='#';}); if(abut && goTo(sx,sy)){ sy=99; break; } } } }
     var wn=wallNeighbor(); DUN._addSecret(wn.x,wn.y,'ration','draft'); pk('s'); var vs=view();
     ok('searching the wall reveals the hidden pocket (an item appears)', !!(vs.items && vs.items[wn.x+','+wn.y]));
 
