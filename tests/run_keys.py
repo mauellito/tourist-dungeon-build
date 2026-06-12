@@ -304,13 +304,17 @@ def main():
         f.write(WRAP)
 
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=ROOT)
-    httpd = socketserver.ThreadingTCPServer(("127.0.0.1", PORT), handler)
+    # bind a FREE ephemeral port (port 0) so back-to-back runs never collide on a
+    # fixed port still in TIME_WAIT (this flaked the sync-verify run).
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
+    httpd = socketserver.ThreadingTCPServer(("127.0.0.1", 0), handler)
+    bound_port = httpd.server_address[1]
     httpd.daemon_threads = True
     th = threading.Thread(target=httpd.serve_forever, daemon=True)
     th.start()
     try:
         user_data = tempfile.mkdtemp(prefix="td_keys_")
-        url = "http://127.0.0.1:{}/tests/.tmp/keys_wrap.html".format(PORT)
+        url = "http://127.0.0.1:{}/tests/.tmp/keys_wrap.html".format(bound_port)
         cmd = [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--user-data-dir=" + user_data,
                "--virtual-time-budget=4000", "--dump-dom", url]
         try:
