@@ -28,6 +28,7 @@ var TD_UI = (function () {
     rampart:   "#7d7468",  // stone — the TOWN perimeter wall (fortification, not architecture)
     fence:     "#9a8458",  // weathered wood — an enclosure fence (see-through)
     gate:      "#caa15a",  // brass — a gate (passage through a barrier)
+    storefront: "#b5763e", // terracotta — commercial frontage (shop sign / window / awning)
     // damage-number meanings (kept consistent with the category rules)
     dmgDealt: "#f5c542",   // = player gold (your output)
     dmgTaken: "#ff2d1f",   // = critical red (harm to you)
