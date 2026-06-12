@@ -61,6 +61,7 @@ var TD_GAME = (function () {
     tattoo: { title: "The Tattoo Parlor", glyph: "Z", act: "flavor", counter: "the table", sign: ["THE TATTOO PARLOR", "Permanent souvenirs of a temporary visit."] },
     boat: { title: "Boat Rental", glyph: "Y", act: "boat", counter: "the dock desk", sign: ["BOAT RENTAL", "Rent a boat. The boat goes where the boat goes."] },
     redshop: { title: "the Red Light Shop", glyph: "x", act: "flavor", counter: "the curtained counter", sign: ["THE RED LIGHT SHOP", "Discreet sundries for the discerning visitor. The Bureau files it under 'sundry'."] },
+    palmreader: { title: "the Palm Reader", glyph: "&", act: "flavor", counter: "the velvet table", sign: ["PALM READING", "Your fortune, read in the municipal manner. The Bureau makes no representations as to the future, or the hand."] },
     chinese: { title: "the Golden Turnstile", glyph: "N", act: "food", counter: "the takeout window", sign: ["THE GOLDEN TURNSTILE", "Takeout. Fast, municipal, faintly suspicious of you."] },
     clamshack: { title: "the Clam Shack", glyph: "F", act: "food", counter: "the shucking counter", sign: ["THE CLAM SHACK", "Fried, by the water, no questions asked."] },
     gift1: { title: "Ye Olde Dungeon Gifte", glyph: "1", act: "flavor", counter: "the till", sign: ["YE OLDE DUNGEON GIFTE", "Genuine artefacts, genuinely. Ignore the shop next door."] },
@@ -70,7 +71,7 @@ var TD_GAME = (function () {
   // which voice keeps each place (accent map): posh / brooklyn / pastoral / plainspoken / mixed
   var KEEPER = {
     kiosk: "kiosk", agency: "agency", hotel: "hotel", spa: "spa", tavern: "keeper_brooklyn",
-    saloon: "keeper_brooklyn", bodega: "keeper_brooklyn", boat: "keeper_brooklyn", redshop: "keeper_brooklyn",
+    saloon: "keeper_brooklyn", bodega: "keeper_brooklyn", boat: "keeper_brooklyn", redshop: "keeper_brooklyn", palmreader: "keeper_brooklyn",
     bank: "keeper_posh", church: "keeper_pastoral",
     blacksmith: "keeper_plain", motel: "keeper_plain", barber: "keeper_plain",
     tim: "tim", tattoo: "keeper_mixed", restaurant: "keeper_mixed", coffee: "coffee",

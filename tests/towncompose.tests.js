@@ -235,6 +235,35 @@ function TD_TOWN_TESTS() {
     red.forEach(function (k) { var p = k.split(",").map(Number); assert(at(p[0], p[1]) === ".", "red-lit ground is walkable alley"); var rl = T.redlight.rect; assert(p[0] >= rl[0] && p[0] <= rl[2] && p[1] >= rl[1] && p[1] <= rl[3], "red-lit ground is inside the red-light district"); });
   });
 
+  // 20. D1 PIERS: clustered at one end (a pier district), not spread
+  test("D1 PIERS: clustered into a district at one end, open shoreline elsewhere", function () {
+    var px = T.piers.map(function (k) { return +k.split(",")[0]; });
+    var uniq = px.filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
+    assert(uniq.length >= 2, "several pier columns (" + uniq.length + ")");
+    assert(uniq[uniq.length - 1] - uniq[0] <= 10, "piers cluster within ~10 tiles (span " + (uniq[uniq.length - 1] - uniq[0]) + "), not spread");
+    assert(T.meta.pierDistrict, "the pier district is recorded");
+  });
+
+  // 21. D2 REDLIGHT SPAGHETTI: many bent alleys, junctions + dead-ends, lined with small shops
+  test("D2 REDLIGHT SPAGHETTI: more alley, junctions + dead-ends, small shops on the alleys", function () {
+    var rl = T.redlight, alley = rl.alley;
+    assert(alley.length >= 30, "substantially more alley than before (" + alley.length + " tiles, was ~18)");
+    function openN(x, y) { var n = 0;[[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { if (at(x + d[0], y + d[1]) === ".") n++; }); return n; }
+    var dead = 0, junc = 0; alley.forEach(function (p) { var k = openN(p[0], p[1]); if (k === 1) dead++; if (k >= 3) junc++; });
+    assert(dead >= 4, "many dead-ends (" + dead + ")");
+    assert(junc >= 2, "real junctions, not a single snake (" + junc + ")");
+    var redDoors = 0; Object.keys(T.doors).forEach(function (k) { if (T.doors[k].red) redDoors++; });
+    assert(redDoors >= 4, "small shops line the alleys (" + redDoors + " red-light doors)");
+  });
+
+  // 22. D3 PALM READER: a new red-light business with a door on the alleys
+  test("D3 PALM READER: a new red-light business, door on the alleys", function () {
+    var k = Object.keys(T.doors).filter(function (k) { return T.doors[k].to === "palmreader"; })[0];
+    assert(k, "the palm reader has a door in the red-light");
+    assert(T.doors[k].red, "it is a red-light establishment");
+    var p = T.doors[k].front; assert(at(p.x, p.y) === ".", "its door faces an alley you can stand on");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

@@ -123,8 +123,12 @@ var TD_TOWN = (function () {
     meta.shopRows.push({ ids: buildings.slice(rowStart).map(function (b) { return b.id; }) });
     packZone(CX + 3, CY + 8, W - 4, SHORE - 3, CAST.wf); meta.districts.waterfront = { rect: [CX + 3, CY + 8, W - 4, SHORE - 3] };
 
-    // --- piers: walkable planks from the dock into the water -------------------
-    [16, 30, 46].forEach(function (px) { for (var py = SHORE; py < WATER_Y + 3; py++) { if (g[py]) { g[py][px] = "."; piers.push(key(px, py)); } } });
+    // --- piers (D1): a PIER DISTRICT clustered at the east end of the waterfront,
+    // by the boat rental (the waterfront buildings sit east, x>=38, after Round C);
+    // the rest of the shoreline stays open. FLAG: clustered EAST because the boat
+    // rental and the whole wf district are there — flip the xs if you want it west.
+    meta.pierDistrict = [46, 56];
+    [47, 50, 53].forEach(function (px) { for (var py = SHORE; py < WATER_Y + 3; py++) { if (g[py]) { g[py][px] = "."; piers.push(key(px, py)); } } });
 
     // --- DENSITY PASS (Round C1): square the cross to 4-5, then break every big
     // empty with row-homes / sheds / storefront fillers, so no open plaza is
@@ -138,6 +142,7 @@ var TD_TOWN = (function () {
       return false;
     }
     var frontSet = {}; for (var dk in doors) { var df = doors[dk].front; if (df) frontSet[key(df.x, df.y)] = true; }
+    if (rl && rl.mouth) { frontSet[key(rl.mouth.x, rl.mouth.y)] = true; frontSet[key(rl.mouth.x, rl.mouth.y - 1)] = true; }   // keep the red-light mouth's road connection open
     squareRoad(g, frontSet);                                                 // square the cross to 4-5 (flush facades only)
     breakOpens(g, occ, doors, features, buildings, fits, stamp, protectedTile, R);
 
@@ -264,21 +269,56 @@ var TD_TOWN = (function () {
   // RED-LIGHT: a solid block carved into a single-mouth 1-wide alley tree —
   // bends every <=4 tiles, dead-ends, never a through-route.
   function buildRedlight(g, occ, doors, features) {
-    var x0 = 3, y0 = 24, x1 = 14, y1 = SHORE - 3;
+    var x0 = 3, y0 = 24, x1 = 14, y1 = SHORE - 3, R = TD_RNG.make(97);
     for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) { g[y][x] = "#"; occ[y][x] = true; }
-    var segs = [[5, 24, "D", 3], [5, 27, "R", 3], [8, 27, "D", 3], [8, 30, "L", 3], [6, 30, "D", 2], [8, 28, "R", 2]];
-    var DV = { U: [0, -1], D: [0, 1], L: [-1, 0], R: [1, 0] }, alley = [], seen = {};
-    function open(x, y) { if (x > x0 && x < x1 && y >= y0 && y < y1) { g[y][x] = "."; if (!seen[x + "," + y]) { seen[x + "," + y] = 1; alley.push([x, y]); } } }
-    segs.forEach(function (s) { var x = s[0], y = s[1], d = DV[s[2]]; open(x, y); for (var i = 0; i < s[3]; i++) { x += d[0]; y += d[1]; open(x, y); } });
-    g[y0 - 1][5] = (g[y0 - 1][5] === "#") ? "." : g[y0 - 1][5];
-
-    var rd = [["bodega", "D"], ["redshop", "x"], ["redlit", "Q"]];
-    for (var dn = 0; dn < rd.length; dn++) {
-      var p = alley[3 + dn * 3]; if (!p) continue;
-      var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-      for (var di = 0; di < dirs.length; di++) { var wx = p[0] + dirs[di][0], wy = p[1] + dirs[di][1]; if (g[wy] && g[wy][wx] === "#" && !doors[key(wx, wy)]) { doors[key(wx, wy)] = { to: rd[dn][0], glyph: "+", letter: rd[dn][1], label: rd[dn][0], red: true, front: { x: p[0], y: p[1] }, building: true }; break; } }
+    // SPAGHETTI (D2): a 1-wide flood maze grown under two carve rules — never
+    // complete a 2x2 open block, never extend a straight run past 4. That keeps
+    // every alley 1-wide and bent while ALLOWING T-junctions (short arms that
+    // bend) and dead-ends and the occasional loop — it reads as spaghetti. A
+    // single mouth (no through-route) since it floods from one interior cell.
+    var alley = [], seen = {};
+    function isOpen(x, y) { return g[y] && g[y][x] === "."; }
+    function wouldFat(x, y) {
+      for (var ax = x - 1; ax <= x; ax++) for (var ay = y - 1; ay <= y; ay++) {
+        var c = 0; for (var dx = 0; dx < 2; dx++) for (var dy = 0; dy < 2; dy++) { var px = ax + dx, py = ay + dy; if ((px === x && py === y) || isOpen(px, py)) c++; }
+        if (c === 4) return true;
+      }
+      return false;
     }
-    return { rect: [x0, y0, x1, y1], mouth: { x: 5, y: y0 }, alley: alley };
+    function wouldRun(x, y) {
+      var h = 1, xx = x - 1; while (isOpen(xx, y)) { h++; xx--; } xx = x + 1; while (isOpen(xx, y)) { h++; xx++; }
+      var v = 1, yy = y - 1; while (isOpen(x, yy)) { v++; yy--; } yy = y + 1; while (isOpen(x, yy)) { v++; yy++; }
+      return h > 4 || v > 4;
+    }
+    function canCarve(x, y) { return x > x0 && x < x1 && y > y0 && y < y1 && g[y][x] === "#" && !wouldFat(x, y) && !wouldRun(x, y); }
+    function carve(x, y) { g[y][x] = "."; var k = x + "," + y; if (!seen[k]) { seen[k] = 1; alley.push([x, y]); } }
+    var sx = x0 + 1, sy = y0 + 1, stack = [[sx, sy]]; carve(sx, sy);
+    while (stack.length) {
+      var c = stack[R.int(0, stack.length - 1)], nbrs = [];   // growing-tree (random frontier) -> branchy
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { if (canCarve(c[0] + d[0], c[1] + d[1])) nbrs.push([c[0] + d[0], c[1] + d[1]]); });
+      if (!nbrs.length) { stack.splice(stack.indexOf(c), 1); continue; }
+      var n = nbrs[R.int(0, nbrs.length - 1)]; carve(n[0], n[1]); stack.push(n);
+    }
+    g[y0][sx] = "."; if (!seen[sx + "," + y0]) { seen[sx + "," + y0] = 1; alley.unshift([sx, y0]); }   // the single MOUTH
+
+    // line the alleys with SMALL shops (doors on the alleys), spaced apart —
+    // bodega, the PALM READER (D3), red-light sundries, and a locked door.
+    var shops = [["bodega", "D"], ["palmreader", "&"], ["redshop", "x"], ["redlit", "Q"], ["locked", "h"]];
+    var placedAt = [], si = 0;
+    for (var ai = 0; ai < alley.length && si < shops.length; ai++) {
+      var p = alley[ai], px = p[0], py = p[1];
+      if (px === sx && py <= y0 + 1) continue;
+      if (placedAt.some(function (q) { return Math.abs(q[0] - px) + Math.abs(q[1] - py) < 3; })) continue;
+      var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      for (var di = 0; di < dirs.length; di++) {
+        var wx = px + dirs[di][0], wy = py + dirs[di][1];
+        if (g[wy] && g[wy][wx] === "#" && !doors[key(wx, wy)] && wx > x0 && wx < x1 && wy > y0 && wy <= y1) {
+          doors[key(wx, wy)] = { to: shops[si][0], glyph: "+", letter: shops[si][1], label: shops[si][0], red: true, front: { x: px, y: py }, building: true, interactive: shops[si][0] !== "locked" };
+          placedAt.push([px, py]); si++; break;
+        }
+      }
+    }
+    return { rect: [x0, y0, x1, y1], mouth: { x: sx, y: y0 }, alley: alley, shops: si };
   }
 
   function buildEnclosure(g, occ, features, kind, x0, y0, w, h, fill) {

@@ -244,7 +244,7 @@ function TD_GAME_TESTS() {
   // HARBOUR TOWN — THE SCREEN GRAPH (v16 R1)
   // =================================================================
   function cd(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); }
-  var INTERIOR_IDS = ["hotel", "restaurant", "coffee", "bodega", "saloon", "bank", "church", "spa", "tavern", "tim", "tattoo", "boat", "blacksmith", "barber", "motel", "redshop", "chinese", "clamshack", "gift1", "gift2", "agency", "kiosk"];
+  var INTERIOR_IDS = ["hotel", "restaurant", "coffee", "bodega", "saloon", "bank", "church", "spa", "tavern", "tim", "tattoo", "boat", "blacksmith", "barber", "motel", "redshop", "palmreader", "chinese", "clamshack", "gift1", "gift2", "agency", "kiosk"];
 
   test("the town is ONE continuous place with a connected road", function () {
     var g = game(); var v = g.view(); eq(v.screen, "TOWN", "one continuous town place");
@@ -410,6 +410,14 @@ function TD_GAME_TESTS() {
   // (the old bump-to-talk "contact dialogue" test is retired: friendly bump now
   // DISPLACES, per the June-11 ruling. The voice greet/chat/recycle flow is
   // covered by the voice-engine suite (run_voices) and the keeper-counter chats.)
+
+  test("D3 PALM READER interior: a stub flavour business (sign, counter, patrons; no mechanics)", function () {
+    var g = game(); g._goto("palmreader"); var v = g.view();
+    assert(/palm reader/i.test(v.title), "the palm reader interior exists (" + v.title + ")");
+    var counterAct = null; Object.keys(v.features).forEach(function (k) { if (v.features[k].type === "counter") counterAct = v.features[k].act; });
+    assert(counterAct === "flavor", "the counter is FLAVOUR only — no divination mechanics (red-pen-pending)");
+    assert(v.creatures.length >= 2 && v.creatures.every(function (c) { return c.friendly; }), "2+ friendly patrons");
+  });
 
   test("a named NPC spec overrides the type pool", function () {
     var named = TD_VOICES.dialogue("vendor", "townsfolk"), type = TD_VOICES.dialogue("townsfolk", "townsfolk");
