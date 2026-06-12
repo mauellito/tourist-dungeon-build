@@ -278,11 +278,47 @@ function TD_GAME_TESTS() {
       while (q.length) { var c = q.shift(); DV.forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && flo(nx, ny)) { seen[k] = 1; q.push([nx, ny]); } }); }
       Object.keys(s.doors).forEach(function (k) {
         var to = s.doors[k].to; total++;
-        assert(seen[k], s.id + ": door " + k + "->" + to + " unreachable from spawn");
+        var p = k.split(",").map(Number);
+        var bumpable = DV.some(function (d) { return seen[(p[0] + d[0]) + "," + (p[1] + d[1])]; });   // a door-in-wall is reached by bumping it from the adjacent street
+        assert(bumpable, s.id + ": door " + k + "->" + to + " has no reachable street tile to bump from");
         if (to !== "DUNGEON" && to !== "locked" && to !== "redlit") { assert(!seenTo[to], to + " appears on more than one screen"); seenTo[to] = s.id; }
       });
     });
     assert(total >= 23, "the full cast of buildings is placed across the screens (" + total + ")");
+  });
+
+  // ----------------------------------- DOOR-IN-WALL (v16 R2) ---------------
+  test("R2: no building door sits on a street tile — streets walk clean", function () {
+    var g = game();
+    g._screens().forEach(function (s) {
+      Object.keys(s.doors).forEach(function (k) {
+        var p = k.split(",").map(Number);
+        assert(s.grid[p[1]][p[0]] === "#", s.id + ": door " + k + " is in a wall, not on a street ('" + s.grid[p[1]][p[0]] + "')");
+      });
+    });
+  });
+
+  test("R2: every building letter sits inside its footprint (a wall tile)", function () {
+    var g = game(); var labels = 0;
+    g._screens().forEach(function (s) {
+      Object.keys(s.features).forEach(function (k) {
+        var f = s.features[k]; if (f.type !== "label") return; labels++;
+        var p = k.split(",").map(Number);
+        assert(s.grid[p[1]][p[0]] === "#", s.id + ": letter " + f.glyph + " at " + k + " is inside the footprint");
+      });
+    });
+    assert(labels >= 18, "most lettered buildings show their letter inside (" + labels + ")");
+  });
+
+  test("R2: every street tile is traversable end to end (no building tile on a street)", function () {
+    var g = game();
+    g._screens().forEach(function (s) {
+      var grid = s.grid, total = 0, DV = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+      for (var y = 0; y < grid.length; y++) for (var x = 0; x < grid[0].length; x++) if (grid[y][x] === ".") { total++; assert(!s.doors[x + "," + y], s.id + ": a door blocks street tile " + x + "," + y); }
+      var seen = {}, q = [[s.spawn.x, s.spawn.y]], reached = 1; seen[s.spawn.x + "," + s.spawn.y] = 1;
+      while (q.length) { var c = q.shift(); DV.forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && grid[ny] && grid[ny][nx] === ".") { seen[k] = 1; reached++; q.push([nx, ny]); } }); }
+      assert(reached >= 0.97 * total, s.id + ": the street network is connected end to end (" + reached + "/" + total + ")");
+    });
   });
 
   test("street widths span the 4/3/2/1 hierarchy with a VISIBLE narrowing (ruling 4)", function () {

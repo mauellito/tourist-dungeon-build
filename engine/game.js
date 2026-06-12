@@ -233,7 +233,31 @@ var TD_GAME = (function () {
     }
     function scStreet(s, sid, district, x0, y0, x1, y1) { carve(s.grid, x0, y0, x1, y1); s.meta.streets.push({ id: sid, district: district, width: Math.min(x1 - x0 + 1, y1 - y0 + 1), rect: [x0, y0, x1, y1] }); }
     function scZone(s, name, x0, y0, x1, y1) { s.meta.districts[name] = { rect: [x0, y0, x1, y1], doors: [] }; }
-    function scDoor(s, dx, dy, to, glyph, name, district) { var d = { to: to, glyph: glyph, label: name }; s.doors[key(dx, dy)] = d; if (s.meta.districts[district]) s.meta.districts[district].doors.push(key(dx, dy)); return d; }
+    // DOOR-IN-WALL (v16 R2): (dx,dy) is the STREET tile in front of the building.
+    // The door glyph sits IN the building wall (the '#' beside the street); the
+    // identifying LETTER sits one tile further inside, on a footprint tile. The
+    // street tile itself stays clean, so every street walks end to end.
+    function scDoor(s, dx, dy, to, glyph, name, district) {
+      var DS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+      function inB(x, y) { return x >= 0 && x < W && y >= 0 && y < H; }
+      // candidate "front" street tiles: (dx,dy) first, then its street neighbours,
+      // so a door anchored mid-street still finds a building wall at the edge.
+      var fronts = [[dx, dy]];
+      DS.forEach(function (d) { var fx = dx + d[0], fy = dy + d[1]; if (inB(fx, fy) && s.grid[fy][fx] === ".") fronts.push([fx, fy]); });
+      var front = null, side = null;
+      for (var fi = 0; fi < fronts.length && !side; fi++) {
+        var f = fronts[fi];
+        for (var i = 0; i < DS.length; i++) { var wx = f[0] + DS[i][0], wy = f[1] + DS[i][1]; if (inB(wx, wy) && s.grid[wy][wx] === "#" && !s.doors[key(wx, wy)]) { front = f; side = DS[i]; break; } }
+      }
+      if (!side) { front = [dx, dy]; side = [0, -1]; }
+      var doorX = front[0] + side[0], doorY = front[1] + side[1];
+      var isLetter = /^[A-Za-z0-9]$/.test(glyph);
+      var d = { to: to, glyph: isLetter ? "+" : glyph, letter: glyph, label: name, front: { x: front[0], y: front[1] }, building: true };
+      s.doors[key(doorX, doorY)] = d;
+      if (isLetter) { var lx = doorX + side[0], ly = doorY + side[1]; if (lx >= 0 && lx < W && ly >= 0 && ly < H && s.grid[ly][lx] === "#" && !s.features[key(lx, ly)]) s.features[key(lx, ly)] = { type: "label", glyph: glyph, col: "door", label: name }; }
+      if (s.meta.districts[district]) s.meta.districts[district].doors.push(key(doorX, doorY));
+      return d;
+    }
     function scExit(s, x, y, to, ex, ey) { s.exits[key(x, y)] = { to: to, ex: ex, ey: ey }; }
     function scFeat(s, x, y, o) { s.features[key(x, y)] = o; }
     function scOpen(s, x0, y0, x1, y1) { carve(s.grid, x0, y0, x1, y1); }   // an open square (carved, not a street)
@@ -295,7 +319,7 @@ var TD_GAME = (function () {
       scDoor(s, 18, 13, "tattoo", "Z", "the Tattoo Parlor", "shops");
       scDoor(s, 31, 5, "coffee", "O", "the Coffee Shop", "civic");
       scDoor(s, 30, 10, "chinese", "N", "the Golden Turnstile (takeout)", "civic");
-      scDoor(s, 36, 10, "restaurant", "E", "the Restaurant", "civic");
+      scDoor(s, 38, 9, "restaurant", "E", "the Restaurant", "civic");
       scDoor(s, 23, 19, "church", "C", "the Church", "civic");
       s.grid[7][33] = "~"; s.grid[7][34] = "~"; s.grid[8][33] = "~"; s.grid[8][34] = "~";   // the fountain
       scFeat(s, 32, 6, lk("the fountain plaza", "≈", "water", "The fountain mutters to itself, municipal and content. Coins glint in it, unclaimed."));
@@ -316,10 +340,9 @@ var TD_GAME = (function () {
       scStreet(s, "rl-slit", "redlight", 28, 6, 28, 10);     // 1-wide slit up to a dead-end (the pinch)
       scStreet(s, "rl-dead", "redlight", 40, 11, 41, 18);    // 2-wide dead-end
       scZone(s, "redlight", 4, 4, 47, 27);
-      scDoor(s, 15, 11, "bodega", "D", "the Bodega", "redlight");
-      scDoor(s, 22, 11, "redshop", "x", "the Red Light Shop", "redlight");
-      scDoor(s, 34, 11, "redlit", "Q", "the Quay's End", "redlight");
-      [key(15, 11), key(22, 11), key(34, 11)].forEach(function (k) { if (s.doors[k]) s.doors[k].red = true; });
+      [scDoor(s, 15, 11, "bodega", "D", "the Bodega", "redlight"),
+      scDoor(s, 22, 11, "redshop", "x", "the Red Light Shop", "redlight"),
+      scDoor(s, 34, 11, "redlit", "Q", "the Quay's End", "redlight")].forEach(function (d) { d.red = true; });
       scFeat(s, 45, 10, lk("the red-light archway", "∩", "redlight", "An arch of dim red glass. Past it the streets pinch and the lamps go pink. You are somewhere else now."));
       scExit(s, 47, 10, "MARKET", 1, 12); scExit(s, 47, 11, "MARKET", 1, 13);   // east arch -> MARKET
       scExit(s, 10, 27, "HARBOUR", 1, 18); scExit(s, 11, 27, "HARBOUR", 2, 18); // south -> HARBOUR
@@ -336,12 +359,12 @@ var TD_GAME = (function () {
       scStreet(s, "hb-dock", "waterfront", 0, 18, 46, 20);   // 3-wide dock road, reaches west edge
       scZone(s, "waterfront", 0, 14, 46, 27);
       fill(s.grid, 2, 23, 45, 26, "~");                       // the open water band
-      scDoor(s, 8, 18, "tavern", "T", "the Rusty Anchor", "waterfront");
+      var td = scDoor(s, 8, 18, "tavern", "T", "the Rusty Anchor", "waterfront");
       scDoor(s, 12, 18, "boat", "Y", "Boat Rental", "waterfront");
       scDoor(s, 16, 18, "empty", "w", "a harbour warehouse", "waterfront");
       scDoor(s, 30, 18, "motel", "M", "the Motel", "waterfront");
       scDoor(s, 35, 18, "clamshack", "F", "the Clam Shack", "waterfront");
-      var td = s.doors[key(8, 18)]; td.gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
+      td.gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
       scFeat(s, 23, 21, { type: "lookout", glyph: "≈", label: "harbour rail", text: SIG["012"].t, act: "lookout" });
       scFeat(s, 41, 19, lk("the road out of town", "=", "signal", "Past the motel the road leaves the harbour behind, and the town simply stops. The Bureau posts a sign and a shrug."));
       scFeat(s, 4, 17, lk("a castle on a far hill", "▲", "signal", "On a far hill a castle keeps its own counsel and its own portcullis. The Bureau notes it is 'not currently on the itinerary'."));
@@ -473,6 +496,7 @@ var TD_GAME = (function () {
       if (d) { pendingCounter = null; pendingVendor = false; pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
       var f = P.features[key(nx, ny)];
       if (f) {
+        if (f.type === "label") return { moved: false };   // a building letter is enclosed wall, not a counter
         if (f.act === "lookout") { pendingCounter = null; pendingVendor = false; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
         if (f.act === "look") { pendingCounter = null; pendingVendor = false; senses(f.text, "seen", "OBJ"); return { moved: false, interacted: "look", event: lastEvent }; }
         if (f.act === "shrine") { pendingCounter = null; pendingVendor = false; act("shrine"); return { moved: false, interacted: "shrine", event: lastEvent }; }
