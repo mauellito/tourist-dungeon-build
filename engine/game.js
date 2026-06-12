@@ -228,7 +228,7 @@ var TD_GAME = (function () {
     // wrap the figure-ground generator output (Town Composition Law v1) into a
     // live TOWN place: gate functions, gift positions, and the road cells NPCs walk.
     function adaptTown(t) {
-      var p = { id: "TOWN", title: "The Harbour", grid: t.grid, doors: t.doors, features: t.features, occupants: [], actors: [], cells: [], spawn: t.spawn, exit: t.exit, buildings: t.buildings, piers: t.piers, meta: t.meta };
+      var p = { id: "TOWN", title: "The Harbour", grid: t.grid, doors: t.doors, features: t.features, ground: t.ground, occupants: [], actors: [], cells: [], spawn: t.spawn, exit: t.exit, buildings: t.buildings, piers: t.piers, meta: t.meta };
       Object.keys(t.doors).forEach(function (k) {
         var d = t.doors[k];
         if (d.to === "DUNGEON") d.gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
@@ -685,7 +685,7 @@ var TD_GAME = (function () {
       return {
         phase: town ? "town" : "interior", w: pw, h: ph, screen: placeId,
         grid: P.grid.map(function (r) { return r.join(""); }),
-        doors: P.doors, features: P.features, items: {}, plain: {},
+        doors: P.doors, features: P.features, ground: P.ground || {}, items: {}, plain: {},
         player: { x: player.x, y: player.y },
         creatures: town
           ? npcs().map(function (n) { return { x: n.x, y: n.y, kind: "npc", glyph: n.glyph, name: n.name, hp: 1, maxHp: 1, dmg: 0, friendly: true }; })

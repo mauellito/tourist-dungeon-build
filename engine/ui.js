@@ -38,6 +38,8 @@ var TD_UI = (function () {
     floorBg:    "#574d3c", floorBgDim:  "#2a2620",
     wall:       "#c6b48a", wallDim:     "#5f564a",
     water:      "#1d3346", waterGlyph:  "#6fa0c4",
+    // C3 ground surfaces (functional terrain texture, one meaning each)
+    cobble:     "#8d8a82", dirt: "#8a6f4a", stone: "#a6a29a", grass: "#5a8a4a", sand: "#c2a86a", plank: "#9a7d50",
     doorBg:     "#403225", pendingBg:   "#7a5f1e",
     // danger tints for the threats panel (severity, a defined meaning)
     dangerHigh: "#ff2d1f", dangerMed: "#e0902a", dangerLow: "#caa15a"
