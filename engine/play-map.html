@@ -299,7 +299,8 @@
           bg = (vw.pendingDoor === k) ? P.pendingBg : "#37301f"; glyph = plain.open ? "'" : "+"; col = P.door;
         } else if (ch === ".") {
           var gt = vw.ground && vw.ground[k];                                  // C3 ground variation (render-only)
-          if (gt === "grass") { bg = "#28331d"; glyph = "ˌ"; col = P.grass; }
+          if (gt === "redlight") { bg = "#3a1622"; glyph = "·"; col = P.redlight; }   // the red-lit district
+          else if (gt === "grass") { bg = "#28331d"; glyph = "ˌ"; col = P.grass; }
           else if (gt === "sand") { bg = "#3b3320"; glyph = "·"; col = P.sand; }
           else if (gt === "plank") { bg = "#2e2417"; glyph = "‗"; col = P.plank; }
           else if (gt === "stone") { bg = "#34322c"; glyph = "·"; col = P.stone; }
@@ -707,7 +708,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map town-composition vD", BUILD = "11c8208";
+  var VERSION = "play-map town-composition vE", BUILD = "582870a";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

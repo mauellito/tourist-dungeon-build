@@ -240,7 +240,7 @@ var TD_GAME = (function () {
       if (g1 && g2) p.meta.gift = { a: g1, b: g2 };
       // canon lookouts carried into the continuous town: the island rail (012)
       // and the three horizon weenies, at the edges (look-only, off the thoroughfares)
-      function lkout(x, y, o) { if (t.grid[y] && t.grid[y][x] === "." && !t.features[key(x, y)]) t.features[key(x, y)] = o; }
+      function lkout(x, y, o) { if (t.grid[y] && t.grid[y][x] === "." && (!t.features[key(x, y)] || t.features[key(x, y)].decor)) t.features[key(x, y)] = o; }   // a canon sightline overrides decor furniture
       lkout(50, 36, { type: "lookout", glyph: "≈", label: "harbour rail", text: SIG["012"].t, act: "lookout" });
       lkout(2, 2, { type: "view", glyph: "▲", col: "signal", label: "a castle on a far hill", text: "On a far hill a castle keeps its own counsel and its own portcullis. The Bureau notes it is 'not currently on the itinerary'.", act: "look" });
       lkout(69, 2, { type: "view", glyph: "▲", col: "signal", label: "a monastery in the hills", text: "A monastery folds into the hills, bells and all, serenely beyond the turnstile. You may look; looking is free.", act: "look" });

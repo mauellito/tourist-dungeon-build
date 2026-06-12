@@ -29,6 +29,7 @@ var TD_UI = (function () {
     fence:     "#9a8458",  // weathered wood — an enclosure fence (see-through)
     gate:      "#caa15a",  // brass — a gate (passage through a barrier)
     storefront: "#b5763e", // terracotta — commercial frontage (shop sign / window / awning)
+    fixture:    "#8f8a7a", // pewter — fixed street furniture (lamppost, bench, crate, well, hitching post)
     // damage-number meanings (kept consistent with the category rules)
     dmgDealt: "#f5c542",   // = player gold (your output)
     dmgTaken: "#ff2d1f",   // = critical red (harm to you)
