@@ -407,15 +407,9 @@ function TD_GAME_TESTS() {
     INTERIOR_IDS.forEach(function (id) { g._occupantsOf(id).forEach(ck); });
   });
 
-  test("contact dialogue: greet first, then chat no-repeat within a pass, then recycle", function () {
-    var g = game(); g._clearActors();
-    var npc = g._addActor({ id: "talker", type: "townsfolk", voiceId: "townsfolk", glyph: "c", name: "a townsperson", x: g._player().x + 1, y: g._player().y, speed: 0, frozen: true });
-    function bump() { var b = g._shared().messages.length; g.move("right"); var m = g._shared().messages.slice(b).filter(function (x) { return /townsperson/i.test(x.text); }); return m.length ? m[m.length - 1] : null; }
-    var first = bump(); assert(first && first.ch === "senses", "first contact greets on the senses channel");
-    var chat = TD_VOICES.dialogue("townsfolk", "townsfolk").chat, seen = {};
-    for (var i = 0; i < chat.length; i++) { var l = bump(); assert(l, "chat line " + i + " present"); assert(!seen[l.text], "no repeat within a pass: " + l.text); seen[l.text] = 1; }
-    var recycled = bump(); assert(recycled, "after exhaustion the pool recycles, never goes mute");
-  });
+  // (the old bump-to-talk "contact dialogue" test is retired: friendly bump now
+  // DISPLACES, per the June-11 ruling. The voice greet/chat/recycle flow is
+  // covered by the voice-engine suite (run_voices) and the keeper-counter chats.)
 
   test("a named NPC spec overrides the type pool", function () {
     var named = TD_VOICES.dialogue("vendor", "townsfolk"), type = TD_VOICES.dialogue("townsfolk", "townsfolk");
@@ -424,25 +418,41 @@ function TD_GAME_TESTS() {
   });
 
   // ----------------------------------- WIRE + CHANNEL (v15 R4) -------------
-  test("interior occupants can be talked to: contact begins a chat on the senses channel", function () {
+  // FRIENDLY DISPLACEMENT (operator ruling, June 11)
+  test("DISPLACEMENT: walking into an interior patron swaps you past it (never blocks)", function () {
     var g = game(); g._goto("hotel");
-    var occ = g.view().creatures[0];
-    assert(occ && occ.friendly, "the hotel has an occupant");
-    g._warp(occ.x - 1, occ.y);
-    var before = g._shared().messages.length;
-    g.move("right");                                       // bump the occupant
-    var msgs = g._shared().messages.slice(before);
-    assert(msgs.some(function (m) { return m.ch === "senses" && m.kind === "said" && /guest/i.test(m.text); }), "the hotel guest speaks (senses / said)");
-    assert(msgs.every(function (m) { return !m.urgent; }), "dialogue is ambient, never a critical stop");
+    var occ = g.view().creatures[0]; assert(occ && occ.friendly, "the hotel has a patron");
+    var tx = occ.x, ty = occ.y;                            // capture BEFORE the swap mutates the patron
+    g._warp(tx - 1, ty); var p0 = { x: g._player().x, y: g._player().y };
+    var r = g.move("right");
+    assert(r.moved, "movement is not dead-stopped by the patron");
+    assert(g._player().x === tx && g._player().y === ty, "you take the patron's tile");
+    assert(g.view().creatures.filter(function (c) { return c.x === p0.x && c.y === p0.y; }).length === 1, "the patron swapped to your old tile (both preserved)");
   });
 
-  test("talking to an exterior walker is ambient (senses, never urgent)", function () {
+  test("DISPLACEMENT: a walker in a corridor never blocks; the swap preserves both", function () {
     var g = game(); g._clearActors();
-    var npc = g._addActor({ id: "chatter", type: "dockworker", voiceId: "dockworker", glyph: "w", name: "a dock worker", x: g._player().x + 1, y: g._player().y, speed: 0, frozen: true });
-    var before = g._shared().messages.length;
-    g.move("right");
-    var msgs = g._shared().messages.slice(before).filter(function (m) { return /dock worker/i.test(m.text); });
-    assert(msgs.length >= 1 && msgs.every(function (m) { return m.ch === "senses" && !m.urgent; }), "the dock worker speaks on the senses channel, never urgent");
+    var px = g._player().x, py = g._player().y;
+    var npc = g._addActor({ id: "blocker", type: "townsfolk", voiceId: "townsfolk", glyph: "p", name: "a stroller", x: px + 1, y: py, speed: 0, frozen: true });
+    var r = g.move("right");
+    assert(r.moved && g._player().x === px + 1 && g._player().y === py, "you pass the walker (movement never stops)");
+    assert(npc.x === px && npc.y === py, "the walker swapped to your old tile (both actors preserved)");
+  });
+
+  test("DISPLACEMENT: ten steps along a line of friendlies never dead-stops", function () {
+    var g = game(); g._clearActors(); var py = g._player().y, x0 = g._player().x;
+    for (var i = 1; i <= 4; i++) g._addActor({ id: "row" + i, type: "townsfolk", voiceId: "townsfolk", glyph: "p", name: "a stroller", x: x0 + i, y: py, speed: 0, frozen: true });
+    var blocked = 0; for (var s = 0; s < 4; s++) { if (!g.move("right").moved) blocked++; }
+    assert(blocked === 0, "walking a corridor packed with friendlies blocked " + blocked + " times (must be 0)");
+  });
+
+  test("CLERK EXCEPTION: a posted counter clerk is not displaced (bump opens business)", function () {
+    var g = game(); g._goto("hotel"); var v = g.view(), ck = null;
+    Object.keys(v.features).forEach(function (k) { if (v.features[k].type === "counter") { var p = k.split(",").map(Number); ck = { x: p[0], y: p[1] }; } });
+    assert(ck, "the hotel has a posted counter");
+    g._warp(ck.x, ck.y + 1); var r = g.move("up");
+    assert(!r.moved && r.bumpedCounter, "the clerk stays posted; bump opens business, does not displace");
+    assert(g._player().x === ck.x && g._player().y === ck.y + 1, "you do not move onto the counter");
   });
 
   var pass = results.filter(function (r) { return r.ok; }).length;

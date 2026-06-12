@@ -574,6 +574,23 @@ function TD_MAP_TESTS() {
     VOCAB.forEach(function (t) { assert(seenTells[t], "the '" + t + "' tell appears across rooms, so it can be learned"); });
   });
 
+  // FRIENDLY DISPLACEMENT in the dungeon DMZ (operator ruling, June 11)
+  test("DISPLACEMENT: a HOSTILE bump still attacks (unchanged)", function () {
+    var g = TD_MAP.create(world(), { creatures: false }); var fn = floorNbr(g); assert(fn, "a floor neighbour exists");
+    g._setCreatures([{ x: fn.x, y: fn.y, kind: "wanderer", hp: 30, maxHp: 30, dmg: 8, name: "a nocent thing", glyph: "r" }]);   // no friendly flag = hostile
+    var r = g.move(fn.dir);
+    assert(r.attacked && !r.moved, "bumping a hostile attacks, does not displace");
+  });
+
+  test("DISPLACEMENT: a FRIENDLY DMZ non-hostile is displaced — swap, never blocks", function () {
+    var g = TD_MAP.create(world(), { creatures: false }); var p = { x: g._player().x, y: g._player().y }, fn = floorNbr(g);
+    g._setCreatures([{ x: fn.x, y: fn.y, kind: "patron", hp: 1, maxHp: 1, dmg: 0, name: "a saloon patron", glyph: "p", friendly: true }]);
+    var r = g.move(fn.dir);
+    assert(r.moved && r.displaced, "a friendly never dead-stops you");
+    assert(g._player().x === fn.x && g._player().y === fn.y, "you take the friendly's tile");
+    assert(g._creatures().some(function (c) { return c.x === p.x && c.y === p.y; }), "the friendly swapped to your old tile");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

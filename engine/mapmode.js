@@ -503,6 +503,10 @@ var TD_MAP = (function () {
     // can a body stand here this turn? floor, and not blocked by a shut plain door
     function passable(x, y) { if (!isFloor(x, y)) return false; var p = plainAt(x, y); return !(p && !p.open); }
     function creatureAt(x, y) { for (var i = 0; i < ctrl.creatures.length; i++) if (ctrl.creatures[i].x === x && ctrl.creatures[i].y === y) return ctrl.creatures[i]; return null; }
+    function otherCreatureAt(self, x, y) { for (var i = 0; i < ctrl.creatures.length; i++) { var c = ctrl.creatures[i]; if (c !== self && c.x === x && c.y === y) return c; } return null; }
+    // friendly-displacement flavour (sparse, OBJ-true; lines queue for the voice pass)
+    var DISPLACE_LINES = ["“Pardon.”", "It yields the way with a nod.", "You slip past with a murmured apology.", "A shuffle, a half-step, and you are through."];
+    function displaceBark() { if (shared.turn - (ctrl.lastDisplace == null ? -99 : ctrl.lastDisplace) >= 5 && rng.chance(0.4)) { ctrl.lastDisplace = shared.turn; senses(DISPLACE_LINES[rng.int(0, DISPLACE_LINES.length - 1)], "heard", "OBJ"); } }
 
     function spawnCreatures() {
       ctrl.creatures = [];
@@ -620,6 +624,18 @@ var TD_MAP = (function () {
       // bump-to-fight (narrated in the Bureau register). You strike; the creature
       // (if it lives) replies on its own turn during creaturesStep — one blow each.
       var cr = creatureAt(nx, ny);
+      if (cr && cr.friendly) {
+        // FRIENDLY DISPLACEMENT (a DMZ non-hostile never dead-stops you): swap, or
+        // step it aside to an adjacent open tile if the swap tile is blocked.
+        var ox = ctrl.player.x, oy = ctrl.player.y, placed = false;
+        if (passable(ox, oy) && !otherCreatureAt(cr, ox, oy)) { cr.x = ox; cr.y = oy; placed = true; }
+        else { for (var di = 0; di < STEP4.length; di++) { var ax = nx + DIRS[STEP4[di]][0], ay = ny + DIRS[STEP4[di]][1]; if (!(ax === ox && ay === oy) && passable(ax, ay) && !otherCreatureAt(cr, ax, ay)) { cr.x = ax; cr.y = ay; placed = true; break; } } }
+        if (!placed) return { moved: false };
+        ctrl.player.x = nx; ctrl.player.y = ny; ctrl.pendingDoor = null;
+        reveal(nx, ny); displaceBark();
+        endTurn("step"); emitSenses();
+        return { moved: true, displaced: true, event: ctrl.lastEvent };
+      }
       if (cr) {
         ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt" });
         cr.hp -= PLAYER_DMG;

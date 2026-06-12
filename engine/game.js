@@ -334,29 +334,36 @@ var TD_GAME = (function () {
       var P = cur();
       var nx = player.x + DIRS[dir][0], ny = player.y + DIRS[dir][1];
       if (nx < 0 || ny < 0 || nx >= P.grid[0].length || ny >= P.grid.length) return { moved: false };
-      // a townsfolk NPC (vendor or walker): contact begins the conversation
+      // a townsfolk NPC: the vendor is posted at the cart (buy on Enter); any
+      // other walker is DISPLACED — you swap past them, movement never stops.
       if (isTownScreen(placeId)) {
         var npcList = npcs();
         for (var ni = 0; ni < npcList.length; ni++) {
           var npc = npcList[ni];
           if (nx !== npc.x || ny !== npc.y) continue;
-          pendingDoor = null; pendingCounter = null;
-          if (npc.isVendor) {                              // the hot dog vendor — only Enter buys
-            pendingVendor = true;
+          if (npc.isVendor) {                              // the hot dog vendor — posted; only Enter buys
+            pendingDoor = null; pendingCounter = null; pendingVendor = true;
             var vb = voice("vendor");
             if (!speak(vb, "greeting")) logMsg("The vendor waves you over to the cart.");
             speak(vb, "pitch"); speak(vb, "reaction", playerState());
             logMsg("Buy a hot dog? — Enter to accept; step away to decline.");
             return { moved: false, bumpedVendor: true, event: lastEvent };
           }
-          pendingVendor = false; talkTo(npc);              // a walker — contact begins a chat
-          return { moved: false, bumpedNpc: true, event: lastEvent };
+          pendingDoor = null; pendingCounter = null; pendingVendor = false; lastEvent = null;
+          if (displaceFriendly(npc, nx, ny, P, npcList)) { displaceBark(); shared.turn += 1; walkersStep(); maybeGiftDuel(); maybeAmbientBark(); return { moved: true, displaced: true, event: lastEvent }; }
+          return { moved: false };                         // truly boxed in (rare)
         }
       }
-      // inside an establishment: occupants can be talked to as well
+      // inside an establishment: patrons are DISPLACED too (the keeper behind the
+      // counter is a feature, handled below — posted clerks stay posted).
       if (!isTownScreen(placeId) && placeId !== "DUNGEON") {
         var occs = (cur().occupants) || [];
-        for (var oj = 0; oj < occs.length; oj++) { var o = occs[oj]; if (nx === o.x && ny === o.y) { pendingCounter = null; talkTo(o); return { moved: false, bumpedNpc: true, event: lastEvent }; } }
+        for (var oj = 0; oj < occs.length; oj++) {
+          var o = occs[oj]; if (nx !== o.x || ny !== o.y) continue;
+          pendingCounter = null; pendingDoor = null; lastEvent = null;
+          if (displaceFriendly(o, nx, ny, P, occs)) { displaceBark(); shared.turn += 1; return { moved: true, displaced: true, event: lastEvent }; }
+          return { moved: false };
+        }
       }
       var d = P.doors[key(nx, ny)];
       if (d) { pendingCounter = null; pendingVendor = false; pendingDoor = { meta: d, x: nx, y: ny }; logMsg(doorReveal(d)); return { moved: false, bumpedDoor: true, event: lastEvent }; }
@@ -408,6 +415,24 @@ var TD_GAME = (function () {
       if (T.doors[key(x, y)] || T.features[key(x, y)]) return false;
       if (x === player.x && y === player.y) return false;
       return !occupied(list, self, x, y);
+    }
+    // FRIENDLY DISPLACEMENT (operator ruling, June 11): walking into a non-hostile
+    // actor swaps you past it (or steps it aside) — movement never dead-stops on a
+    // friendly body. A swap target need only be open floor (the player just stood
+    // on it); door/occupant tiles are excluded.
+    function canStand(T, list, self, x, y) { return x >= 0 && y >= 0 && y < T.grid.length && x < T.grid[0].length && T.grid[y][x] === "." && !T.doors[key(x, y)] && !occupied(list, self, x, y); }
+    var DISPLACE_LINES = ["“Pardon.”", "The walker yields the cobbles with a nod.", "You slip past with a murmured apology.", "A shuffle, a half-step, and you are through.", "“Mind yourself,” said not unkindly, and you are past."];
+    var lastDisplace = -99;
+    function displaceBark() { if (shared.turn - lastDisplace < 6) return; if (Math.random() > 0.4) return; lastDisplace = shared.turn; senses(DISPLACE_LINES[Math.floor(Math.random() * DISPLACE_LINES.length)], "heard", "OBJ"); }
+    function displaceFriendly(npc, nx, ny, T, list) {
+      var ox = player.x, oy = player.y;
+      if (canStand(T, list, npc, ox, oy)) { npc.x = ox; npc.y = oy; }
+      else {
+        var ds = [[0, -1], [0, 1], [-1, 0], [1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]], stepped = false;
+        for (var i = 0; i < ds.length; i++) { var ax = nx + ds[i][0], ay = ny + ds[i][1]; if (ax === ox && ay === oy) continue; if (canStand(T, list, npc, ax, ay)) { npc.x = ax; npc.y = ay; stepped = true; break; } }
+        if (!stepped) return false;
+      }
+      player.x = nx; player.y = ny; return true;
     }
     // a STREET/PLAZA tile (for errand pathing — ignores dynamic actors)
     function streetTile(T, x, y) { return x >= 0 && y >= 0 && x < T.grid[0].length && y < T.grid.length && T.grid[y][x] === "." && !T.doors[key(x, y)] && !T.features[key(x, y)]; }
