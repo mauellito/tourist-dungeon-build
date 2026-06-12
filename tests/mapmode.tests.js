@@ -545,6 +545,26 @@ function TD_MAP_TESTS() {
     assert(everWater, "water never pooled in a large hall across 12 seeds");
   });
 
+  test("R4: secrets appear at learnable density, each a vocabulary tell (outcome #5)", function () {
+    var VOCAB = ["draft", "rhyme", "hollow"], seenTells = {}, dense = 0, total = 0;
+    for (var s = 1; s <= 12; s++) {
+      var w = {
+        start: "a", year_length: 365, arrival_day: 1, meta: { seed: s },
+        nodes: { a: { level: 1, title: "Big Hall" }, b: { level: 1, required: true, title: "B" }, c: { level: 1, title: "C" }, d: { level: 1, title: "D" }, e: { level: 1, title: "E" } },
+        edges: [{ id: "ab", from: "a", to: "b", label: "n" }, { id: "ac", from: "a", to: "c", label: "e" }, { id: "ad", from: "a", to: "d", label: "s" }, { id: "ae", from: "a", to: "e", label: "w" }], signals: {}
+      };
+      var g = TD_MAP.create(w, { creatures: false, hazards: false }), secs = g._secrets(), ks = Object.keys(secs);
+      total++; if (ks.length >= 2) dense++;
+      ks.forEach(function (k) {
+        assert(VOCAB.indexOf(secs[k].tell) >= 0, "secret " + k + " carries a vocabulary tell (no invented tell)");
+        var xy = k.split(",").map(Number); assert(g.view().grid[xy[1]][xy[0]] === "#", "the secret hides in a wall");
+        seenTells[secs[k].tell] = 1;
+      });
+    }
+    assert(dense >= 10, "most large rooms carry >=2 secrets at density (" + dense + "/" + total + ")");
+    VOCAB.forEach(function (t) { assert(seenTells[t], "the '" + t + "' tell appears across rooms, so it can be learned"); });
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

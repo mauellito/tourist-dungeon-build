@@ -357,11 +357,20 @@ var TD_MAP = (function () {
       var floors = floorCells(g).filter(function (c) { return !(c[0] === sp.x && c[1] === sp.y) && !ctrl.doors[key(c[0], c[1])]; });
       var kinds = ["ration", "bandage", "souvenir"];
       for (var i = 0; i < 3 && floors.length; i++) { var f = floors[R.int(0, floors.length - 1)]; tryItem(f[0], f[1], kinds[i]); }
-      for (var fj = 0; fj < floors.length; fj++) {
-        var x = floors[fj][0], y = floors[fj][1], wn = null;
-        var ds = DIRS4(x, y);
-        for (var k = 0; k < ds.length; k++) if (inb(ds[k][0], ds[k][1]) && g[ds[k][1]][ds[k][0]] === "#") { wn = ds[k]; break; }
-        if (wn) { addSecret(wn[0], wn[1], "ration", R.pick(["draft", "rhyme", "hollow"])); break; }
+      // v18 R4 (outcome #5): secrets at LEARNABLE density. Several hidden pockets
+      // per room, each in a wall and each telegraphed by a fixed tell (Secret
+      // Grammar Law), spaced apart so they read as distinct, and CYCLING the
+      // vocabulary from a per-room offset so across a few rooms the player meets
+      // all three tells (draft / rhyme / hollow) and learns the language.
+      var TELLV = ["draft", "rhyme", "hollow"], want = R.int(2, 3), placedS = [], off = R.int(0, 2);
+      for (var fj = 0; fj < floors.length && placedS.length < want; fj++) {
+        var x = floors[fj][0], y = floors[fj][1], ds = DIRS4(x, y), wn = null;
+        for (var k = 0; k < ds.length; k++) { var wx = ds[k][0], wy = ds[k][1]; if (inb(wx, wy) && g[wy][wx] === "#" && !ctrl.secrets[key(wx, wy)]) { wn = [wx, wy]; break; } }
+        if (!wn) continue;
+        var tooClose = placedS.some(function (p) { return Math.max(Math.abs(p[0] - wn[0]), Math.abs(p[1] - wn[1])) < 4; });
+        if (tooClose) continue;
+        addSecret(wn[0], wn[1], R.pick(kinds), TELLV[(off + placedS.length) % 3]);
+        placedS.push(wn);
       }
     }
 
