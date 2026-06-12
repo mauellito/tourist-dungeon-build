@@ -124,7 +124,7 @@ var TD_MAP = (function () {
   function carveRoomAt(g, R, cx, cy, shape) {
     var x0, y0, x1, y1, tag = shape;
     function cl() { x0 = clampi(x0, 1, W - 2); y0 = clampi(y0, 1, H - 2); x1 = clampi(x1, 1, W - 2); y1 = clampi(y1, 1, H - 2); }
-    if (shape === "grand") { var gw = R.int(5, 8), gh = R.int(3, 5); x0 = cx - gw; y0 = cy - gh; x1 = cx + gw; y1 = cy + gh; cl(); carveBox(g, x0, y0, x1, y1); }
+    if (shape === "grand") { var gw = R.int(4, 6), gh = R.int(2, 4); x0 = cx - gw; y0 = cy - gh; x1 = cx + gw; y1 = cy + gh; cl(); carveBox(g, x0, y0, x1, y1); }
     else if (shape === "wide") { var ww = R.int(5, 9), wh = R.int(1, 2); x0 = cx - ww; y0 = cy - wh; x1 = cx + ww; y1 = cy + wh; tag = "rect"; cl(); carveBox(g, x0, y0, x1, y1); }
     else if (shape === "tall") { var tw = R.int(1, 2), th = R.int(3, 6); x0 = cx - tw; y0 = cy - th; x1 = cx + tw; y1 = cy + th; tag = "rect"; cl(); carveBox(g, x0, y0, x1, y1); }
     else if (shape === "rect") { var wide = R.chance(0.5), rw = wide ? R.int(4, 7) : R.int(1, 2), rh = wide ? R.int(1, 2) : R.int(3, 5); x0 = cx - rw; y0 = cy - rh; x1 = cx + rw; y1 = cy + rh; tag = "rect"; cl(); carveBox(g, x0, y0, x1, y1); }
@@ -183,6 +183,7 @@ var TD_MAP = (function () {
     for (var i = cellList.length - 1; i > 0; i--) { var j = R.int(0, i), t = cellList[i]; cellList[i] = cellList[j]; cellList[j] = t; }
     var rooms = [], cw = W / cols, chh = H / rowsN;
     for (var k = 0; k < nRooms && k < cellList.length; k++) {
+      if (rooms.length >= 3 && floorCells(g).length / (W * H) > 0.32) break;   // density cap: keep rooms distinct, not a blob
       var cell = cellList[k];
       var ax = clampi(Math.round(cell[0] * cw + cw / 2 + R.int(-2, 2)), 4, W - 5);
       var ay = clampi(Math.round(cell[1] * chh + chh / 2 + R.int(-1, 1)), 3, H - 4);

@@ -415,8 +415,9 @@ function TD_MAP_TESTS() {
   });
 
   test("R1.5 FLOOR DENSITY: a level fills 25-40% of the screen (not one room at ~12%)", function () {
-    var md = median(GEO.dens);
+    var md = median(GEO.dens), mx = Math.max.apply(null, GEO.dens);
     assert(md >= 0.25 && md <= 0.40, "median floor density is " + (100 * md).toFixed(0) + "% (target 25-40%)");
+    assert(mx <= 0.52, "no level is a near-solid blob (densest is " + (100 * mx).toFixed(0) + "%)");
   });
 
   test("R1.5 CLUSTER: every level is 3-6 rooms (not a single chamber)", function () {
