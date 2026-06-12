@@ -207,6 +207,7 @@
 <script src="interpreter.js"></script>
 <script src="mapmode.js"></script>
 <script src="voices.js"></script>
+<script src="towngen.js"></script>
 <script src="game.js"></script>
 <script src="ui.js"></script>
 <script>
@@ -299,6 +300,8 @@
         } else if (ch === ".") { bg = bright ? P.floorBg : P.floorBgDim; glyph = "·"; col = bright ? P.floor : P.floorDim; }
         else if (ch === "~") { bg = P.water; glyph = "≈"; col = P.waterGlyph; }
         else if (ch === "t") { bg = bright ? P.floorBg : P.floorBgDim; glyph = "♣"; col = P.nature; }
+        else if (ch === "=") { bg = "#23211c"; glyph = "▓"; col = P.rampart; }   // town perimeter rampart (Amendment 1)
+        else if (ch === ":") { bg = bright ? P.floorBg : P.floorBgDim; glyph = ":"; col = P.fence; }   // an enclosure fence (see-through)
         else if (ch === "X") { bg = "#0a0a0c"; glyph = vw.pendingFall === k ? "▼" : "·"; col = "#3a3a44"; }
         else if (ch === "#") { glyph = "#"; col = bright ? P.wall : P.wallDim; }
         if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
@@ -695,7 +698,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v16 · harbour town", BUILD = "b27646e";
+  var VERSION = "play-map town-composition vA", BUILD = "a3754c8";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

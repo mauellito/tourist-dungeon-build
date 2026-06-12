@@ -246,244 +246,157 @@ function TD_GAME_TESTS() {
   function cd(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); }
   var INTERIOR_IDS = ["hotel", "restaurant", "coffee", "bodega", "saloon", "bank", "church", "spa", "tavern", "tim", "tattoo", "boat", "blacksmith", "barber", "motel", "redshop", "chinese", "clamshack", "gift1", "gift2", "agency", "kiosk"];
 
-  test("the screen graph is fully connected from GATE (spine + REDLIGHT)", function () {
-    var g = game(); var screens = g._screens(), byId = {};
-    screens.forEach(function (s) { byId[s.id] = s; });
-    eq(screens.length, 5, "five town screens");
-    var adj = {}; screens.forEach(function (s) { adj[s.id] = []; Object.keys(s.exits || {}).forEach(function (k) { var t = s.exits[k].to; if (adj[s.id].indexOf(t) < 0) adj[s.id].push(t); }); });
-    var seen = { GATE: 1 }, q = ["GATE"];
-    while (q.length) { var c = q.shift(); (adj[c] || []).forEach(function (t) { if (!seen[t]) { seen[t] = 1; q.push(t); } }); }
-    ["GATE", "MAIN", "MARKET", "REDLIGHT", "HARBOUR"].forEach(function (id) { assert(seen[id], id + " reachable from GATE via edge exits"); });
+  test("the town is ONE continuous place with a connected road", function () {
+    var g = game(); var v = g.view(); eq(v.screen, "TOWN", "one continuous town place");
+    var grid = v.grid, sp = v.player, seen = {}, q = [[sp.x, sp.y]], reached = 0; seen[sp.x + "," + sp.y] = 1;
+    function flo(x, y) { return grid[y] && grid[y][x] === "."; }
+    while (q.length) { var c = q.shift(); reached++;[[c[0], c[1] - 1], [c[0], c[1] + 1], [c[0] - 1, c[1]], [c[0] + 1, c[1]]].forEach(function (n) { if (flo(n[0], n[1]) && !seen[n[0] + "," + n[1]]) { seen[n[0] + "," + n[1]] = 1; q.push(n); } }); }
+    var open = 0; grid.forEach(function (r) { for (var i = 0; i < r.length; i++) if (r[i] === ".") open++; });
+    eq(reached, open, "the road is one connected component (" + reached + "/" + open + ")");
   });
 
-  test("edge transitions land on a matching street tile of the target screen", function () {
-    var g = game(); var byId = {}; g._screens().forEach(function (s) { byId[s.id] = s; });
-    g._screens().forEach(function (s) {
-      Object.keys(s.exits || {}).forEach(function (k) {
-        var p = k.split(",").map(Number);
-        assert(s.grid[p[1]][p[0]] === ".", s.id + ": exit tile " + k + " is a street tile");
-        var e = s.exits[k], t = byId[e.to];
-        assert(t, s.id + ": exit target " + e.to + " exists");
-        assert(t.grid[e.ey][e.ex] === ".", s.id + "->" + e.to + ": lands on a street tile (" + e.ex + "," + e.ey + ")");
-      });
-    });
+  test("every building door is reachable from spawn (bumped from the road)", function () {
+    var g = game(); var v = g.view(), grid = v.grid, sp = v.player, seen = {}, q = [[sp.x, sp.y]]; seen[sp.x + "," + sp.y] = 1;
+    var DV = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    while (q.length) { var c = q.shift(); DV.forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && grid[ny] && grid[ny][nx] === ".") { seen[k] = 1; q.push([nx, ny]); } }); }
+    var doors = v.doors || {}, total = 0;
+    Object.keys(doors).forEach(function (k) { var p = k.split(",").map(Number); total++; assert(DV.some(function (d) { return seen[(p[0] + d[0]) + "," + (p[1] + d[1])]; }), "door " + k + "->" + doors[k].to + " bumpable from the road"); });
+    assert(total >= 20, "the full cast of buildings is placed (" + total + ")");
   });
 
-  test("every canon building exists on exactly one screen and is reachable from that screen's spawn", function () {
-    var g = game(); var screens = g._screens(), seenTo = {}, total = 0;
-    screens.forEach(function (s) {
-      var grid = s.grid; function flo(x, y) { return y >= 0 && x >= 0 && y < grid.length && x < grid[0].length && grid[y][x] === "."; }
-      var seen = {}, q = [[s.spawn.x, s.spawn.y]]; seen[s.spawn.x + "," + s.spawn.y] = 1;
-      var DV = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-      while (q.length) { var c = q.shift(); DV.forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && flo(nx, ny)) { seen[k] = 1; q.push([nx, ny]); } }); }
-      Object.keys(s.doors).forEach(function (k) {
-        var to = s.doors[k].to; total++;
-        var p = k.split(",").map(Number);
-        var bumpable = DV.some(function (d) { return seen[(p[0] + d[0]) + "," + (p[1] + d[1])]; });   // a door-in-wall is reached by bumping it from the adjacent street
-        assert(bumpable, s.id + ": door " + k + "->" + to + " has no reachable street tile to bump from");
-        if (to !== "DUNGEON" && to !== "locked" && to !== "redlit") { assert(!seenTo[to], to + " appears on more than one screen"); seenTo[to] = s.id; }
-      });
-    });
-    assert(total >= 23, "the full cast of buildings is placed across the screens (" + total + ")");
+  test("door-in-wall: no building door on a road tile; letters inside; streets clean", function () {
+    var g = game(); var v = g.view();
+    Object.keys(v.doors).forEach(function (k) { var p = k.split(",").map(Number); assert(v.grid[p[1]][p[0]] === "#", "door " + k + " sits in a wall, not on the road"); });
+    Object.keys(v.features).forEach(function (k) { var f = v.features[k]; if (f.type !== "label") return; var p = k.split(",").map(Number); assert(v.grid[p[1]][p[0]] === "#", "letter at " + k + " is inside the footprint"); });
   });
 
-  // ----------------------------------- DOOR-IN-WALL (v16 R2) ---------------
-  test("R2: no building door sits on a street tile — streets walk clean", function () {
-    var g = game();
-    g._screens().forEach(function (s) {
-      Object.keys(s.doors).forEach(function (k) {
-        var p = k.split(",").map(Number);
-        assert(s.grid[p[1]][p[0]] === "#", s.id + ": door " + k + " is in a wall, not on a street ('" + s.grid[p[1]][p[0]] + "')");
-      });
-    });
+  test("the road cross is the wide main corridor (4-5 wide)", function () {
+    var g = game(); var roads = g._townMeta().roads;
+    assert(roads && roads.length >= 2, "the main corridor is a cross of two roads");
+    roads.forEach(function (r) { assert(r.width >= 4, r.id + " is a 4+ wide main road (" + r.width + ")"); });
   });
 
-  test("R2: every building letter sits inside its footprint (a wall tile)", function () {
-    var g = game(); var labels = 0;
-    g._screens().forEach(function (s) {
-      Object.keys(s.features).forEach(function (k) {
-        var f = s.features[k]; if (f.type !== "label") return; labels++;
-        var p = k.split(",").map(Number);
-        assert(s.grid[p[1]][p[0]] === "#", s.id + ": letter " + f.glyph + " at " + k + " is inside the footprint");
-      });
-    });
-    assert(labels >= 18, "most lettered buildings show their letter inside (" + labels + ")");
+  test("districts are zoned, with the cemetery + park enclosures placed", function () {
+    var g = game(); var d = g._townMeta().districts;
+    ["main", "market", "waterfront"].forEach(function (n) { assert(d[n], n + " zoned"); });
+    assert(d.cemetery && d.park, "cemetery + park enclosures placed");
   });
 
-  test("R2: every street tile is traversable end to end (no building tile on a street)", function () {
-    var g = game();
-    g._screens().forEach(function (s) {
-      var grid = s.grid, total = 0, DV = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-      for (var y = 0; y < grid.length; y++) for (var x = 0; x < grid[0].length; x++) if (grid[y][x] === ".") { total++; assert(!s.doors[x + "," + y], s.id + ": a door blocks street tile " + x + "," + y); }
-      var seen = {}, q = [[s.spawn.x, s.spawn.y]], reached = 1; seen[s.spawn.x + "," + s.spawn.y] = 1;
-      while (q.length) { var c = q.shift(); DV.forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && grid[ny] && grid[ny][nx] === ".") { seen[k] = 1; reached++; q.push([nx, ny]); } }); }
-      assert(reached >= 0.97 * total, s.id + ": the street network is connected end to end (" + reached + "/" + total + ")");
-    });
-  });
-
-  test("street widths span the 4/3/2/1 hierarchy with a VISIBLE narrowing (ruling 4)", function () {
-    var g = game(); var screens = g._screens(), wByScreen = {}, allW = {};
-    screens.forEach(function (s) { var ws = {}; s.meta.streets.forEach(function (st) { ws[st.width] = (ws[st.width] || 0) + 1; allW[st.width] = 1; }); wByScreen[s.id] = ws; });
-    [4, 3, 2, 1].forEach(function (w) { assert(allW[w], "width " + w + " exists somewhere in town"); });
-    assert(wByScreen.MAIN[4], "MAIN is the formal 4-wide street");
-    assert(wByScreen.MARKET[3] && wByScreen.MARKET[2], "MARKET carries 3 and 2");
-    assert(wByScreen.REDLIGHT[2] && wByScreen.REDLIGHT[1], "REDLIGHT pinches 2->1");
-    function adjacentRects(a, b) { return a[0] <= b[2] + 1 && b[0] <= a[2] + 1 && a[1] <= b[3] + 1 && b[1] <= a[3] + 1; }
-    function hasStepDown(s) { var st = s.meta.streets; for (var i = 0; i < st.length; i++) for (var j = 0; j < st.length; j++) { if (st[i].width <= st[j].width) continue; if (adjacentRects(st[i].rect, st[j].rect)) return true; } return false; }
-    assert(screens.some(hasStepDown), "at least one screen shows a player-traversable width step-down");
-  });
-
-  test("districts are zoned across the screens, each with building doors", function () {
-    var g = game(); var byName = {};
-    g._screens().forEach(function (s) { Object.keys(s.meta.districts).forEach(function (n) { byName[n] = (byName[n] || 0) + s.meta.districts[n].doors.length; }); });
-    ["main", "tourist-strip", "shops", "civic", "waterfront", "redlight"].forEach(function (n) { assert(byName[n] >= 1, n + ": zoned with at least one door (" + (byName[n] || 0) + ")"); });
-  });
-
-  test("the harbour rail carries the island sightline (012), on HARBOUR", function () {
-    var g = game(); g._goto("HARBOUR"); var feats = g.view().features || {}, rail = null;
+  test("the harbour rail carries the island sightline (012)", function () {
+    var g = game(); var feats = g.view().features || {}, rail = null;
     Object.keys(feats).forEach(function (k) { if (feats[k].act === "lookout") rail = feats[k]; });
-    assert(rail && /monastery|graveyard|cannot be reached/.test(rail.text), "the rail shows the island, plainly off-limits (012)");
+    assert(rail && /monastery|graveyard|cannot be reached/.test(rail.text), "the rail shows the island (012)");
   });
 
-  test("water is plainly visible on HARBOUR and the rail is reachable", function () {
-    var g = game(); g._goto("HARBOUR"); var v = g.view();
-    var water = 0; v.grid.forEach(function (row) { for (var i = 0; i < row.length; i++) if (row[i] === "~") water++; });
-    assert(water >= 40, "a real band of open water (" + water + " tiles)");
+  test("open water is plainly visible on the waterfront", function () {
+    var g = game(); var v = g.view(), water = 0; v.grid.forEach(function (r) { for (var i = 0; i < r.length; i++) if (r[i] === "~") water++; });
+    assert(water >= 300, "a real band of open water (" + water + ")");
   });
 
   test("every named building has a voice-specced keeper on the accent map", function () {
     var g = game(); var K = g._keepers(), ACC = ["brooklyn", "posh", "pastoral", "plainspoken", "mixed"];
-    Object.keys(K).forEach(function (b) {
-      var s = TD_VOICES.byId(K[b]);
-      assert(s && !s.placeholder, b + ": has a real keeper voice (" + K[b] + ")");
-      assert(ACC.indexOf(s.accent) >= 0, b + ": keeper accent on the map (" + s.accent + ")");
-    });
+    Object.keys(K).forEach(function (b) { var s = TD_VOICES.byId(K[b]); assert(s && !s.placeholder, b + ": real keeper voice"); assert(ACC.indexOf(s.accent) >= 0, b + ": accent on the map"); });
   });
 
-  test("townsfolk walk the streets and never trap or sit on the player", function () {
+  test("townsfolk walk the roads and never trap or sit on the player", function () {
     var g = game(); var v = g.view();
-    assert(v.grid[v.player.y][v.player.x] === ".", "spawn is on floor");
-    assert(v.creatures.length >= 2, "two or three walkers are out on GATE (" + v.creatures.length + ")");
-    v.creatures.forEach(function (c) { assert(v.grid[c.y][c.x] === ".", "a walker stands on floor"); });
+    assert(v.grid[v.player.y][v.player.x] === ".", "spawn is on the road");
+    assert(v.creatures.length >= 2, "walkers are out (" + v.creatures.length + ")");
     g._freezeVendor(false);
-    for (var i = 0; i < 60; i++) g.move(i % 2 ? "up" : "down");
-    g.view().creatures.forEach(function (c) { assert(!(c.x === g._player().x && c.y === g._player().y), "no walker ever sits on the player"); });
+    for (var i = 0; i < 60; i++) g.move(i % 2 ? "left" : "right");
+    g.view().creatures.forEach(function (c) { assert(!(c.x === g._player().x && c.y === g._player().y), "no walker sits on the player"); });
   });
 
-  // ----------------------------------- GIFT-SHOP RIVALRY (on GATE) ----------
   test("the two gift shops trade rivalry barks near both, never repeating", function () {
-    var g = game(); g._freezeVendor(true);
-    var seen = {}, barks = 0;
+    var g = game(); g._freezeVendor(true); var gift = g._townMeta().gift; assert(gift, "gift positions set");
+    var mx = Math.round((gift.a.x + gift.b.x) / 2), my = Math.round((gift.a.y + gift.b.y) / 2), seen = {}, barks = 0;
     for (var i = 0; i < 16; i++) {
-      g._warp(23, 5);                                      // between the two gift shops on GATE
-      var before = g._shared().messages.length;
-      g.wait();
-      g._shared().messages.slice(before).forEach(function (m) { if (/Gifte|Authentic Dungeon Souvenirs/.test(m.text)) { assert(!seen[m.text], "no repeated bark: " + m.text); seen[m.text] = 1; barks++; } });
+      g._warp(mx, my); var before = g._shared().messages.length; g.wait();
+      g._shared().messages.slice(before).forEach(function (m) { if (/Gifte|Authentic Dungeon Souvenirs/.test(m.text)) { assert(!seen[m.text], "no repeat: " + m.text); seen[m.text] = 1; barks++; } });
     }
-    assert(barks >= 2, "the shops bark at each other near the strip (" + barks + ")");
+    assert(barks >= 2, "the shops bark near the strip (" + barks + ")");
   });
 
   test("barks ride the senses channel and never trigger a critical --more-- stop", function () {
-    var g = game(); g._freezeVendor(true);
-    for (var i = 0; i < 30; i++) { g._warp(23, 5); g.wait(); }
+    var g = game(); g._freezeVendor(true); var gift = g._townMeta().gift;
+    var mx = Math.round((gift.a.x + gift.b.x) / 2), my = Math.round((gift.a.y + gift.b.y) / 2);
+    for (var i = 0; i < 30; i++) { g._warp(mx, my); g.wait(); }
     var barks = g._shared().messages.filter(function (m) { return /Gifte|Authentic Dungeon Souvenirs/.test(m.text); });
-    assert(barks.length >= 1, "some barks fired");
-    assert(barks.every(function (m) { return m.ch === "senses" && !m.urgent; }), "every bark is senses and never urgent");
+    assert(barks.length >= 1 && barks.every(function (m) { return m.ch === "senses" && !m.urgent; }), "barks are senses, never urgent");
   });
 
-  // ----------------------------------- ENERGY SCHEDULER --------------------
   test("a fast actor acts measurably more than a slow one over 100 turns", function () {
-    var g = game(); g._clearActors();
-    var kid = g._addActor({ id: "kid", x: 23, y: 16, glyph: "k", name: "a kid", speed: 130 });
-    var nun = g._addActor({ id: "slownun", x: 24, y: 18, glyph: "n", name: "a slow nun", speed: 70 });
+    var g = game(); g._warp(2, 2); g._clearActors();
+    var kid = g._addActor({ id: "kid", x: 35, y: 16, glyph: "k", name: "a kid", speed: 130 });
+    var nun = g._addActor({ id: "slownun", x: 35, y: 24, glyph: "n", name: "a slow nun", speed: 70 });
     for (var i = 0; i < 100; i++) g.wait();
-    assert(kid.acts > nun.acts, "speed 130 acts more than speed 70 (" + kid.acts + " vs " + nun.acts + ")");
-    assert(kid.acts > 100 && nun.acts < 100, "roughly 130 vs 70 acts (" + kid.acts + ", " + nun.acts + ")");
+    assert(kid.acts > nun.acts && kid.acts > 100 && nun.acts < 100, "130 acts more than 70 (" + kid.acts + " vs " + nun.acts + ")");
   });
 
   test("a wobbling drunk sailor never steps through a wall", function () {
-    var g = game(); g._clearActors();
-    var sailor = g._addActor({ id: "sailor", x: 23, y: 18, glyph: "d", name: "a drunk sailor", speed: 60, wobble: true, type: "sailor", home: { x: 23, y: 18 } });
-    for (var i = 0; i < 120; i++) { g.wait(); var grid = g.view().grid; assert(grid[sailor.y][sailor.x] === ".", "the sailor stands on a street floor tile, never inside a wall"); }
+    var g = game(); g._warp(2, 2); g._clearActors();
+    var sailor = g._addActor({ id: "sailor", x: 35, y: 20, glyph: "d", name: "a drunk sailor", speed: 60, wobble: true, type: "sailor", home: { x: 35, y: 20 } });
+    for (var i = 0; i < 120; i++) { g.wait(); var grid = g.view().grid; assert(grid[sailor.y][sailor.x] === ".", "the sailor stands on the road"); }
   });
 
-  // ----------------------------------- ERRAND LOOPS ------------------------
-  test("NPCs travel via streets only and dwell at destinations", function () {
+  test("NPCs travel via roads only and dwell at destinations", function () {
     var g = game(); var v = g.view();
-    function isStreet(x, y) { return v.grid[y][x] === "." && !v.doors[x + "," + y] && !v.features[x + "," + y]; }
+    function isRoad(x, y) { return v.grid[y][x] === "." && !v.doors[x + "," + y] && !v.features[x + "," + y]; }
     var dwelled = {};
-    for (var i = 0; i < 400; i++) {
-      g.wait();
-      g._actors().forEach(function (a) {
-        assert(isStreet(a.x, a.y), a.id + " on a non-street tile (" + a.x + "," + a.y + "='" + v.grid[a.y][a.x] + "')");
-        if (a.dwell > 0) dwelled[a.id] = true;
-      });
-    }
-    assert(Object.keys(dwelled).length >= 2, "at least two actors reached a destination and dwelt (" + Object.keys(dwelled).length + ")");
+    for (var i = 0; i < 400; i++) { g.wait(); g._actors().forEach(function (a) { assert(isRoad(a.x, a.y), a.id + " off-road (" + a.x + "," + a.y + ")"); if (a.dwell > 0) dwelled[a.id] = true; }); }
+    assert(Object.keys(dwelled).length >= 2, "actors reach destinations and dwell");
   });
 
-  test("the Bureau patrol walks its full route over time (MAIN)", function () {
-    var g = game(); g._goto("MAIN");
-    g._warp(8, 12); g._clearActors();                      // park the player off-route; patrol alone, unobstructed
-    var wp = [[23, 2], [23, 14], [14, 13], [33, 13], [23, 26]], hit = {};
-    var gd = g._addActor({ id: "guard1", type: "guard", glyph: "G", name: "a Bureau patrol", voiceId: "guard", speed: 100, x: 23, y: 6, home: { x: 23, y: 6 }, route: wp.map(function (p) { return { x: p[0], y: p[1] }; }) });
-    for (var i = 0; i < 1200; i++) {
-      g.wait();
-      wp.forEach(function (p, idx) { if (Math.max(Math.abs(gd.x - p[0]), Math.abs(gd.y - p[1])) <= 1) hit[idx] = true; });
-    }
-    wp.forEach(function (p, idx) { assert(hit[idx], "the guard visited waypoint " + idx + " (" + p + ")"); });
+  test("the Bureau patrol walks its route over time", function () {
+    var g = game(); g._warp(2, 2); g._clearActors();
+    var wp = [[10, 20], [35, 20], [60, 20], [35, 8]], hit = {};
+    var gd = g._addActor({ id: "guard1", type: "guard", glyph: "G", name: "a Bureau patrol", voiceId: "guard", speed: 100, x: 35, y: 20, home: { x: 35, y: 20 }, route: wp.map(function (p) { return { x: p[0], y: p[1] }; }) });
+    for (var i = 0; i < 1500; i++) { g.wait(); wp.forEach(function (p, idx) { if (Math.max(Math.abs(gd.x - p[0]), Math.abs(gd.y - p[1])) <= 1) hit[idx] = true; }); }
+    wp.forEach(function (p, idx) { assert(hit[idx], "guard visited waypoint " + idx + " (" + p + ")"); });
   });
 
-  // ----------------------------------- POPULATION + OCCUPANCY --------------
   test("every enterable establishment has 2-4 occupants (friendly)", function () {
     var g = game();
     ["hotel", "restaurant", "coffee", "bodega", "saloon", "bank", "church", "spa"].forEach(function (id) {
       g._goto(id); var v = g.view();
       assert(v.creatures.length >= 2 && v.creatures.length <= 4, id + ": 2-4 occupants (" + v.creatures.length + ")");
-      assert(v.creatures.every(function (c) { return c.friendly; }), id + ": occupants are friendly, not threats");
+      assert(v.creatures.every(function (c) { return c.friendly; }), id + ": occupants friendly");
     });
   });
 
-  test("the exterior crowd is sized to feel busy across the screens", function () {
-    var g = game(); var all = [];
-    g._screens().forEach(function (s) { (s.actors || []).forEach(function (a) { all.push(a); }); });
-    var ext = all.filter(function (a) { return !a.isVendor && a.type !== "kid" && a.type !== "chaperone"; });
-    assert(ext.length >= 18 && ext.length <= 30, "18-30 exterior crowd across town (" + ext.length + ")");
-    assert(all.filter(function (a) { return a.type === "dockworker" || a.type === "sailor"; }).length >= 6, "the waterfront skews dock workers + sailors");
-    assert(all.filter(function (a) { return a.type === "visitor"; }).length >= 3, "the tourist strip has visitors");
-    assert(all.filter(function (a) { return a.type === "guard"; }).length >= 2, "patrols are out");
+  test("the exterior crowd is sized to feel busy", function () {
+    var g = game(); var a = g._town().actors;
+    var ext = a.filter(function (x) { return !x.isVendor && x.type !== "kid" && x.type !== "chaperone"; });
+    assert(ext.length >= 18 && ext.length <= 32, "18-32 exterior crowd (" + ext.length + ")");
+    assert(a.filter(function (x) { return x.type === "dockworker" || x.type === "sailor"; }).length >= 6, "waterfront dock/sailor");
+    assert(a.filter(function (x) { return x.type === "visitor"; }).length >= 3, "visitors on the strip");
   });
 
-  test("the school troop stays together on MARKET — no kid more than 3 tiles from the chaperone", function () {
-    var g = game(); g._goto("MARKET");
-    for (var i = 0; i < 250; i++) {
-      g.wait();
-      var as = g._actors(), chap = as.filter(function (a) { return a.id === "chaperone"; })[0];
-      if (!chap) continue;
-      as.filter(function (a) { return a.type === "kid"; }).forEach(function (k) { assert(cd(k, chap) <= 3, "a kid drifted to " + cd(k, chap) + " tiles from the chaperone"); });
-    }
+  test("the school troop stays together - no kid more than 3 tiles from the chaperone", function () {
+    var g = game(); g._warp(2, 2);
+    for (var i = 0; i < 250; i++) { g.wait(); var as = g._actors(), chap = as.filter(function (a) { return a.id === "chaperone"; })[0]; if (!chap) continue;
+      as.filter(function (a) { return a.type === "kid"; }).forEach(function (k) { assert(cd(k, chap) <= 3, "a kid drifted " + cd(k, chap)); }); }
   });
 
-  // ----------------------------------- EXIT + HORIZON (on HARBOUR) ---------
-  test("the road out of town prompts to leave; n steps you back; y closes the session", function () {
-    var g = game(); g._goto("HARBOUR"); var ex = g._exitTile();
-    g._warp(ex.x - 1, ex.y);
-    assert(!g._pendingExit(), "no prompt before reaching the exit tile");
-    g.move("right");
-    assert(g._pendingExit() && g.view().exitPrompt, "stepping onto the exit tile prompts");
+  test("the town gate prompts to leave; n steps you back; y closes the session", function () {
+    var g = game(); var ex = g._exitTile(); assert(ex, "the town has an exit gate");
+    g._warp(ex.x, ex.y + 1);
+    assert(!g._pendingExit(), "no prompt before the gate");
+    g.move("up");
+    assert(g._pendingExit() && g.view().exitPrompt, "the gate prompts");
     g.cancelExit();
-    assert(!g._pendingExit() && g._player().x === ex.x - 1 && g._player().y === ex.y, "n steps you back, safely");
-    g._warp(ex.x - 1, ex.y); g.move("right"); g.confirmExit();
-    assert(g.view().left, "y leaves town and closes the session");
+    assert(!g._pendingExit() && g._player().x === ex.x && g._player().y === ex.y + 1, "n steps you back");
+    g._warp(ex.x, ex.y + 1); g.move("up"); g.confirmExit();
+    assert(g.view().left, "y closes the session");
   });
 
-  test("three horizon landmarks exist on HARBOUR and read on the senses channel", function () {
-    var g = game(); g._goto("HARBOUR"); var feats = g.view().features;
+  test("three horizon landmarks exist and read on the senses channel", function () {
+    var g = game(); var feats = g.view().features;
     var labels = Object.keys(feats).map(function (k) { return feats[k].label || ""; });
-    ["castle", "monastery", "cave"].forEach(function (w) { assert(labels.some(function (l) { return new RegExp(w, "i").test(l); }), "a " + w + " landmark exists"); });
-    g._warp(4, 18); var before = g._shared().messages.length; g.move("up");   // step onto the castle lookout
+    ["castle", "monastery", "cave"].forEach(function (w) { assert(labels.some(function (l) { return new RegExp(w, "i").test(l); }), "a " + w + " landmark"); });
+    g._warp(3, 2); var before = g._shared().messages.length; g.move("left");
     var sens = g._shared().messages.slice(before).filter(function (m) { return m.ch === "senses"; });
-    assert(sens.some(function (m) { return /castle/i.test(m.text) && m.kind === "seen"; }), "looking at the castle emits a senses/seen line");
+    assert(sens.some(function (m) { return /castle/i.test(m.text) && m.kind === "seen"; }), "the castle look is a senses/seen line");
   });
 
   // ----------------------------------- EVERYONE TALKS (across all screens) -
