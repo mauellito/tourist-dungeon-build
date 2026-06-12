@@ -92,6 +92,124 @@ var TD_MAP = (function () {
     if (inb(x1, y1)) g[y1][x1] = ".";
   }
 
+  // ===========================================================================
+  // ROOM GEOMETRY (v18 R1) — CONSTRUCTION LAW: dungeon rooms are CARVED VARIED.
+  // Per node, deterministically (seed + nodeKey), compose 1-3 rooms of varied
+  // shape/size, placed OFF-CENTRE, joined by corridors of varied length/width,
+  // with doors radiating on varied stubs and (in big rooms) interior pillars.
+  // ===========================================================================
+  function clampi(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function carveBox(g, x0, y0, x1, y1) { for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) if (inb(x, y)) g[y][x] = "."; }
+  function floorCells(g) { var c = []; for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (g[y][x] === ".") c.push([x, y]); return c; }
+  function carveCorridor(g, x0, y0, x1, y1, w, R) {
+    var horizFirst = R.chance(0.5), midx = horizFirst ? x1 : x0, midy = horizFirst ? y0 : y1;
+    function seg(ax, ay, bx, by) {
+      var x = ax, y = ay;
+      while (true) { if (inb(x, y)) { g[y][x] = "."; if (w === 2) { var px = (ay === by) ? x : x + 1, py = (ay === by) ? y + 1 : y; if (inb(px, py)) g[py][px] = "."; } } if (x === bx && y === by) break; x += (bx > x) ? 1 : (bx < x ? -1 : 0); y += (by > y) ? 1 : (by < y ? -1 : 0); }
+    }
+    seg(x0, y0, midx, midy); seg(midx, midy, x1, y1);
+  }
+  function nodeRng(seed, nodeKey) {
+    var h = (seed >>> 0) ^ 0x9e3779b9, s = "" + nodeKey;
+    for (var i = 0; i < s.length; i++) h = (Math.imul(h ^ s.charCodeAt(i), 16777619)) >>> 0;
+    return TD_RNG.make(h || 1);
+  }
+  // carve the MAIN room of a chosen shape; returns its cells + centre + shape tag
+  function carveMainRoom(g, R) {
+    var M = 2, shape = R.pick(["rect", "rect", "rect", "grand", "L", "cross", "cavern", "cavern", "cramped"]);
+    var cx, cy;
+    if (shape === "cramped") {
+      var w = R.int(1, 1), h = R.int(1, 1);
+      cx = clampi(CX + R.int(-13, 13), M + 1, W - 2 - M); cy = clampi(CY + R.int(-7, 7), M + 1, H - 2 - M);
+      carveBox(g, cx - w, cy - h, cx + w, cy + h);
+    } else if (shape === "grand") {
+      var ghw = R.int(7, 11), ghh = R.int(4, 6);
+      cx = clampi(CX + R.int(-6, 6), M + ghw, W - 1 - M - ghw); cy = clampi(CY + R.int(-3, 3), M + ghh, H - 1 - M - ghh);
+      carveBox(g, cx - ghw, cy - ghh, cx + ghw, cy + ghh);
+    } else if (shape === "rect") {
+      var hw = R.int(2, 7), hh = R.int(1, 4);
+      cx = clampi(CX + R.int(-11, 11), M + hw, W - 1 - M - hw); cy = clampi(CY + R.int(-6, 6), M + hh, H - 1 - M - hh);
+      carveBox(g, cx - hw, cy - hh, cx + hw, cy + hh);
+    } else if (shape === "L") {
+      var lhw = R.int(3, 6), lhh = R.int(2, 4);
+      cx = clampi(CX + R.int(-9, 9), M + lhw, W - 1 - M - lhw); cy = clampi(CY + R.int(-5, 5), M + lhh, H - 1 - M - lhh);
+      carveBox(g, cx - lhw, cy - lhh, cx + lhw, cy + lhh);
+      var ahw = R.int(2, 4), ahh = R.int(2, 4), sx = R.chance(0.5) ? cx - lhw : cx + lhw, sy = R.chance(0.5) ? cy - lhh : cy + lhh;
+      var ax = clampi(sx, M + ahw, W - 1 - M - ahw), ay = clampi(sy, M + ahh, H - 1 - M - ahh);
+      carveBox(g, ax - ahw, ay - ahh, ax + ahw, ay + ahh);
+    } else if (shape === "cross") {
+      var xhw = R.int(4, 8), xhh = R.int(3, 5), aw = R.int(1, 2);
+      cx = clampi(CX + R.int(-7, 7), M + xhw, W - 1 - M - xhw); cy = clampi(CY + R.int(-4, 4), M + xhh, H - 1 - M - xhh);
+      carveBox(g, cx - xhw, cy - aw, cx + xhw, cy + aw); carveBox(g, cx - aw, cy - xhh, cx + aw, cy + xhh);
+    } else {   // cavern — a drunkard's-walk blob
+      cx = clampi(CX + R.int(-10, 10), 4, W - 5); cy = clampi(CY + R.int(-5, 5), 3, H - 4);
+      var steps = R.int(40, 140), x = cx, y = cy;
+      for (var s = 0; s < steps; s++) { g[y][x] = "."; var d = R.pick([[1, 0], [-1, 0], [0, 1], [0, -1]]); x = clampi(x + d[0], 2, W - 3); y = clampi(y + d[1], 2, H - 3); }
+    }
+    return { cells: floorCells(g), cx: cx, cy: cy, tag: shape };
+  }
+  // place numDoors door tiles on varied outward stubs off the room (all reachable)
+  function placeDoors(g, mainCells, numDoors, R) {
+    var DS = [[0, -1], [0, 1], [-1, 0], [1, 0]], cands = [];
+    mainCells.forEach(function (c) { DS.forEach(function (d) { var wx = c[0] + d[0], wy = c[1] + d[1]; if (inb(wx, wy) && g[wy][wx] === "#") cands.push({ fx: c[0], fy: c[1], dx: d[0], dy: d[1] }); }); });
+    for (var i = cands.length - 1; i > 0; i--) { var j = R.int(0, i), t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
+    var doors = [], used = {}, lens = [], widths = [];
+    function tryAt(cd, maxLen) {
+      var len = R.int(0, maxLen), x = cd.fx, y = cd.fy, w = (R.chance(0.25) ? 2 : 1), path = [];
+      for (var k = 0; k <= len; k++) { var nx = x + cd.dx, ny = y + cd.dy; if (nx < 2 || ny < 2 || nx > W - 3 || ny > H - 3) break; x = nx; y = ny; path.push([x, y]); }
+      if (!path.length) return false;
+      var dpt = path[path.length - 1], dk = dpt[0] + "," + dpt[1];
+      if (used[dk]) return false;
+      path.forEach(function (pp) { g[pp[1]][pp[0]] = "."; if (w === 2) { var px = cd.dx ? pp[0] : pp[0] + 1, py = cd.dx ? pp[1] + 1 : pp[1]; if (inb(px, py)) g[py][px] = "."; } });
+      used[dk] = 1; doors.push({ x: dpt[0], y: dpt[1] }); lens.push(path.length); widths.push(w); return true;
+    }
+    for (var ci = 0; ci < cands.length && doors.length < numDoors; ci++) tryAt(cands[ci], 5);
+    // fallback: guarantee numDoors — short stubs on any remaining edge wall
+    for (var ci2 = 0; ci2 < cands.length && doors.length < numDoors; ci2++) tryAt(cands[ci2], 0);
+    return { doors: doors, lens: lens, widths: widths };
+  }
+  function pokePillars(g, cells, R) {
+    var n = R.int(1, 4);
+    for (var i = 0; i < n; i++) {
+      var c = cells[R.int(0, cells.length - 1)], x = c[0], y = c[1];
+      if (inb(x - 1, y) && inb(x + 1, y) && inb(x, y - 1) && inb(x, y + 1) && g[y - 1][x] === "." && g[y + 1][x] === "." && g[y][x - 1] === "." && g[y][x + 1] === ".") g[y][x] = "#";
+    }
+  }
+  // compose a node's full walkable screen (deterministic per seed+node)
+  function composeNode(seed, nodeKey, numDoors) {
+    var R = nodeRng(seed, nodeKey), g = newGrid();
+    var main = carveMainRoom(g, R);
+    var spawn = { x: main.cx, y: main.cy };
+    if (g[spawn.y][spawn.x] !== ".") { var fc = main.cells[0]; spawn = { x: fc[0], y: fc[1] }; }
+    var corrLens = [], corrWidths = [], rooms = 1;
+    var nExtra = R.int(0, 2);
+    for (var e = 0; e < nExtra; e++) {
+      var w = R.int(1, 3), h = R.int(1, 2);
+      var ex = clampi(CX + R.int(-15, 15), 3 + w, W - 4 - w), ey = clampi(CY + R.int(-8, 8), 2 + h, H - 3 - h);
+      carveBox(g, ex - w, ey - h, ex + w, ey + h);
+      var cw = R.chance(0.25) ? 2 : 1; carveCorridor(g, ex, ey, main.cx, main.cy, cw, R);
+      corrLens.push(Math.abs(ex - main.cx) + Math.abs(ey - main.cy)); corrWidths.push(cw); rooms++;
+    }
+    if (main.cells.length > 60) pokePillars(g, main.cells, R);
+    var dd = placeDoors(g, floorCells(g), numDoors, R);
+    dd.lens.forEach(function (l) { corrLens.push(l); }); dd.widths.forEach(function (w) { corrWidths.push(w); });
+    // reachability guarantee: spawn must reach every door
+    var seen = {}, q = [[spawn.x, spawn.y]]; seen[spawn.x + "," + spawn.y] = 1;
+    while (q.length) { var c = q.shift(); DIRS4(c[0], c[1]).forEach(function (n) { if (g[n[1]] && g[n[1]][n[0]] === "." && !seen[n[0] + "," + n[1]]) { seen[n[0] + "," + n[1]] = 1; q.push([n[0], n[1]]); } }); }
+    dd.doors.forEach(function (d) { if (!seen[d.x + "," + d.y]) carveCorridor(g, d.x, d.y, spawn.x, spawn.y, 1, R); });
+    // measured main-room footprint signature
+    var mc = main.cells, minx = 99, maxx = -1, miny = 99, maxy = -1, sx = 0, sy = 0;
+    mc.forEach(function (c) { if (c[0] < minx) minx = c[0]; if (c[0] > maxx) maxx = c[0]; if (c[1] < miny) miny = c[1]; if (c[1] > maxy) maxy = c[1]; sx += c[0]; sy += c[1]; });
+    var bw = maxx - minx + 1, bh = maxy - miny + 1, area = mc.length;
+    var all = floorCells(g), ax = 0, ay = 0; all.forEach(function (c) { ax += c[0]; ay += c[1]; });
+    return {
+      grid: g, spawn: spawn, doorPts: dd.doors, tag: main.tag, rooms: rooms,
+      mainArea: area, mainFill: area / (bw * bh), mainAspect: bw / bh,
+      comX: ax / all.length, comY: ay / all.length, corrLens: corrLens, corrWidths: corrWidths
+    };
+  }
+  function DIRS4(x, y) { return [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]; }
+
   function create(world, opts) {
     opts = opts || {};
     var livingOn = opts.hazards !== false && opts.creatures !== false;
@@ -173,44 +291,44 @@ var TD_MAP = (function () {
       var meta = world.nodes[ctrl.node] || {};
       var vd = (typeof TD_VAULTS !== "undefined" && meta.vault) ? TD_VAULTS.byId(meta.vault) : null;
       if (vd) { buildVaultView(vd); return; }
-      var g = newGrid();
-      carveRect(g, CX, CY, 4, 3);
-      var doors = {};
       var v = interp.view();
       var cl = curLevel();
+      var comp = composeNode(seed, ctrl.node, v.options.length);
+      var g = comp.grid, doors = {};
       v.options.forEach(function (o, i) {
-        if (i >= SLOTS.length) return;
-        var s = SLOTS[i];
-        g[s.mouth[1]][s.mouth[0]] = ".";
-        carveRect(g, s.room[0], s.room[1], 2, 1);
-        carvePath(g, s.mouth[0], s.mouth[1], s.door[0], s.door[1]);
+        var dp = comp.doorPts[i]; if (!dp) return;
         var toLevel = (world.nodes[o.to] || {}).level;
         var type = (typeof toLevel === "number" && toLevel < cl) ? "stair_up"
           : (typeof toLevel === "number" && toLevel > cl) ? "stair_down"
             : (o.one_way ? "oneway" : "door");
-        doors[key(s.door[0], s.door[1])] = {
+        doors[key(dp.x, dp.y)] = {
           edgeId: o.id, type: type, takeable: o.takeable, reason: o.reason,
           one_way: o.one_way, to: o.to, label: o.label, tells: o.tells || []
         };
       });
       ctrl.grid = g; ctrl.doors = doors; ctrl.features = {};
       ctrl.items = {}; ctrl.plain = {}; ctrl.secrets = {};
-      ctrl.player = { x: CX, y: CY };
-      ctrl.explored = new Set(); reveal(CX, CY);
+      ctrl.player = { x: comp.spawn.x, y: comp.spawn.y };
+      ctrl.composition = comp;
+      ctrl.explored = new Set(); reveal(comp.spawn.x, comp.spawn.y);
       ctrl.pendingDoor = null;
-      if (inDungeon()) {
-        // floor loot near the arrival point (deterministic, reachable). Tiles are
-        // chosen off the x=20 column and y=11 row that the core tests walk.
-        tryItem(CX - 2, CY - 1, "ration");
-        tryItem(CX + 2, CY + 1, "bandage");
-        tryItem(CX - 3, CY + 2, "souvenir");   // off the plaque tile the town layer marks (CX-3,CY-2)
-        // a plain inner door (a chokepoint you can shut behind you) and a hidden
-        // pocket in the wall above it, found only by searching.
-        addPlain(18, 9);
-        addSecret(18, 7, "ration", "draft");
-      }
+      if (inDungeon()) placeDefaults(comp);
       spawnCreatures();
-      if (decorate) decorate(ctrl, { CX: CX, CY: CY, key: key, isFloor: isFloor });
+      if (decorate) decorate(ctrl, { CX: comp.spawn.x, CY: comp.spawn.y, key: key, isFloor: isFloor });
+    }
+    // adaptive contents for a varied screen: loot on reachable floor + one
+    // telegraphed secret in a wall (secret density rises in v18 R4).
+    function placeDefaults(comp) {
+      var g = comp.grid, sp = comp.spawn, R = nodeRng(seed, ctrl.node + ":fill");
+      var floors = floorCells(g).filter(function (c) { return !(c[0] === sp.x && c[1] === sp.y) && !ctrl.doors[key(c[0], c[1])]; });
+      var kinds = ["ration", "bandage", "souvenir"];
+      for (var i = 0; i < 3 && floors.length; i++) { var f = floors[R.int(0, floors.length - 1)]; tryItem(f[0], f[1], kinds[i]); }
+      for (var fj = 0; fj < floors.length; fj++) {
+        var x = floors[fj][0], y = floors[fj][1], wn = null;
+        var ds = DIRS4(x, y);
+        for (var k = 0; k < ds.length; k++) if (inb(ds[k][0], ds[k][1]) && g[ds[k][1]][ds[k][0]] === "#") { wn = ds[k]; break; }
+        if (wn) { addSecret(wn[0], wn[1], "ration", R.pick(["draft", "rhyme", "hollow"])); break; }
+      }
     }
 
     // a hand-authored vault room (the splice payoff): stamp its layout centered,
@@ -278,9 +396,9 @@ var TD_MAP = (function () {
       }
     }
     function pickSpot() {
-      var cand = [];
-      for (var y = CY - 3; y <= CY + 3; y++) for (var x = CX - 4; x <= CX + 4; x++)
-        if (passable(x, y) && !creatureAt(x, y) && !itemAt(x, y) && (Math.abs(x - ctrl.player.x) + Math.abs(y - ctrl.player.y)) >= 4) cand.push({ x: x, y: y });
+      var cand = [], px = ctrl.player.x, py = ctrl.player.y;
+      for (var y = py - 5; y <= py + 5; y++) for (var x = px - 6; x <= px + 6; x++)
+        if (passable(x, y) && !creatureAt(x, y) && !itemAt(x, y) && (Math.abs(x - px) + Math.abs(y - py)) >= 4) cand.push({ x: x, y: y });
       if (!cand.length) return null;
       return cand[Math.floor(rng.next() * cand.length)];
     }
@@ -652,7 +770,9 @@ var TD_MAP = (function () {
       _setItem: function (x, y, kind) { ctrl.items[key(x, y)] = makeItem(kind); },
       _setWater: function (x, y) { ctrl.water[key(x, y)] = 1; ctrl.grid[y][x] = "~"; },
       _setChasm: function (x, y) { ctrl.chasm[key(x, y)] = 1; ctrl.grid[y][x] = "X"; },
-      _passable: function (x, y) { return passable(x, y); }
+      _passable: function (x, y) { return passable(x, y); },
+      _composition: function () { return ctrl.composition || null; },
+      _compose: function (nodeKey, numDoors) { return composeNode(seed, nodeKey, numDoors); }
     };
     return api;
   }

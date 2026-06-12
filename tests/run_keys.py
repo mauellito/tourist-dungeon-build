@@ -76,7 +76,9 @@ F.onload = function(){
   function clearMore(){ var n=0; while(moreShown()&&n++<6){ pk('Escape'); } }
   function floorNeighbor(){ var v=view(),p=v.player,ds=[['right',1,0],['left',-1,0],['up',0,-1],['down',0,1]];
     for(var i=0;i<ds.length;i++){ var nx=p.x+ds[i][1],ny=p.y+ds[i][2],k=nx+','+ny;
-      if(v.grid[ny]&&v.grid[ny][nx]==='.'&&!(v.doors&&v.doors[k])&&!(v.plain&&v.plain[k])) return {dir:ds[i][0],x:nx,y:ny}; } return null; }
+      if(v.grid[ny]&&v.grid[ny][nx]==='.'&&!(v.doors&&v.doors[k])&&!(v.plain&&v.plain[k])&&!(v.items&&v.items[k])) return {dir:ds[i][0],x:nx,y:ny}; } return null; }
+  function wallNeighbor(){ var v=view(),p=v.player,ds=[[1,0],[-1,0],[0,-1],[0,1],[1,1],[-1,-1],[1,-1],[-1,1]];
+    for(var i=0;i<ds.length;i++){ var nx=p.x+ds[i][0],ny=p.y+ds[i][1]; if(v.grid[ny]&&v.grid[ny][nx]==='#') return {x:nx,y:ny}; } return null; }
   function findDoor(to){ var d=view().doors||{}; for(var k in d){ if(d[k].to===to){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   function findCounter(){ var f=view().features||{}; for(var k in f){ if(f[k].act && f[k].act!=='lookout'){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   try {
@@ -161,10 +163,11 @@ F.onload = function(){
     ok('pressing l again leaves look mode', !view().look.active);
 
     // ============================ GET (floor item) =======================
+    var DUN=win.__TD_SIM()._dungeon();
     var invBefore=(view().inventory||[]).length;
-    var got=goTo(18,10); pk('g'); var vg=view();
+    var rn=floorNeighbor(); DUN._setItem(rn.x,rn.y,'ration'); press(rn.dir); pk('g'); var vg=view();
     ok('walking onto the ration and pressing g picks it up',
-       got && (vg.inventory||[]).length===invBefore+1 && vg.inventory.some(function(it){return it.kind==='ration';}));
+       (vg.inventory||[]).length===invBefore+1 && vg.inventory.some(function(it){return it.kind==='ration';}));
 
     // ============================ INVENTORY: use/consume =================
     pk('i'); ok('i opens the pack', view().invOpen);
@@ -175,14 +178,15 @@ F.onload = function(){
     pk('i'); ok('i closes the pack again', !view().invOpen);
 
     // ============================ DOORS: open / close (plain) ============
+    var pn=floorNeighbor(); var pkk=pn.x+','+pn.y; DUN._addPlain(pn.x,pn.y);
     pk('o'); var vo=view();
-    ok('o opens the adjacent inner door', vo.plain && vo.plain['18,9'] && vo.plain['18,9'].open);
+    ok('o opens the adjacent inner door', vo.plain && vo.plain[pkk] && vo.plain[pkk].open);
     pk('c'); var vc=view();
-    ok('c closes the adjacent inner door', vc.plain && vc.plain['18,9'] && !vc.plain['18,9'].open);
+    ok('c closes the adjacent inner door', vc.plain && vc.plain[pkk] && !vc.plain[pkk].open);
 
     // ============================ SEARCH (secret) ========================
-    var sat=goTo(17,8); if(!sat) sat=goTo(18,8); pk('s'); var vs=view();
-    ok('searching the wall reveals the hidden pocket (an item appears)', !!(vs.items && vs.items['18,7']));
+    var wn=wallNeighbor(); DUN._addSecret(wn.x,wn.y,'ration','draft'); pk('s'); var vs=view();
+    ok('searching the wall reveals the hidden pocket (an item appears)', !!(vs.items && vs.items[wn.x+','+wn.y]));
 
     // ============================ COMBAT wiring (HP shown) ===============
     var foes=(view().creatures||[]);
@@ -211,7 +215,8 @@ F.onload = function(){
        ((doc.getElementById('cue')||{}).textContent||'').trim().length>0);
 
     // contextual cue names an item underfoot when you stand on one
-    var gt=goTo(22,12);                                    // the bandage tile
+    var bn=floorNeighbor(); DUN._setItem(bn.x,bn.y,'bandage'); press(bn.dir);
+    var gt=view().player.x===bn.x&&view().player.y===bn.y;
     ok('standing on an item, the cue prompts to pick it up',
        gt && /pick up/.test((doc.getElementById('cue').textContent||'')));
 
