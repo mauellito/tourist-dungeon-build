@@ -225,13 +225,39 @@ var TD_CHECK = (function () {
 
   function oneTrueRun(w) { return solve(w) !== null; }
 
+  // OFFICE RULE (canon: office-rule-v1). On a world that HAS offices (a lattice
+  // build): exactly ONE office per dungeon level, each office REACHABLE across the
+  // lattice, and on a BIFURCATED level (nodes in both the spine and a discontinued
+  // region) the office sits in the DISCONTINUED region. Vacuously true on a
+  // world with no offices (the current generator), so it never disturbs those.
+  function officeRule(w) {
+    var nodes = w.nodes, ids = Object.keys(nodes);
+    if (!ids.some(function (n) { return nodes[n].office; })) return true;
+    var reach = reachableNodes(w, true), byLevel = {};
+    ids.forEach(function (n) { var L = nodes[n].level; if (L == null) return; (byLevel[L] = byLevel[L] || []).push(n); });
+    var levels = Object.keys(byLevel);
+    for (var i = 0; i < levels.length; i++) {
+      if (+levels[i] < 1) continue;                         // level 0 = town/surface; no office required
+      var group = byLevel[levels[i]];
+      var offices = group.filter(function (n) { return nodes[n].office; });
+      if (offices.length !== 1) return false;                // exactly one office per dungeon level
+      var off = offices[0];
+      if (!reach.has(off)) return false;                     // the office is reachable across the lattice
+      var hasSpine = group.some(function (n) { return nodes[n].region === "spine"; });
+      var hasDisc = group.some(function (n) { return nodes[n].region === "discontinued"; });
+      if (hasSpine && hasDisc && nodes[off].region !== "discontinued") return false;   // bifurcated -> office in the discontinued region
+    }
+    return true;
+  }
+
   var OBLIGATIONS = {
     reachability: reachability,
     no_unsignaled_unwinnable: noUnsignaledUnwinnable,
     no_orphaned_signals: noOrphanedSignals,
     temporal_windows: temporalWindows,
     sequence: sequence,
-    one_true_run: oneTrueRun
+    one_true_run: oneTrueRun,
+    office_rule: officeRule
   };
 
   function verify(w) {
