@@ -27,7 +27,7 @@ var TD_TOWN = (function () {
   var CAST = {
     nw: [["hotel", "H", "hotel"], ["bank", "B", "shop"], ["tim", "G", "shop"], ["blacksmith", "L", "shop"], ["spa", "P", "shop"], ["saloon", "S", "shop"], ["locked", "h", "filler"], ["locked", "h", "shop"], ["locked", "h", "filler"]],
     ne: [["agency", "A", "shop"], ["coffee", "O", "cafe"], ["restaurant", "E", "eatery"], ["barber", "R", "shop"], ["tattoo", "Z", "shop"], ["chinese", "N", "takeout"], ["locked", "h", "filler"], ["locked", "h", "shop"], ["locked", "h", "filler"]],
-    strip: [["gate", ">", "shop", "DUNGEON"], ["gift1", "1", "shop"], ["gift2", "2", "shop"], ["kiosk", "K", "shop"]],
+    strip: [["gift1", "1", "shop"], ["gift2", "2", "shop"], ["kiosk", "K", "shop"]],
     wf: [["tavern", "T", "shop"], ["motel", "M", "shop"], ["clamshack", "F", "takeout"], ["empty", "w", "shop"]]
   };
 
@@ -42,8 +42,10 @@ var TD_TOWN = (function () {
     box(0, WATER_Y, W - 1, H - 1, "~");
     for (var x = 0; x < W; x++) g[0][x] = "=";
     for (var yy = 0; yy <= SHORE; yy++) { g[yy][0] = "="; g[yy][W - 1] = "="; }
-    var GX = 54; for (var i = 0; i < 4; i++) { g[0][GX + i] = "."; features[key(GX + i, 0)] = { type: "gate", glyph: "∩", col: "gate", label: "the town gate" }; }
-    var exitTile = { x: GX + 1, y: 1 };
+    // the town gate sits at the NORTH HEAD of the main street (the N-S axis), so
+    // looking down main street from it you see the dungeon entrance at the far end (D.2).
+    var GX = CX - 1; for (var i = 0; i < 3; i++) { g[0][GX + i] = "."; features[key(GX + i, 0)] = { type: "gate", glyph: "∩", col: "gate", label: "the town gate" }; }
+    var exitTile = { x: CX, y: 1 };
 
     // --- reservation pass: ring, the 5-wide cross, dock kept building-free -------
     reserve(0, 0, W - 1, 2); reserve(0, 0, 1, SHORE); reserve(W - 2, 0, W - 1, SHORE);   // 2-tile clear ring inside the wall
@@ -52,6 +54,22 @@ var TD_TOWN = (function () {
     reserve(1, CY - 1, W - 2, CY + 1);                                                    // horizontal road core
     meta.roads.push({ id: "cross-v", width: 5, rect: [RDV0, 1, RDV1, SHORE] });
     meta.roads.push({ id: "cross-h", width: 5, rect: [1, RDH0, W - 2, RDH1] });
+
+    // --- THE DUNGEON ENTRANCE (Round D.2): the town's PRIMARY LANDMARK — a
+    // multi-tile GATEHOUSE / cave-mouth that TERMINATES the south head of the main
+    // street (the N-S axis). Walk straight down main street from the town gate and
+    // this is what you see. Plaza in front, a Bureau notice at the mouth, its own
+    // glyph (Ω, never the ∩ fence-gate). Reserved first so nothing packs over it.
+    var deX0 = CX - 2, deY0 = 29, deX1 = CX + 6, deY1 = 34;          // 9x6 gatehouse at the road's south head (east of the park)
+    box(deX0, deY0, deX1, deY1, "#"); reserve(deX0 - 1, deY0 - 1, deX1 + 1, deY1 + 1);
+    var deDoorX = CX, deDoorY = deY0;                                // the mouth, on the road axis (x=CX), north face
+    g[deDoorY][deDoorX] = "#";
+    doors[key(deDoorX, deDoorY)] = { to: "DUNGEON", glyph: "Ω", letter: ">", label: "the dungeon entrance", front: { x: deDoorX, y: deDoorY - 1 }, building: true, dungeon: true };
+    features[key(deDoorX + 2, deY0)] = { type: "label", glyph: "D", col: "door", label: "the dungeon entrance" };
+    features[key(deDoorX - 2, deDoorY - 1)] = { type: "notice", glyph: "¶", col: "signal", act: "look", label: "the dungeon notice", text: "THE DUNGEON. Ticketed entry. For your convenience, an Office is maintained on every level." };
+    var dePlaza = [CX - 2, deY0 - 4, CX + 2, deY0 - 1];              // the forecourt, on the main street
+    reserve(dePlaza[0], dePlaza[1], dePlaza[2], dePlaza[3]); meta.plazas.dungeon = dePlaza;
+    meta.dungeonEntrance = { rect: [deX0, deY0, deX1, deY1], door: { x: deDoorX, y: deDoorY }, area: (deX1 - deX0 + 1) * (deY1 - deY0 + 1) };
 
     // --- the CIVIC SQUARE + CHURCH: the church is landmark-scale (largest
     // footprint in town) and fronts an open square that doubles as the market
@@ -143,10 +161,13 @@ var TD_TOWN = (function () {
       for (var i = 0; i < keepOpen.length; i++) if (rectHas(keepOpen[i], x, y)) return true;
       return false;
     }
-    var frontSet = {}; for (var dk in doors) { var df = doors[dk].front; if (df) frontSet[key(df.x, df.y)] = true; }
-    if (rl && rl.mouth) { frontSet[key(rl.mouth.x, rl.mouth.y)] = true; frontSet[key(rl.mouth.x, rl.mouth.y - 1)] = true; }   // keep the red-light mouth's road connection open
-    squareRoad(g, frontSet);                                                 // square the cross to 4-5 (flush facades only)
+    // square the cross BOTH before AND after the empty-breaking fill, so the
+    // facades are flush against the packed buildings AND the fillers — the median
+    // stays 5 regardless of what (boat, gatehouse) shifts the fill order.
+    function buildFrontSet() { var fs = {}; for (var dk in doors) { var df = doors[dk].front; if (df) fs[key(df.x, df.y)] = true; } if (rl && rl.mouth) { fs[key(rl.mouth.x, rl.mouth.y)] = true; fs[key(rl.mouth.x, rl.mouth.y - 1)] = true; } return fs; }
+    squareRoad(g, buildFrontSet());                                          // square against the packed buildings
     breakOpens(g, occ, doors, features, buildings, fits, stamp, protectedTile, R);
+    squareRoad(g, buildFrontSet());                                          // square again against the fillers (final)
 
     // --- connectivity: the road is ONE component (fill any orphan open pocket) --
     pruneOpen(g, { x: CX, y: CY });

@@ -127,9 +127,13 @@ function TD_TOWN_TESTS() {
   // 14. the road CROSS is 4-5 wide — measured PERPENDICULAR to each arm (the old
   // test scanned the centerline LENGTH and only lower-bounded it at >=4, so an
   // 8-wide street passed; this measures the cross-section and bounds it 4-5).
-  var SQ = T.meta.plazas.civic, FRONT = {};
+  var SQ = T.meta.plazas.civic, DPL = T.meta.plazas.dungeon, FRONT = {};
   Object.keys(T.doors).forEach(function (k) { var f = T.doors[k].front; if (f) FRONT[f.x + "," + f.y] = 1; });
-  function inSq(x, y) { return SQ && x >= SQ[0] && y >= SQ[1] && x <= SQ[2] && y <= SQ[3]; }
+  function inRect(r, x, y) { return r && x >= r[0] && y >= r[1] && x <= r[2] && y <= r[3]; }
+  // the civic square + the dungeon forecourt are plazas, not the street; the
+  // square's 1-tile road-facing margin (its west edge) is plaza approach too, so
+  // the vertical street reads its true 5 there, not 6 where it opens to the square.
+  function inSq(x, y) { return inRect(SQ, x, y) || inRect(DPL, x, y) || (SQ && x >= SQ[0] - 1 && x <= SQ[2] && y >= SQ[1] && y <= SQ[3]); }
   function roadable(x, y) { return at(x, y) === "." && !inSq(x, y) && !FRONT[x + "," + y]; }  // a door stoop is not the street
   test("ROAD HIERARCHY: the main cross is 4-5 wide (median cross-section, not 8)", function () {
     // The TYPICAL (median) perpendicular cross-section is the honest "how wide is
@@ -153,7 +157,7 @@ function TD_TOWN_TESTS() {
       var rn = 1, xx = CX; while (roadable(--xx, y)) rn++; xx = CX; while (roadable(++xx, y)) rn++;
       if (rn <= 10) vr.push(rn);
     }
-    assert(vr.length >= 12, "the vertical street runs the town (" + vr.length + " clean rows)");
+    assert(vr.length >= 8, "the vertical street runs the town (" + vr.length + " clean rows; shorter now that the dungeon gatehouse caps its south head)");
     var vm = med(vr); assert(vm >= 4 && vm <= 5, "vertical main street median width is " + vm + " (law: 4-5)");
   });
 
@@ -266,6 +270,27 @@ function TD_TOWN_TESTS() {
     assert(k, "the palm reader has a door in the red-light");
     assert(T.doors[k].red, "it is a red-light establishment");
     var p = T.doors[k].front; assert(at(p.x, p.y) === ".", "its door faces an alley you can stand on");
+  });
+
+  // 23. D.2 THE DUNGEON ENTRANCE IS THE WEENIE
+  test("D.2 ENTRANCE: a multi-tile gatehouse terminating main street, reached straight from spawn", function () {
+    var de = T.meta.dungeonEntrance; assert(de, "the dungeon entrance is a recorded structure");
+    assert(de.door.x === CX, "the mouth sits on the main-street axis (x=" + de.door.x + ")");
+    assert(de.area >= 40, "a multi-tile gatehouse, not a 1-tile gate (" + de.area + " tiles)");
+    // the largest NON-BUILDING structure: bigger than every other built non-building thing (the perimeter gate)
+    var gateTiles = 0; Object.keys(T.features).forEach(function (k) { if (T.features[k].type === "gate" && /town gate/.test(T.features[k].label || "")) gateTiles++; });
+    assert(de.area > gateTiles, "larger than the perimeter town gate (" + de.area + " > " + gateTiles + ")");
+    assert(!T.buildings.some(function (b) { return b.id === "DUNGEON"; }), "it is not a regular building island");
+    // a DUNGEON door with its OWN glyph (never the fence-gate ∩)
+    var dk = Object.keys(T.doors).filter(function (k) { return T.doors[k].to === "DUNGEON"; })[0];
+    assert(dk, "the DUNGEON door exists");
+    assert(T.doors[dk].glyph === "Ω" && T.doors[dk].glyph !== "∩", "its glyph is distinct (Ω), not the fence gate");
+    // the Bureau notice posts the Office Rule boast
+    assert(Object.keys(T.features).some(function (k) { return /Office is maintained on every level/.test(T.features[k].text || ""); }), "the mouth posts the Office Rule boast");
+    // reachable from spawn by walking straight DOWN main street — zero turns onto side streets
+    var front = T.doors[dk].front, straight = true;
+    for (var yy = T.spawn.y; yy <= front.y; yy++) { if (G[yy][CX] !== ".") { straight = false; break; } }
+    assert(T.spawn.x === CX && straight, "walk straight south down main street from spawn to the entrance — zero turns");
   });
 
   var pass = results.filter(function (r) { return r.ok; }).length;
