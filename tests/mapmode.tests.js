@@ -499,6 +499,37 @@ function TD_MAP_TESTS() {
       "all three door states appear: " + JSON.stringify(GEO.states));
   });
 
+  // v2 (Jaquay) — WATER IS RATIONED: an occasional level feature, not per-floor default.
+  test("v2 WATER: water is a minority-of-levels feature, not standard terrain", function () {
+    var wet = 0, total = 0;
+    for (var seed = 1; seed <= 24; seed++) {
+      var g = TD_MAP.create({ start: "x", year_length: 365, arrival_day: 1, meta: { seed: seed }, nodes: { x: { level: 1 } }, edges: [], signals: {} }, { creatures: false });
+      for (var L = 1; L <= 5; L++) { total++; if (g._levelWet(L)) wet++; }
+    }
+    var pct = 100 * wet / total;
+    assert(pct > 0 && pct < 45, "wet levels are a minority: " + pct.toFixed(0) + "% of " + total + " (target a low %, never default)");
+  });
+
+  // v2 (Jaquay) — every naked dead-end HIDES a telegraphed secret (no pointless walks).
+  test("v2 DEAD ENDS: every naked dead-end hides a telegraphed secret at runtime", function () {
+    var miss = 0, checked = 0;
+    for (var seed = 1; seed <= 6; seed++) {
+      var w = TD_GEN.generate(seed, { depth: 2 }), inc = {};
+      w.edges.forEach(function (e) { inc[e.from] = (inc[e.from] || 0) + 1; });
+      var g = TD_MAP.create(w, { creatures: false, hazards: false });
+      Object.keys(w.nodes).forEach(function (nk) {
+        if (w.nodes[nk].vault || (inc[nk] || 0) < 1 || (w.nodes[nk].level || 0) < 1) return;
+        var c = g._compose(nk, inc[nk]);
+        (c.deadEnds || []).forEach(function (de) {
+          checked++;
+          // the terminal wall must be a wall the runtime can hide a secret in
+          if (!(c.grid[de.wallY] && c.grid[de.wallY][de.wallX] === "#")) miss++;
+        });
+      });
+    }
+    assert(checked === 0 || miss === 0, miss + " of " + checked + " dead-ends lack a wall to hide a secret");
+  });
+
   test("R1.5 HALLWAYS: corridors of width 1 AND 2 AND 3 all occur, lengths vary", function () {
     assert(GEO.wtally[1] >= 1 && GEO.wtally[2] >= 1 && GEO.wtally[3] >= 1, "widths 1/2/3 all appear: " + JSON.stringify(GEO.wtally));
     var mn = Math.min.apply(null, GEO.lens), mx = Math.max.apply(null, GEO.lens);

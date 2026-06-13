@@ -213,8 +213,19 @@ var TD_MAP = (function () {
     }
 
     var all = floorCells(g), ax2 = 0, ay2 = 0; all.forEach(function (c) { ax2 += c[0]; ay2 += c[1]; });
+    // v2 (Jaquay) — DEAD ENDS must HIDE something. Every floor cell with exactly one
+    // floor neighbour that is NOT an edge-door is a naked dead-end; record it with the
+    // wall it terminates against, so the runtime places a telegraphed secret there (a
+    // dead end that hides a secret is legitimate; a naked one is not).
+    var edgeSet = {}; edgeDoors.forEach(function (d) { edgeSet[ck(d.x, d.y)] = 1; });
+    var deadEnds = [];
+    all.forEach(function (c) {
+      var x = c[0], y = c[1]; if (edgeSet[ck(x, y)]) return;
+      var fn = DIR4.filter(function (d) { return g[y + d[1]] && g[y + d[1]][x + d[0]] === "."; });
+      if (fn.length === 1) { var d = fn[0], wx = x - d[0], wy = y - d[1]; if (g[wy] && g[wy][wx] === "#") deadEnds.push({ x: x, y: y, wallX: wx, wallY: wy }); }
+    });
     return {
-      grid: g, spawn: spawn, doorPts: edgeDoors, roomDoors: roomDoors, tag: "corridor", rooms: rooms.length,
+      grid: g, spawn: spawn, doorPts: edgeDoors, roomDoors: roomDoors, deadEnds: deadEnds, tag: "corridor", rooms: rooms.length,
       roomList: rooms.map(function (rm) { return { tag: rm.tag, aspect: rm.aspect, area: rm.area, x0: rm.x0, y0: rm.y0, x1: rm.x1, y1: rm.y1, door: rm.door }; }),
       corridorCells: Object.keys(corr).length, corrLens: corrLens, corrWidths: corrWidths,
       comX: all.length ? ax2 / all.length : spawn.x, comY: all.length ? ay2 / all.length : spawn.y,
@@ -253,6 +264,10 @@ var TD_MAP = (function () {
 
     function curLevel() { return (world.nodes[ctrl.node] || {}).level || 0; }
     function inDungeon() { return curLevel() >= 1; }
+    // v2 (Jaquay) — WATER IS RATIONED: an OCCASIONAL level feature, not standard terrain
+    // on every floor. A minority of levels are "wet" (deterministic per seed+level), and
+    // only those pool water. Tune the % at the red pen.
+    function levelIsWet(L) { if (L == null) L = curLevel(); if (L < 1) return false; var h = (Math.imul((seed >>> 0) ^ 0x9e3779b9, 2654435761) ^ Math.imul(L, 40503)) >>> 0; return (h % 100) < 28; }
 
     // v18 R2 — ROUTES THAT LOOP. The cyclic generator already weaves loops,
     // returns, and express shortcuts into the graph; here we make them READ in
@@ -387,6 +402,12 @@ var TD_MAP = (function () {
         addSecret(wn[0], wn[1], R.pick(kinds), TELLV[(off + placedS.length) % 3]);
         placedS.push(wn);
       }
+      // v2 (Jaquay) — every naked dead-end HIDES a telegraphed secret in its terminal
+      // wall, so no dead end is a pointless walk: it always rewards the reach.
+      (comp.deadEnds || []).forEach(function (de, di) {
+        if (!ctrl.secrets[key(de.wallX, de.wallY)] && g[de.wallY] && g[de.wallY][de.wallX] === "#")
+          addSecret(de.wallX, de.wallY, kinds[di % kinds.length], TELLV[(off + di) % 3]);
+      });
     }
 
     // v18 R3 (outcome #3): terrain on the OPEN FLOOR that forces path decisions.
@@ -399,7 +420,7 @@ var TD_MAP = (function () {
     // rooms (and the minimal test worlds) fall under the candidate floor and stay
     // terrain-free.
     function placeTerrain(comp) {
-      if (!inDungeon()) return;
+      if (!inDungeon() || !levelIsWet()) return;   // water only on the minority of WET levels (v2 rationing)
       var g = ctrl.grid, sp = ctrl.player, R = nodeRng(seed, ctrl.node + ":terrain");
       var prev = {}, seen = {}, q = [[sp.x, sp.y]]; seen[key(sp.x, sp.y)] = 1;
       while (q.length) { var c = q.shift(); DIRS4(c[0], c[1]).forEach(function (n) { var k = key(n[0], n[1]); if (!seen[k] && g[n[1]] && g[n[1]][n[0]] === ".") { seen[k] = 1; prev[k] = { x: c[0], y: c[1] }; q.push(n); } }); }
@@ -929,6 +950,7 @@ var TD_MAP = (function () {
       _passable: function (x, y) { return passable(x, y); },
       _composition: function () { return ctrl.composition || null; },
       _compose: function (nodeKey, numDoors) { return composeNode(seed, nodeKey, numDoors); },
+      _levelWet: function (L) { return levelIsWet(L); },
       _loopEdges: function () { return ctrl.cycleEdges; },
       _glimpses: function () { return ctrl.glimpses || []; }
     };
