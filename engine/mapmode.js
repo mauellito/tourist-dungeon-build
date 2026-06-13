@@ -511,6 +511,9 @@ var TD_MAP = (function () {
     function spawnCreatures() {
       ctrl.creatures = [];
       if (!livingOn || !inDungeon()) return;
+      // DMZ law (v20 R1): a saloon or the cafeteria is demilitarised — no hostile
+      // action resolves inside, so none ever spawns. (The truce is spatial, not prose.)
+      if ((world.nodes[ctrl.node] || {}).dmz) return;
       var n = rng.int(1, 2);
       var kinds = ["wanderer", "lurker", "chaser"];
       for (var c = 0; c < n; c++) {
@@ -635,6 +638,13 @@ var TD_MAP = (function () {
         reveal(nx, ny); displaceBark();
         endTurn("step"); emitSenses();
         return { moved: true, displaced: true, event: ctrl.lastEvent };
+      }
+      if (cr && (world.nodes[ctrl.node] || {}).dmz) {
+        // DMZ law (v20 R1): no hostile action RESOLVES inside a saloon or the
+        // cafeteria. The house rule refuses the blow — you do not move, nothing is
+        // fought. (None spawns here either; this guards a creature that wandered in.)
+        logMsg("Not here — the house rule holds: no disputes past the threshold.", false);
+        return { moved: false, refused: true, dmz: true };
       }
       if (cr) {
         ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt" });

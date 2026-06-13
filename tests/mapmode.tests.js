@@ -168,6 +168,43 @@ function TD_MAP_TESTS() {
     includes(pm.cause, "Level 1", "postmortem cites the spatial fact (the level)");
   });
 
+  // --------------------------------------------- DMZ (v20 R1: no-fight refuges)
+  // The avatar STARTS in the room under test, so the assertion is about the room's
+  // own spawn, not navigation. `dmz` toggles the saloon flag on that start room.
+  function roomWorld(seed, dmz) {
+    var s = { level: 1, title: dmz ? "The Wary Tap-Room" : "A Level-1 Room" };
+    if (dmz) s.dmz = "saloon";
+    return {
+      start: "s", year_length: 365, arrival_day: 1, meta: { seed: seed || 1 },
+      nodes: { s: s, x: { level: 1, required: true, title: "Onward" } },
+      edges: [{ id: "sx", from: "s", to: "x" }, { id: "xs", from: "x", to: "s" }],
+      signals: {}
+    };
+  }
+
+  test("a DMZ saloon spawns no hostiles, across seeds (and non-DMZ rooms do)", function () {
+    var everInDMZ = 0, everPlain = 0;
+    for (var s = 1; s <= 10; s++) {
+      var gd = TD_MAP.create(roomWorld(s, true), { creatures: true });
+      everInDMZ += gd._creatures().length;
+      var gp = TD_MAP.create(roomWorld(s, false), { creatures: true });
+      everPlain += gp._creatures().length;
+    }
+    eq(everInDMZ, 0, "no hostile ever spawns inside a DMZ saloon, over 10 seeds");
+    assert(everPlain > 0, "the same rooms without the DMZ flag DO spawn hostiles (control)");
+  });
+
+  test("inside a DMZ a hostile bump is refused — no fight resolves", function () {
+    var g = TD_MAP.create(roomWorld(3, true), { creatures: true });
+    eq(g.state.node, "s", "started in the saloon");
+    var fn = floorNbr(g);
+    g._setCreatures([{ x: fn.x, y: fn.y, kind: "wanderer", hp: 15, maxHp: 15, dmg: 8, name: "a stray", glyph: "r" }]);
+    var r = g.move(fn.dir);
+    assert(r.refused && r.dmz, "the house rule refuses the blow");
+    assert(!r.attacked, "no attack resolves inside the DMZ");
+    eq(g._creatures()[0].hp, 15, "the creature is unharmed");
+  });
+
   // -------------------------------------------------------------- BODY METERS
   test("body meters drain with action; starvation costs HP", function () {
     var g = TD_MAP.create(world(), { creatures: false });

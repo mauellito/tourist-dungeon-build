@@ -262,6 +262,48 @@ var TD_GEN = (function () {
       unlockFlavours.push({ level: UL, key: uf.key, locked_edge: lockEdge, mech_edge: "e_mech_in_" + uf.key + "_" + UL, tell: uf.tell });
     }
 
+    // ---- v20 R1 — DMZ VAULTS: one SALOON per level (a one-way swinging door from the
+    // hub leads IN; a back door leaves — so every path is always offered a refuge) plus
+    // one dungeon CAFETERIA. Demilitarised: no hostile action resolves inside (a runtime
+    // invariant enforced in mapmode, asserted by the map suite). Bartender + patron are
+    // STATIC sign-text occupants — no voice runtime, no calendar/economy. Entry
+    // announces by node title (the play-map banner). The one-way strands nothing: the
+    // back door returns to the hub, so reachability and no_unsignaled_unwinnable hold.
+    var SALOON_SIGN = "Posted in three languages and a fourth that is only underlining: NO DISPUTES PAST THIS THRESHOLD. The management is not asking.";
+    var SALOONS = [
+      { name: "The Wary Tap-Room",
+        bartender: "The barkeep wipes a glass he has wiped before, and will wipe again, and allows that you may sit.",
+        patron: "A regular, not looking up: “In here nobody wants nothing from nobody. That is the entire point of the place.”" },
+      { name: "The Last Civil Word",
+        bartender: "The proprietor sets down a coaster the way another would set down terms.",
+        patron: "Someone in the corner: “You leave it at the door or you leave. Those are the two doors.”" },
+      { name: "The Disinterested Party",
+        bartender: "The bartender has heard it, whatever it is, and pours regardless.",
+        patron: "A patron, mildly: “Take the weight off. Take the grudge off too, it does not drink for free.”" },
+      { name: "The Demilitarised Lounge",
+        bartender: "A steward in a clean apron, neutral as Switzerland and twice as well-pressed.",
+        patron: "An old hand: “Everybody is somebody's trouble out there. Not in here. In here you are just thirsty.”" },
+      { name: "The Truce on Tap",
+        bartender: "The keeper nods at the rule on the wall, then at you, in that order.",
+        patron: "A drinker, comfortable: “Best-run room on the level. Nothing happens. That is the amenity.”" }
+    ];
+    for (var SL = 1; SL <= depth; SL++) {
+      var sf = SALOONS[((seed >>> 0) + SL) % SALOONS.length];
+      var sid = "saloon_" + SL;
+      node(sid, { level: SL, dmz: "saloon", region: "discontinued", title: "Level " + SL + " — " + sf.name,
+        desc: sf.bartender + " " + sf.patron + " " + SALOON_SIGN });
+      edge({ id: "e_saloon_in_" + SL, from: "hub_" + SL, to: sid, one_way: true,
+        label: "Push through the swinging door into " + sf.name + " (it does not swing back)." });
+      edge({ id: "e_saloon_out_" + SL, from: sid, to: "hub_" + SL,
+        label: "Leave by the back, onto the Level " + SL + " concourse." });
+    }
+    node("cafeteria", { level: depth, dmz: "cafeteria", region: "discontinued", title: "The Subterranean Cafeteria",
+      desc: "Trays, a steam-table, and a hush with no edge to it. A dinner-lady presides over the only warm food in the dungeon. " +
+            "Posted by the trays: SEATING IS NEUTRAL GROUND. SETTLE NOTHING AT THE TABLES. " + SALOON_SIGN });
+    edge({ id: "e_caf_in", from: "hub_" + depth, to: "cafeteria", one_way: true,
+      label: "Duck into the Cafeteria (the door sighs shut behind you)." });
+    edge({ id: "e_caf_out", from: "cafeteria", to: "hub_" + depth, label: "Leave the Cafeteria, back to the concourse." });
+
     // ---- v19 R1 — STAIR LATTICE: the legible SPINE vs the DISCONTINUED regions,
     // and one Bureau OFFICE per level (static set dressing — door, sign, a posted
     // closure notice as FIXED flavour; calendar-driven closure stays firewalled). -
@@ -296,7 +338,7 @@ var TD_GEN = (function () {
       arrival_day: arrivalDay,
       meta: { seed: (seed >>> 0) || 1, depth: depth, express: !!(withExpress && depth >= 2),
         vestibule_fork: !!withVestibuleFork, portal: !!withPortal, side_loops: sideLoops,
-        offices: depth, unlocks: unlockFlavours, generator: "TD_GEN/0.2-lattice" },
+        offices: depth, unlocks: unlockFlavours, dmz: { saloons: depth, cafeteria: true }, generator: "TD_GEN/0.2-lattice" },
       nodes: nodes,
       edges: edges,
       signals: signals

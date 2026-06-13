@@ -314,6 +314,33 @@ var TD_CHECK = (function () {
     return offices.some(function (n) { return nodes[n].level === minL && reach.has(n); });
   }
 
+  // DMZ RULE (canon: dmz-vaults-v1). On a world that HAS saloons (DMZ refuges):
+  // every dungeon level with a concourse offers a ONE-WAY door from that hub into a
+  // saloon on the same level — so EVERY path through the lattice is always offered a
+  // refuge (the all-paths-have-a-one-way-door-to-saloon law), and the world maintains
+  // at least one cafeteria (the dungeon canteen). The one-way is the swinging door
+  // you commit through; a separate edge leaves, so it strands nothing. Vacuously true
+  // on a world with no saloons. (The "no hostile action inside a DMZ" half of the law
+  // is a runtime invariant enforced in mapmode, asserted by the map suite — a graph
+  // obligation cannot see combat.)
+  function dmzRule(w) {
+    var nodes = w.nodes, ids = Object.keys(nodes);
+    if (!ids.some(function (n) { return nodes[n].dmz === "saloon"; })) return true;   // vacuous
+    var levels = {};
+    ids.forEach(function (n) { var L = nodes[n].level; if (L != null && L >= 1) levels[L] = true; });
+    var lk = Object.keys(levels);
+    for (var i = 0; i < lk.length; i++) {
+      var L = +lk[i], hub = "hub_" + L;
+      if (!nodes[hub]) continue;                            // only levels with a concourse are constrained
+      var offered = w.edges.some(function (e) {
+        return e.one_way && e.from === hub && nodes[e.to] && nodes[e.to].dmz === "saloon" && nodes[e.to].level === L;
+      });
+      if (!offered) return false;                           // this path crosses a level with no saloon door
+    }
+    if (!ids.some(function (n) { return nodes[n].dmz === "cafeteria"; })) return false;   // the canteen
+    return true;
+  }
+
   var OBLIGATIONS = {
     reachability: reachability,
     no_unsignaled_unwinnable: noUnsignaledUnwinnable,
@@ -322,7 +349,8 @@ var TD_CHECK = (function () {
     sequence: sequence,
     one_true_run: oneTrueRun,
     office_rule: officeRule,
-    office_learnable: officeLearnable
+    office_learnable: officeLearnable,
+    dmz_rule: dmzRule
   };
 
   function runObligations(w) {
