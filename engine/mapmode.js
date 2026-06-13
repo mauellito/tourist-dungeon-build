@@ -247,7 +247,7 @@ var TD_MAP = (function () {
       node: interp.state.node,
       grid: null, doors: null, player: null, features: {}, pendingDoor: null,
       items: {}, plain: {}, secrets: {}, roomDoors: {},
-      creatures: [], explored: null, fx: [],
+      creatures: [], explored: null, exploredByNode: {}, fx: [],
       water: {}, chasm: {}, pendingFall: null, sensedSecret: {},
       dead: false, won: false, cause: null, lastEvent: null, lastUrgent: false,
       meters: shared.meters || { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 },
@@ -341,10 +341,30 @@ var TD_MAP = (function () {
       });
     }
 
-    function reveal(px, py) {
-      for (var dy = -REVEAL; dy <= REVEAL; dy++)
-        for (var dx = -REVEAL; dx <= REVEAL; dx++) { var x = px + dx, y = py + dy; if (inb(x, y)) ctrl.explored.add(key(x, y)); }
+    // v2 (Jaquay) — sight is blocked by walls AND by CLOSED DOORS. A closed door is
+    // inscrutable: you see its face but never what lies beyond it until it is opened.
+    function losTransparent(x, y) {
+      if (!inb(x, y) || ctrl.grid[y][x] === "#") return false;          // walls block sight
+      var rd = ctrl.roomDoors[key(x, y)]; if (rd && rd.state === "closed") return false;   // a closed room door is opaque
+      var pl = ctrl.plain[key(x, y)]; if (pl && !pl.open) return false;                     // a closed plain door too
+      return true;
     }
+    // LOS flood from (px,py): you SEE a cell once reached (its face, even a wall or closed
+    // door), but sight passes THROUGH only transparent cells — so the beyond of a closed
+    // door is never leaked. Bounded by REVEAL; diagonals are glimpsed, not traversed.
+    function losFrom(px, py) {
+      var seen = new Set([key(px, py)]), done = {}; done[key(px, py)] = 1;
+      var q = [[px, py, 0]];
+      while (q.length) {
+        var c = q.shift(), x = c[0], y = c[1], d = c[2];
+        for (var ddy = -1; ddy <= 1; ddy++) for (var ddx = -1; ddx <= 1; ddx++) { var sx = x + ddx, sy = y + ddy; if (inb(sx, sy)) seen.add(key(sx, sy)); }
+        if (d >= REVEAL) continue;
+        var orth = DIRS4(x, y);
+        for (var i = 0; i < orth.length; i++) { var nx = orth[i][0], ny = orth[i][1], k = key(nx, ny); if (!done[k] && losTransparent(nx, ny)) { done[k] = 1; q.push([nx, ny, d + 1]); } }
+      }
+      return seen;
+    }
+    function reveal(px, py) { losFrom(px, py).forEach(function (k) { ctrl.explored.add(k); }); }
 
     function buildView() {
       ctrl.water = {}; ctrl.chasm = {}; ctrl.pendingFall = null; ctrl.sensedSecret = {};
@@ -372,7 +392,11 @@ var TD_MAP = (function () {
       ctrl.roomDoors = {}; (comp.roomDoors || []).forEach(function (rd) { ctrl.roomDoors[key(rd.x, rd.y)] = { state: rd.state }; });
       ctrl.player = { x: comp.spawn.x, y: comp.spawn.y };
       ctrl.composition = comp;
-      ctrl.explored = new Set(); reveal(comp.spawn.x, comp.spawn.y);
+      // v2 (Jaquay) — MAP MEMORY: explored geometry persists per node across revisits
+      // within a run (the node is deterministic, so the keys stay valid). Live LOS layers
+      // on top at render; what you've seen stays remembered when you leave and return.
+      ctrl.explored = ctrl.exploredByNode[ctrl.node] || (ctrl.exploredByNode[ctrl.node] = new Set());
+      reveal(comp.spawn.x, comp.spawn.y);
       ctrl.pendingDoor = null;
       placeTerrain(comp);
       if (inDungeon()) placeDefaults(comp);
@@ -504,7 +528,7 @@ var TD_MAP = (function () {
       });
       ctrl.grid = g; ctrl.doors = doors; ctrl.features = {}; ctrl.items = {}; ctrl.plain = {}; ctrl.secrets = {}; ctrl.roomDoors = {};
       ctrl.player = entry || { x: ox + (W0 >> 1), y: oy + (H0 >> 1) };
-      ctrl.explored = new Set(); reveal(ctrl.player.x, ctrl.player.y); ctrl.pendingDoor = null;
+      ctrl.explored = ctrl.exploredByNode[ctrl.node] || (ctrl.exploredByNode[ctrl.node] = new Set()); reveal(ctrl.player.x, ctrl.player.y); ctrl.pendingDoor = null;
       (vd.features || []).forEach(function (f) { ctrl.features[key(ox + f.x, oy + f.y)] = { glyph: f.glyph || "¶", channel: f.channel, kind: f.kind, obj: f.obj, text: f.text, label: "a notice" }; });
       (vd.items || []).forEach(function (it) { var iy = oy + it.y, ix = ox + it.x; if (g[iy] && g[iy][ix] === ".") ctrl.items[key(ix, iy)] = makeItem(it.kind); });
       if (vd.secret) ctrl.secrets[key(ox + vd.secret.x, oy + vd.secret.y)] = { kind: vd.secret.kind, found: false, tell: vd.secret.tell || "hollow" };
@@ -560,11 +584,7 @@ var TD_MAP = (function () {
       return cand[Math.floor(rng.next() * cand.length)];
     }
 
-    function visibleSet() {
-      var s = new Set();
-      for (var dy = -REVEAL; dy <= REVEAL; dy++) for (var dx = -REVEAL; dx <= REVEAL; dx++) { var x = ctrl.player.x + dx, y = ctrl.player.y + dy; if (inb(x, y)) s.add(key(x, y)); }
-      return s;
-    }
+    function visibleSet() { return losFrom(ctrl.player.x, ctrl.player.y); }
     function enemiesVisible() { var vis = visibleSet(); return ctrl.creatures.some(function (c) { return vis.has(key(c.x, c.y)); }); }
 
     // ---- the world acts only when the player acts (turn-based) ---------------
@@ -721,6 +741,9 @@ var TD_MAP = (function () {
 
       ctrl.player.x = nx; ctrl.player.y = ny;
       ctrl.pendingDoor = null; ctrl.pendingFall = null;
+      // v2 — stepping into a closed room doorway OPENS it (it gives as you pass), so
+      // sight then carries through into the room beyond (never before).
+      var rdHere = ctrl.roomDoors[key(nx, ny)]; if (rdHere && rdHere.state === "closed") rdHere.state = "open";
       reveal(nx, ny);
       var f = featureAt(nx, ny);
       if (f) { if (f.id) ctrl.character.signalsSeen.add(f.id); if (f.kind) senses(f.text, f.kind, f.obj); else logMsg(f.text, false); }
@@ -951,6 +974,7 @@ var TD_MAP = (function () {
       _composition: function () { return ctrl.composition || null; },
       _compose: function (nodeKey, numDoors) { return composeNode(seed, nodeKey, numDoors); },
       _levelWet: function (L) { return levelIsWet(L); },
+      _rebuild: function () { buildView(); },                 // re-enter the current node (tests map memory)
       _loopEdges: function () { return ctrl.cycleEdges; },
       _glimpses: function () { return ctrl.glimpses || []; }
     };

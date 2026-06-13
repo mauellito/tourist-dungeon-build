@@ -226,6 +226,51 @@ function TD_MAP_TESTS() {
     eq(g._creatures()[0].hp, 15, "the creature is unharmed");
   });
 
+  // v2 (Jaquay) — CLOSED DOORS ARE INSCRUTABLE: a closed door leaks nothing beyond.
+  function manyDoorWorld(seed) {
+    return {
+      start: "a", year_length: 365, arrival_day: 1, meta: { seed: seed },
+      nodes: { a: { level: 1, title: "A" }, b: { level: 1, required: true }, c: { level: 1 }, d: { level: 1 } },
+      edges: [{ id: "ab", from: "a", to: "b" }, { id: "ba", from: "b", to: "a" },
+              { id: "ac", from: "a", to: "c" }, { id: "ca", from: "c", to: "a" },
+              { id: "ad", from: "a", to: "d" }, { id: "da", from: "d", to: "a" }], signals: {}
+    };
+  }
+  test("v2 CLOSED DOOR: a closed room door hides the room beyond until opened", function () {
+    var tested = false;
+    for (var seed = 1; seed <= 14 && !tested; seed++) {
+      var g = TD_MAP.create(manyDoorWorld(seed), { creatures: false, hazards: false });
+      var rds = g.view().roomDoors || {}, comp = g._composition(), room = null, dk = null;
+      (comp.roomList || []).forEach(function (rm) { var k = rm.door.x + "," + rm.door.y; if (rds[k] && rds[k].state === "closed") { room = rm; dk = k; } });
+      if (!room) continue;
+      var dxy = dk.split(",").map(Number), roomCell = null, corrCell = null;
+      S4.forEach(function (dir) { var nx = dxy[0] + STEP[dir][0], ny = dxy[1] + STEP[dir][1]; if (isFl(g, nx, ny)) { if (nx >= room.x0 && nx <= room.x1 && ny >= room.y0 && ny <= room.y1) roomCell = [nx, ny]; else corrCell = [nx, ny]; } });
+      if (!roomCell || !corrCell) continue;
+      if (!walkTo(g, corrCell[0], corrCell[1])) continue;
+      tested = true;
+      var vis = new Set(g.view().visible);
+      assert(!vis.has(roomCell[0] + "," + roomCell[1]), "seed " + seed + ": the room behind the CLOSED door is NOT visible");
+      // step onto the door (it opens), then into the room — now it is visible
+      var dToDoor = dirTo(corrCell[0], corrCell[1], dxy[0], dxy[1]); g.move(dToDoor);
+      var dIn = dirTo(dxy[0], dxy[1], roomCell[0], roomCell[1]); if (dIn) g.move(dIn);
+      assert(new Set(g.view().visible).has(roomCell[0] + "," + roomCell[1]) || (g._player().x === roomCell[0] && g._player().y === roomCell[1]),
+        "seed " + seed + ": once opened and entered, the room is visible");
+    }
+    assert(tested, "found a closed room door to test opacity");
+  });
+
+  test("v2 MAP MEMORY: explored geometry persists when a node is left and re-entered", function () {
+    var g = TD_MAP.create(manyDoorWorld(5), { creatures: false, hazards: false });
+    // explore away from spawn so the captured set is more than the arrival LOS
+    var fn = floorNbr(g); if (fn) { g.move(fn.dir); g.move(fn.dir); }
+    var exp0 = Array.from(g.view().explored);
+    assert(exp0.length > 1, "explored some of the node");
+    g._rebuild();   // leave and return to this node (the deterministic geometry is identical)
+    var exp1 = new Set(g.view().explored), kept = true;
+    for (var i = 0; i < exp0.length; i++) if (!exp1.has(exp0[i])) kept = false;
+    assert(kept, "every tile explored before is still remembered after re-entry (not reset to the arrival LOS)");
+  });
+
   // -------------------------------------------------------------- BODY METERS
   test("body meters drain with action; starvation costs HP", function () {
     var g = TD_MAP.create(world(), { creatures: false });
