@@ -1,0 +1,11 @@
+NAME: stair_hall
+TAGS: room stair landmark
+WEIGHT: 5
+EDGES: N door
+MAP
+##+##
+#.G.#
+#...#
+#.{.#
+#####
+ENDMAP

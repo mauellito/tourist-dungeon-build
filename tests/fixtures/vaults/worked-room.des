@@ -1,0 +1,14 @@
+; authored-for-test (not real DCSS — no network to fetch GPL); DCSS-shaped to prove the format
+NAME: worked_room
+TAGS: worked_stone room
+WEIGHT: 10
+EDGES: N door, S door, W door, E door
+SUBST: ? = . o
+MAP
+####+####
+#.o...o.#
++...$...+
+#.?...?.#
+#.o...o.#
+####+####
+ENDMAP

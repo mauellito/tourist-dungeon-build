@@ -1,0 +1,11 @@
+NAME: ws_small_rect
+TAGS: worked_stone room small
+WEIGHT: 10
+EDGES: W door, E door
+MAP
+#######
+#.....#
++..$..+
+#.....#
+#######
+ENDMAP

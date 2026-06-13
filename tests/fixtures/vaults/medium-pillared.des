@@ -1,0 +1,11 @@
+NAME: ws_medium_pillared
+TAGS: worked_stone room medium
+WEIGHT: 7
+EDGES: W door, E door
+MAP
+#########
+#.o.o.o.#
++...$...+
+#.o.o.o.#
+#########
+ENDMAP

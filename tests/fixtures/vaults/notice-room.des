@@ -1,0 +1,11 @@
+NAME: ws_notice_room
+TAGS: worked_stone room notice
+WEIGHT: 6
+EDGES: W door
+MAP
+#######
+#..G..#
++.....#
+#..o..#
+#######
+ENDMAP

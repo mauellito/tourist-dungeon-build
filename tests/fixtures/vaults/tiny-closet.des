@@ -1,0 +1,10 @@
+NAME: ws_tiny_closet
+TAGS: worked_stone room tiny secret
+WEIGHT: 6
+EDGES: S door
+MAP
+#####
+#?$?#
+#...#
+##+##
+ENDMAP

@@ -1,0 +1,14 @@
+NAME: ws_large_hall
+TAGS: worked_stone room large
+WEIGHT: 5
+EDGES: N door, S door, W door, E door
+SUBST: ? = . . o
+MAP
+#####+#####
+#.o.....o.#
+#....G....#
++...?.?...+
+#....G....#
+#.o.....o.#
+#####+#####
+ENDMAP

@@ -1,0 +1,11 @@
+NAME: ws_small_square
+TAGS: worked_stone room small
+WEIGHT: 10
+EDGES: N door, S door
+MAP
+##+##
+#...#
+#...#
+#...#
+##+##
+ENDMAP

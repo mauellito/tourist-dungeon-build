@@ -19,6 +19,10 @@ SUITES = [
     ("UI quality-of-life", "run_ui.py"),
     ("town composition law (TD_TOWN)", "run_towncompose.py"),
     ("E2E real keypresses on play-map.html", "run_keys.py"),
+    # Master Directive — the gate is independently verifiable on the mirror now:
+    ("vault format + parser (P1)", "run_vaultfmt.py"),
+    ("spatial law-suite / THE GATE (P3)", "run_lawsuite.py"),
+    ("vault assembler, gated (P2/P4)", "run_assembler.py"),
 ]
 
 

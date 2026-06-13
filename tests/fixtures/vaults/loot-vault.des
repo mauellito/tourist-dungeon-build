@@ -1,0 +1,13 @@
+NAME: ws_loot_vault
+TAGS: worked_stone room vault
+WEIGHT: 4
+EDGES: N door, S door
+SUBST: ? = . o
+MAP
+###+###
+#o...o#
+#.$.$.#
+#.?.?.#
+#o...o#
+###+###
+ENDMAP

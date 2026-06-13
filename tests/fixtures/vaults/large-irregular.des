@@ -1,0 +1,14 @@
+NAME: ws_large_irregular
+TAGS: worked_stone room large
+WEIGHT: 4
+EDGES: N door, E door, S door
+SUBST: , = . #
+MAP
+###+#####
+#,.....,#
+#.......#
+#.....$.+
+#.......#
+#,.....,#
+###+#####
+ENDMAP
