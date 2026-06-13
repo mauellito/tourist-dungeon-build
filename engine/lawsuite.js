@@ -152,6 +152,41 @@ var TD_LAWS = (function () {
     var strayWater = 0; waters.forEach(function (w) { if (tagAt(m, w[0], w[1]) !== "water") strayWater++; });
     law("D4", strayWater === 0, strayWater + " water tiles outside a water feature");
 
+    // ===== Amendment 2: POSITIVE STRUCTURE (the laws must REQUIRE rooms+corridors, not
+    // just forbid blobs — else a uniform speckle of single tiles passes). The reference is
+    // the operator's sheet: real rooms hung off a corridor spine. =====
+    var minRooms = m.minRooms || 6;
+    var roomRegions = components(m, function (x, y) { return walkable(m, x, y) && tagAt(m, x, y) === "room"; });
+    var bigRooms = roomRegions.comps.filter(function (c) { return c.size >= 6; });
+    var tinyRooms = roomRegions.comps.filter(function (c) { return c.size <= 2; }).length;
+    // corridor cells: how many, and how many are LONE speckle (no orthogonal corridor/door run)
+    var corrCount = 0, loneCorr = 0;
+    function isLane(x, y) { var t = tagAt(m, x, y); return walkable(m, x, y) && (t === "corridor" || t === "door"); }
+    corridors.forEach(function (cc) {
+      corrCount++;
+      var run = false; for (var i = 0; i < 4; i++) if (isLane(cc[0] + D4[i][0], cc[1] + D4[i][1])) run = true;
+      if (!run) loneCorr++;
+    });
+    // isolated open cells (a walkable tile with no orthogonal walkable neighbour) — pure speckle
+    var isolated = 0;
+    for (var iy = 0; iy < m.h; iy++) for (var ix = 0; ix < m.w; ix++) {
+      if (!walkable(m, ix, iy)) continue;
+      var nb = 0; for (var i2 = 0; i2 < 4; i2++) if (walkable(m, ix + D4[i2][0], iy + D4[i2][1])) nb++;
+      if (nb === 0) isolated++;
+    }
+
+    // L8 ROOMS EXIST AS ROOMS — enough contiguous room regions of real size
+    law("L8", bigRooms.length >= minRooms, bigRooms.length + " real rooms (>=6 cells); want >=" + minRooms);
+    // L9 CORRIDORS EXIST AS LANES — a real corridor network, none of it lone speckle, and a
+    // MINORITY of the floor (circulation, not the bulk — rooms are the bulk; else a corridor
+    // maze passes for "rooms hung off a spine").
+    var roomCells = 0; roomRegions.comps.forEach(function (c) { roomCells += c.size; });
+    law("L9", corrCount >= 16 && loneCorr === 0 && corrCount < roomCells, corrCount + " corridor cells (" + roomCells + " room), " + loneCorr + " lone (speckle)");
+    // L10 ROOM/CORRIDOR DISTINCT — both kinds present, every open tile tagged one kind
+    law("L10", bigRooms.length > 0 && corrCount > 0 && untagged.length === 0, "rooms+corridors present, " + untagged.length + " untagged open");
+    // L11 NO SPECKLE — no checkerboard: no tiny room regions, no isolated single cells
+    law("L11", tinyRooms === 0 && isolated === 0, tinyRooms + " tiny rooms, " + isolated + " isolated cells");
+
     var pass = Object.keys(laws).every(function (k) { return laws[k].pass; });
     return { pass: pass, laws: laws };
 
