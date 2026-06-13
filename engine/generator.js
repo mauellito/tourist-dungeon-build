@@ -190,13 +190,41 @@ var TD_GEN = (function () {
         desc: "Calendar omens permitting." });
     }
 
+    // ---- v19 R1 — STAIR LATTICE: the legible SPINE vs the DISCONTINUED regions,
+    // and one Bureau OFFICE per level (static set dressing — door, sign, a posted
+    // closure notice as FIXED flavour; calendar-driven closure stays firewalled). -
+    function regionOf(id) {
+      if (id === "entrance" || /^vestibule_/.test(id) || /^hub_/.test(id) || /^goal_/.test(id)) return "spine";
+      return "discontinued";                                // pockets, annexes, loops, vaults, portal, offices — off the spine
+    }
+    Object.keys(nodes).forEach(function (n) { if (nodes[n].region == null) nodes[n].region = regionOf(n); });
+    // one advertised office per dungeon level, in the discontinued region, reachable
+    // from the hub on FIRST ARRIVAL (a plain two-way edge — no key, no descent).
+    // Almost always CLOSED, with a specific STATIC reason (no calendar logic).
+    var CLOSURE = [
+      "Out to lunch. (Undated.)",
+      "Closed DUE to inspection.",
+      "Closed for bereavement; consult the obituary register.",
+      "Back shortly. The notice declines to say from when.",
+      "Closed pending the outcome of a prior closure."
+    ];
+    for (var OL = 1; OL <= depth; OL++) {
+      var oid = "office_" + OL;
+      node(oid, { level: OL, office: true, region: "discontinued",
+        title: "Level " + OL + " — the Bureau Office",
+        desc: "The level's Office, as advertised — a door, a sign, and posted upon it: “" + CLOSURE[(OL - 1) % CLOSURE.length] + "”" });
+      edge({ id: "e_office_in_" + OL, from: "hub_" + OL, to: oid, label: "Step off the main way to the Level " + OL + " Office." });
+      edge({ id: "e_office_out_" + OL, from: oid, to: "hub_" + OL, label: "Leave the Office, back to the concourse." });
+    }
+    nodes.entrance.desc = (nodes.entrance.desc || "") + " A posted notice: “For your convenience, an Office is maintained on every level.”";
+
     var world = {
       start: "entrance",
       year_length: 365,
       arrival_day: arrivalDay,
       meta: { seed: (seed >>> 0) || 1, depth: depth, express: !!(withExpress && depth >= 2),
         vestibule_fork: !!withVestibuleFork, portal: !!withPortal, side_loops: sideLoops,
-        generator: "TD_GEN/0.1" },
+        offices: depth, generator: "TD_GEN/0.2-lattice" },
       nodes: nodes,
       edges: edges,
       signals: signals

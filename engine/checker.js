@@ -250,6 +250,22 @@ var TD_CHECK = (function () {
     return true;
   }
 
+  // OFFICE LEARNABLE (canon: office-rule-v1). The rule must be learnable BEFORE it
+  // is a detector: the shallowest office is reachable on FIRST ARRIVAL — key-free
+  // (using only edges with no `requires`, so no remote unlock and no descent-token
+  // is needed to find your first office). Vacuous with no offices.
+  function officeLearnable(w) {
+    var nodes = w.nodes, offices = Object.keys(nodes).filter(function (n) { return nodes[n].office; });
+    if (!offices.length) return true;
+    var minL = Infinity; offices.forEach(function (n) { if (nodes[n].level < minL) minL = nodes[n].level; });
+    var reach = new Set([w.start]), changed = true;
+    while (changed) {
+      changed = false;
+      w.edges.forEach(function (e) { if (reach.has(e.from) && !(e.requires && e.requires.length) && !reach.has(e.to)) { reach.add(e.to); changed = true; } });
+    }
+    return offices.some(function (n) { return nodes[n].level === minL && reach.has(n); });
+  }
+
   var OBLIGATIONS = {
     reachability: reachability,
     no_unsignaled_unwinnable: noUnsignaledUnwinnable,
@@ -257,7 +273,8 @@ var TD_CHECK = (function () {
     temporal_windows: temporalWindows,
     sequence: sequence,
     one_true_run: oneTrueRun,
-    office_rule: officeRule
+    office_rule: officeRule,
+    office_learnable: officeLearnable
   };
 
   function verify(w) {
