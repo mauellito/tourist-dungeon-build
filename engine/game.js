@@ -218,7 +218,7 @@ var TD_GAME = (function () {
           else { logMsg("The doorman loses interest in you, which here is a welcome."); }
           break;
         case "gate":
-          if (!character.ticket) { logMsg("The gate does not open for the unticketed."); break; }
+          if (!character.ticket) { logMsg("The gate does not open for the unticketed. Admission is sold at the Kiosk (K) on the plaza, or the Agency (A)."); break; }
           enterDungeon(); logMsg("You present your ticket; the turnstile sighs and lets you by."); break;
         case "rest":
           restore(meters.hpMax, 0, meters.satiationMax); logMsg("You take a cheap room at the Motel and wake, unimproved but rested."); break;
@@ -252,7 +252,7 @@ var TD_GAME = (function () {
       var p = { id: "TOWN", title: "The Harbour", grid: t.grid, doors: t.doors, features: t.features, ground: t.ground, occupants: [], actors: [], cells: [], spawn: t.spawn, exit: t.exit, buildings: t.buildings, piers: t.piers, meta: t.meta };
       Object.keys(t.doors).forEach(function (k) {
         var d = t.doors[k];
-        if (d.to === "DUNGEON") d.gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed." }; return null; };
+        if (d.to === "DUNGEON") d.gate = function () { if (!character.ticket) return { block: "The gate does not open for the unticketed. Admission is sold at the Kiosk (K) on the plaza, or the Agency (A)." }; return null; };
         if (d.to === "tavern") d.gate = function () { if (meters.comfort >= 2) { act("anchor"); return { block: SIG["005"].t }; } return null; };
         if (d.red) { /* red-light doors already tagged */ }
       });

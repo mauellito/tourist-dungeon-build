@@ -293,6 +293,29 @@ function TD_TOWN_TESTS() {
     assert(T.spawn.x === CX && straight, "walk straight south down main street from spawn to the entrance — zero turns");
   });
 
+  // 24. PHASE C — THE ENTRANCE IS ALONE ON ITS PLAZA + the Admission Kiosk flanks it.
+  test("Phase C ENTRANCE: the spine's final run is building-free (the entrance stands alone)", function () {
+    var de = T.meta.dungeonEntrance, doorX = de.door.x, doorY = de.door.y;
+    // the forecourt the street runs into — the spine final run (cols CX-1..CX+1, the rows
+    // just before the mouth) — must be OPEN, no building tile pressing the approach.
+    for (var yy = doorY - 4; yy < doorY; yy++) for (var xx = doorX - 1; xx <= doorX + 1; xx++) {
+      assert(G[yy] && G[yy][xx] === ".", "spine final-run forecourt (" + xx + "," + yy + ") is open, not built-up (got " + (G[yy] && G[yy][xx]) + ")");
+    }
+  });
+  test("Phase C ENTRANCE: unique on its plaza, with the Admission Kiosk flanking it", function () {
+    var ents = Object.keys(T.doors).filter(function (k) { return T.doors[k].to === "DUNGEON"; });
+    eq(ents.length, 1, "exactly one dungeon entrance on the plaza");
+    var kk = Object.keys(T.doors).filter(function (k) { return T.doors[k].to === "kiosk"; });
+    eq(kk.length, 1, "the Admission Kiosk is placed (relocated from the strip)");
+    var de = T.meta.dungeonEntrance.door, kp = kk[0].split(",").map(Number);
+    assert(Math.abs(kp[0] - de.x) <= 4 && Math.abs(kp[1] - de.y) <= 4, "the kiosk flanks the entrance — ticket->gate is one glance (" + kp + " vs " + de.x + "," + de.y + ")");
+    var kf = T.doors[kk[0]].front; assert(at(kf.x, kf.y) === ".", "the kiosk door faces an open forecourt tile");
+  });
+  test("Phase C SIGNPOSTING: the mouth posts where admission is sold (Kiosk K / Agency A)", function () {
+    assert(Object.keys(T.features).some(function (k) { return /Kiosk \(K\)/.test(T.features[k].text || "") && /Agency \(A\)/.test(T.features[k].text || ""); }),
+      "the dungeon notice points the unticketed to the Kiosk (K) and Agency (A)");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

@@ -27,7 +27,7 @@ var TD_TOWN = (function () {
   var CAST = {
     nw: [["hotel", "H", "hotel"], ["bank", "B", "shop"], ["tim", "G", "shop"], ["blacksmith", "L", "shop"], ["spa", "P", "shop"], ["saloon", "S", "shop"], ["locked", "h", "filler"], ["locked", "h", "shop"], ["locked", "h", "filler"]],
     ne: [["agency", "A", "shop"], ["coffee", "O", "cafe"], ["restaurant", "E", "eatery"], ["barber", "R", "shop"], ["tattoo", "Z", "shop"], ["chinese", "N", "takeout"], ["locked", "h", "filler"], ["locked", "h", "shop"], ["locked", "h", "filler"]],
-    strip: [["gift1", "1", "shop"], ["gift2", "2", "shop"], ["kiosk", "K", "shop"]],
+    strip: [["gift1", "1", "shop"], ["gift2", "2", "shop"]],   // kiosk relocated to the dungeon plaza (Phase C)
     wf: [["tavern", "T", "shop"], ["motel", "M", "shop"], ["clamshack", "F", "takeout"], ["empty", "w", "shop"]]
   };
 
@@ -66,10 +66,18 @@ var TD_TOWN = (function () {
     g[deDoorY][deDoorX] = "#";
     doors[key(deDoorX, deDoorY)] = { to: "DUNGEON", glyph: "Ω", letter: ">", label: "the dungeon entrance", front: { x: deDoorX, y: deDoorY - 1 }, building: true, dungeon: true };
     features[key(deDoorX + 2, deY0)] = { type: "label", glyph: "D", col: "door", label: "the dungeon entrance" };
-    features[key(deDoorX - 2, deDoorY - 1)] = { type: "notice", glyph: "¶", col: "signal", act: "look", label: "the dungeon notice", text: "THE DUNGEON. Ticketed entry. For your convenience, an Office is maintained on every level." };
+    features[key(deDoorX - 2, deDoorY - 1)] = { type: "notice", glyph: "¶", col: "signal", act: "look", label: "the dungeon notice", text: "THE DUNGEON. Ticketed entry. For your convenience, an Office is maintained on every level. Admission at the Kiosk (K) here on the plaza, or the Agency (A): Standard, 3 coin (posted, stub)." };
     var dePlaza = [CX - 2, deY0 - 4, CX + 2, deY0 - 1];              // the forecourt, on the main street
     reserve(dePlaza[0], dePlaza[1], dePlaza[2], dePlaza[3]); meta.plazas.dungeon = dePlaza;
     meta.dungeonEntrance = { rect: [deX0, deY0, deX1, deY1], door: { x: deDoorX, y: deDoorY }, area: (deX1 - deX0 + 1) * (deY1 - deY0 + 1) };
+    // v22 (Phase C) — the ADMISSION KIOSK on the entrance plaza, flanking the mouth in
+    // the gatehouse facade so ticket -> gate is ONE GLANCE. Its door is on the same
+    // forecourt as the dungeon door; the stub price is posted on the notice above.
+    var kdX = deDoorX + 3, kdY = deY0;                              // gatehouse north face, east of the Ω mouth
+    g[kdY - 1][kdX] = ".";                                          // open the forecourt tile in front of it
+    doors[key(kdX, kdY)] = { to: "kiosk", glyph: "+", letter: "K", label: "the Admission Kiosk", front: { x: kdX, y: kdY - 1 }, building: true };
+    buildings.push({ id: "kiosk", x0: kdX, y0: kdY, w: 1, h: 1, area: 1, glyph: "K" });
+    meta.plazas.admissionKiosk = { x: kdX, y: kdY };
 
     // --- the CIVIC SQUARE + CHURCH: the church is landmark-scale (largest
     // footprint in town) and fronts an open square that doubles as the market

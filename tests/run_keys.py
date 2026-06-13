@@ -116,6 +116,11 @@ F.onload = function(){
     ok('Enter buys a carryable hot dog', (view().inventory||[]).some(function(i){return i.name==='a hot dog';}));
     win.__TD_SIM()._setVendor(5,18);   // park him out of the rest of the route
 
+    // ============== GATE REJECTION POINTS (no ticket -> never a dead end) =
+    var gateXY=findDoor('DUNGEON'); var gd=goAdjacent(gateXY[0],gateXY[1]); press(gd); pk('Enter'); var vgate=view();
+    ok('the unticketed gate is refused but POINTS to where admission is sold',
+       vgate.phase==='town' && /Kiosk \(K\)/.test(vgate.lastEvent||'') && /Agency \(A\)/.test(vgate.lastEvent||''));
+
     // ============== DOORS: BUMP vs COMMIT (town; layout-agnostic) =========
     var kioskXY=findDoor('kiosk'); var bd=goAdjacent(kioskXY[0],kioskXY[1]); press(bd); var vb=view();
     ok('bumping a building does NOT enter it (still town)', vb.phase==='town');
