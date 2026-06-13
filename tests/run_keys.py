@@ -82,6 +82,17 @@ F.onload = function(){
   function findDoor(to){ var d=view().doors||{}; for(var k in d){ if(d[k].to===to){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   function findCounter(){ var f=view().features||{}; for(var k in f){ if(f[k].act && f[k].act!=='lookout'){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   try {
+    // ============================ SCROLLING CAMERA (Phase B) ==============
+    var cam0=win.__TD_CAMERA();
+    ok('the town uses a scrolling camera (viewport smaller than the town)', !!cam0 && cam0.town && cam0.vpw < view().w);
+    var pc=view().player;
+    ok('the avatar is inside the camera viewport', pc.x>=cam0.x && pc.x<cam0.x+cam0.vpw && pc.y>=cam0.y && pc.y<cam0.y+cam0.vph);
+    for(var ci=0;ci<8;ci++) press('down');
+    var cam1=win.__TD_CAMERA(), pc1=view().player;
+    ok('the camera follows the avatar (it scrolled to track movement)', cam1.y>cam0.y || pc1.y===pc.y);
+    ok('the avatar stays inside the viewport after scrolling', pc1.x>=cam1.x && pc1.x<cam1.x+cam1.vpw && pc1.y>=cam1.y && pc1.y<cam1.y+cam1.vph);
+    for(var ci2=0;ci2<8;ci2++) press('up');   // back toward spawn for the rest of the route
+
     // ============================ MOVEMENT + DIAGONALS ====================
     var p0=view().player; press('ur'); var p1=view().player;
     ok('diagonal key (u = up-right) moves both axes', p1.x===p0.x+1 && p1.y===p0.y-1);

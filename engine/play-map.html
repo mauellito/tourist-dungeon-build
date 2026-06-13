@@ -213,7 +213,7 @@
 <script src="ui.js"></script>
 <script>
 (function () {
-  var TS = 22, FONT = "18px Consolas, monospace";
+  var TS = 22, FONT = "18px Consolas, monospace", camera = null;
   var P = TD_UI.PALETTE;   // the single palette table — every colour means one thing
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   var stageEl = document.querySelector(".stage");
@@ -243,6 +243,7 @@
     sim = TD_GAME.create(world, { session: session });
     window.__TD_SIM = function () { return sim; };
     window.__TD_VIEW = function () { return sim.view(); };
+    window.__TD_CAMERA = function () { return camera; };          // {x,y,ts,vpw,vph,town} — for the camera-tracking E2E
     resetUI();
     seedInput.value = seed;
     metaEl.textContent = "depth " + world.meta.depth + " · arrival day " + world.arrival_day;
@@ -272,17 +273,32 @@
   function draw() {
     var vw = sim.view();
     checkBarks(vw);   // the Bureau may add a line before we render the log
-    // dynamic tile size: shrink for the large sprawling town so it fits beside
-    // the sidebar; full size for the dungeon. All draw helpers read this TS/FONT.
-    TS = Math.max(11, Math.min(22, Math.floor(940 / vw.w)));
+    // TOWN: a bigger fixed tile size + a SCROLLING CAMERA that follows the avatar — the
+    // town is larger than the viewport, so it scrolls (Tradition A). DUNGEON/interior:
+    // the whole place fits, shrink-to-fit as before. All draw helpers read TS/FONT and
+    // draw in WORLD coords; one canvas translate slides the world under the camera.
+    var town = vw.phase === "town", camX = 0, camY = 0, VPW = vw.w, VPH = vw.h;
+    if (town) {
+      TS = 24;                                                         // bigger tiles — legible (was ~13 squeezed-to-fit)
+      VPW = Math.min(vw.w, Math.floor(912 / TS));
+      VPH = Math.min(vw.h, Math.floor(572 / TS));
+      var pcx = vw.player ? vw.player.x : (vw.w >> 1), pcy = vw.player ? vw.player.y : (vw.h >> 1);
+      camX = Math.max(0, Math.min(vw.w - VPW, pcx - (VPW >> 1)));      // follow the avatar, clamped to the map edges
+      camY = Math.max(0, Math.min(vw.h - VPH, pcy - (VPH >> 1)));
+    } else {
+      TS = Math.max(11, Math.min(22, Math.floor(940 / vw.w)));
+    }
     FONT = (TS - 4) + "px Consolas, monospace";
-    if (cv.width !== vw.w * TS || cv.height !== vw.h * TS) { cv.width = vw.w * TS; cv.height = vw.h * TS; }
+    var cvW = VPW * TS, cvH = VPH * TS;
+    if (cv.width !== cvW || cv.height !== cvH) { cv.width = cvW; cv.height = cvH; }
+    camera = { x: camX, y: camY, ts: TS, vpw: VPW, vph: VPH, town: town };   // for screen<->world mapping (clicks)
     var vis = new Set(vw.visible), exp = new Set(vw.explored);
     ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    ctx.save(); ctx.translate(-camX * TS, -camY * TS);
 
-    for (var y = 0; y < vw.h; y++) {
-      for (var x = 0; x < vw.w; x++) {
+    for (var y = camY; y < camY + VPH; y++) {
+      for (var x = camX; x < camX + VPW; x++) {
         var k = x + "," + y;
         var seen = exp.has(k), bright = vis.has(k);
         if (!seen) continue;
@@ -362,6 +378,7 @@
       ctx.strokeRect(vw.look.x * TS + 1, vw.look.y * TS + 1, TS - 2, TS - 2);
     }
     if (labelsOn) drawLabels(vw);
+    ctx.restore();                                                     // end camera transform
 
     spawnDamage(vw);
     renderDossier(vw);
@@ -729,7 +746,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map vP", BUILD = "f5dc963";
+  var VERSION = "play-map vQ", BUILD = "d314433";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();
