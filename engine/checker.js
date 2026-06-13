@@ -10,6 +10,44 @@
 
 var TD_CHECK = (function () {
 
+  // IRRELEVANT-FLAG COLLAPSE (Phase 5.5, soundness-critical). The reachability /
+  // One-True-Run searches dedup on (node, flags, day). Tracking EVERY flag in the
+  // key makes the search exponential in the TOTAL flag count — so a handful of
+  // purely-decorative condition flags (a remote unlock that only opens an optional
+  // closet) blow the state space up even though they change no obligation result.
+  // The fix: collapse out the flags that gate NO consequential node, so the search
+  // is exponential only in the RELEVANT flags. `_relevant` is the active set; when
+  // it is null the search tracks ALL flags (the original brute behaviour, kept as
+  // the agreement oracle in tests/checker_brute.js). A flag is RELEVANT iff some
+  // edge requiring it is consequential — leads to a non-skippable node, is one-way,
+  // or is windowed; a flag that only ever unlocks skippable/optional 2-way pendants
+  // is decorative and dropped. SOUND because a decorative flag gates no required
+  // node, so collapsing it cannot change any required node's reachability, the OTR
+  // existence result, or a one-way stranding — verified old==new across a sweep.
+  var _relevant = null;
+  function relevantFlags(w) {
+    var req = requiredSet(w), skip = skippableNodes(w, req), rel = new Set();
+    w.edges.forEach(function (e) {
+      if (!e.requires || !e.requires.length) return;
+      // Consequential — keep the flag — when the edge leads somewhere an obligation
+      // reasons about: a non-skippable node, an OFFICE (office_rule asserts office
+      // reachability, so a key-locked office's key must NOT be collapsed), a one-way
+      // (no_unsignaled_unwinnable), or a windowed edge (temporal_windows). Only a flag
+      // that exclusively unlocks optional, 2-way, non-windowed, non-office pendants is
+      // decorative and dropped.
+      var dst = w.nodes[e.to] || {};
+      var consequential = !skip.has(e.to) || dst.office || e.one_way || !!e.window;
+      if (consequential) e.requires.forEach(function (f) { rel.add(f); });
+    });
+    return rel;
+  }
+  // Collapse a flag set to only its relevant members for the dedup key (when a
+  // relevant set is active); otherwise return all flags (brute).
+  function keyFlags(flags) {
+    if (!_relevant) return Array.from(flags);
+    var arr = []; flags.forEach(function (f) { if (_relevant.has(f)) arr.push(f); }); return arr;
+  }
+
   function yl(w) { return w.year_length || 365; }
   function ad(w) { return w.arrival_day || 1; }
   function edgesFrom(w, node) { return w.edges.filter(function (e) { return e.from === node; }); }
@@ -32,7 +70,7 @@ var TD_CHECK = (function () {
   // Day only matters when some edge is windowed; otherwise collapse it out of
   // the state key so the search space does not multiply by the calendar.
   function keyOf(node, flags, day, hw) {
-    return node + "|" + Array.from(flags).sort().join(",") + "|" + (hw ? day : 0);
+    return node + "|" + keyFlags(flags).sort().join(",") + "|" + (hw ? day : 0);
   }
 
   function canTake(e, flags, day, respectWindows) {
@@ -191,6 +229,16 @@ var TD_CHECK = (function () {
 
   // OBL-06 — returns a path (array of edge ids) visiting all required, or null.
   function solve(w) {
+    // Self-activate the relevant-flag collapse when called standalone (e.g. the
+    // interpreter) so the search is fast there too; the path returned is valid
+    // regardless of collapse. A no-op when verify() already set the relevant set.
+    var savedRel = _relevant;
+    if (_relevant === null) _relevant = relevantFlags(w);
+    try {
+      return solveInner(w);
+    } finally { _relevant = savedRel; }
+  }
+  function solveInner(w) {
     var req = requiredSet(w);
     var cap = dayCap(w);
     var hw = hasWindows(w);
@@ -198,7 +246,7 @@ var TD_CHECK = (function () {
     var startVis = new Set(); if (req.has(w.start)) startVis.add(w.start);
     if (isSubset(req, startVis)) return [];
     function visKey(node, flags, day, vis) {
-      return node + "|" + Array.from(flags).sort().join(",") + "|" + (hw ? day : 0) + "|" + Array.from(vis).sort().join(",");
+      return node + "|" + keyFlags(flags).sort().join(",") + "|" + (hw ? day : 0) + "|" + Array.from(vis).sort().join(",");
     }
     var start = [w.start, new Set(), ad(w), startVis, []];
     var seen = new Set([visKey(start[0], start[1], start[2], start[3])]);
@@ -277,7 +325,7 @@ var TD_CHECK = (function () {
     office_learnable: officeLearnable
   };
 
-  function verify(w) {
+  function runObligations(w) {
     var results = {};
     var pass = true;
     Object.keys(OBLIGATIONS).forEach(function (k) {
@@ -288,8 +336,34 @@ var TD_CHECK = (function () {
     return { pass: pass, results: results };
   }
 
+  // verify — the production path: collapse decorative flags out of the search.
+  function verify(w) {
+    _relevant = relevantFlags(w);
+    try { return runObligations(w); }
+    finally { _relevant = null; }
+  }
+  // verifyBrute — the oracle path: track ALL flags (no collapse). Used by the
+  // Phase 5.5 agreement sweep; must return the identical result to verify().
+  function verifyBrute(w) {
+    _relevant = null;
+    return runObligations(w);
+  }
+
+  // Reachable node set from the start, optionally brute (track all flags) — for
+  // the Phase 5.5 agreement property test (opt subset of brute; identical on the
+  // required set).
+  function reachableSet(w, brute) {
+    var saved = _relevant;
+    _relevant = brute ? null : relevantFlags(w);
+    try { return Array.from(reachableNodes(w, true)); }
+    finally { _relevant = saved; }
+  }
+
   return {
     verify: verify,
+    verifyBrute: verifyBrute,
+    relevantFlags: relevantFlags,
+    reachableSet: reachableSet,
     solve: solve,
     requiredSet: requiredSet,
     OBLIGATIONS: OBLIGATIONS
