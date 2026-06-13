@@ -89,11 +89,32 @@ function TD_MAP_TESTS() {
 
   // ------------------------------------------------------- DIAGONAL MOVEMENT
   test("diagonal keys move the avatar on both axes", function () {
-    var g = TD_MAP.create(world(), { hazards: false });
-    var dn = diagNbr(g); assert(dn, "a diagonal floor neighbour exists");
+    // Corridors are 1-wide and open corners are sealed, so diagonal movement lives in
+    // ROOMS (2x2 floor). Give "a" several edges so it composes rooms, walk into a 2x2
+    // block, and step diagonally across it.
+    var w = {
+      start: "a", year_length: 365, arrival_day: 1, meta: { seed: 3 },
+      nodes: { a: { level: 1, title: "A" }, b: { level: 1, required: true }, c: { level: 1 }, d: { level: 1 }, e: { level: 1 } },
+      edges: [{ id: "ab", from: "a", to: "b" }, { id: "ba", from: "b", to: "a" },
+              { id: "ac", from: "a", to: "c" }, { id: "ca", from: "c", to: "a" },
+              { id: "ad", from: "a", to: "d" }, { id: "da", from: "d", to: "a" },
+              { id: "ae", from: "a", to: "e" }, { id: "ea", from: "e", to: "a" }], signals: {}
+    };
+    var g = TD_MAP.create(w, { hazards: false, creatures: false });
+    var gr = grid(g);
+    // floor reachable from the avatar (so walkTo is guaranteed)
+    var reach = {}, rq = [[g._player().x, g._player().y]]; reach[rq[0][0] + "," + rq[0][1]] = 1;
+    while (rq.length) { var rp = rq.shift(); S4.forEach(function (d) { var nx = rp[0] + STEP[d][0], ny = rp[1] + STEP[d][1]; if (isFl(g, nx, ny) && !reach[nx + "," + ny]) { reach[nx + "," + ny] = 1; rq.push([nx, ny]); } }); }
+    function rf(x, y) { return reach[x + "," + y]; }
+    var found = null;
+    for (var y = 1; y < gr.length - 1 && !found; y++) for (var x = 1; x < gr[0].length - 1; x++) {
+      if (rf(x, y) && rf(x + 1, y) && rf(x, y + 1) && rf(x + 1, y + 1)) { found = { x: x, y: y }; break; }
+    }
+    assert(found, "a reachable room provides a 2x2 floor block for diagonal movement");
+    assert(walkTo(g, found.x, found.y), "reached the 2x2 block corner");
     var p0 = { x: g._player().x, y: g._player().y };
-    var r = g.move(dn.dir); assert(r.moved, "diagonal move onto floor");
-    assert(g._player().x === p0.x + STEP[dn.dir][0] && g._player().y === p0.y + STEP[dn.dir][1], "both axes changed");
+    var r = g.move("dr"); assert(r.moved, "diagonal move onto floor");
+    assert(g._player().x === p0.x + 1 && g._player().y === p0.y + 1, "both axes changed");
   });
 
   // ------------------------------- DOORS: CONTACT REVEALS, ENTER COMMITS ----
@@ -411,61 +432,71 @@ function TD_MAP_TESTS() {
   });
 
   // =========================================================================
-  // v18 R1 — ROOM GEOMETRY VARIETY (measured across 50 real dungeon seeds)
+  // v21 — DUNGEON ARCHITECTURE LAW v1 (tests are ARCHITECTURE, not topology).
+  // Replaces the v18 blob-variety survey, which measured footprint shape of open
+  // clusters; the corridors-first composer is graded on architecture instead. The
+  // deep per-node conformance lives in tests/run_architecture.py; this is the in-suite
+  // survey across 50 real seeds. (FLAGGED change: the old footprint-class, 25-40%-
+  // density, 3-6-cluster and symmetric-rect tests are retired — they encoded blobs.)
   // =========================================================================
-  var CXc = 20, CYc = 11;
-  function bucketOf(c) {
-    if (c.mainArea <= 14) return "cramped";
-    if (c.mainArea >= 110) return "grand";
-    if (c.mainAspect >= 2.2) return "wide";
-    if (c.mainAspect <= 0.45) return "tall";
-    if (c.mainFill >= 0.82) return "blocky";
-    if (c.mainFill < 0.55) return "sparse";
-    return "irregular";
-  }
-  // Round 1.5 survey — a node is a FLOOR (cluster of rooms), measured per instance
   function surveyGeometry() {
-    var buckets = {}, nodes = 0, unreach = 0, lens = [], wtally = { 1: 0, 2: 0, 3: 0 }, dens = [], roomCounts = [], symmetric = 0, totalRooms = 0;
+    var nodes = 0, unreach = 0, lens = [], wtally = { 1: 0, 2: 0, 3: 0 }, dens = [], roomCounts = [];
+    var openCorners = 0, roomsNoDoor = 0, corridorless = 0, states = {};
     for (var seed = 1; seed <= 50; seed++) {
       var w = TD_GEN.generate(seed), inc = {};
-      w.edges.forEach(function (e) { inc[e.from] = (inc[e.from] || 0) + 1; inc[e.to] = (inc[e.to] || 0) + 1; });
+      w.edges.forEach(function (e) { inc[e.from] = (inc[e.from] || 0) + 1; });
       var g = TD_MAP.create(w, { creatures: false, hazards: false });
       Object.keys(w.nodes).forEach(function (nk) {
-        var nd = Math.max(1, Math.min(8, inc[nk] || 1)), c = g._compose(nk, nd); nodes++;
-        buckets[bucketOf(c)] = (buckets[bucketOf(c)] || 0) + 1;
+        if (w.nodes[nk].vault) return;                 // vault interiors are hand-authored (law exempt)
+        var nd = inc[nk] || 0; if (nd < 1) return;
+        var c = g._compose(nk, nd); nodes++;
         dens.push(c.floorDensity); roomCounts.push(c.rooms);
-        (c.roomList || []).forEach(function (rm) { totalRooms++; if (rm.tag === "cross" || (rm.tag === "rect" && rm.aspect >= 0.7 && rm.aspect <= 1.4)) symmetric++; });
-        var grid2 = c.grid, seen = {}, q = [[c.spawn.x, c.spawn.y]]; seen[c.spawn.x + "," + c.spawn.y] = 1;
-        while (q.length) { var p = q.shift();[[p[0], p[1] - 1], [p[0], p[1] + 1], [p[0] - 1, p[1]], [p[0] + 1, p[1]]].forEach(function (n) { if (grid2[n[1]] && grid2[n[1]][n[0]] === "." && !seen[n[0] + "," + n[1]]) { seen[n[0] + "," + n[1]] = 1; q.push(n); } }); }
+        if (!c.corridorCells) corridorless++;
+        var grid2 = c.grid, H2 = grid2.length, W2 = grid2[0].length;
+        function fl(x, y) { return grid2[y] && grid2[y][x] === "."; }
+        function wl(x, y) { return !(grid2[y] && grid2[y][x] === "."); }
+        var seen = {}, q = [[c.spawn.x, c.spawn.y]]; seen[c.spawn.x + "," + c.spawn.y] = 1;
+        while (q.length) { var p = q.shift();[[p[0], p[1] - 1], [p[0], p[1] + 1], [p[0] - 1, p[1]], [p[0] + 1, p[1]]].forEach(function (n) { if (fl(n[0], n[1]) && !seen[n[0] + "," + n[1]]) { seen[n[0] + "," + n[1]] = 1; q.push(n); } }); }
         c.doorPts.forEach(function (d) { if (!seen[d.x + "," + d.y]) unreach++; });
+        (c.roomList || []).forEach(function (rm) { if (!rm.door || !seen[rm.door.x + "," + rm.door.y]) roomsNoDoor++; });
+        (c.roomDoors || []).forEach(function (rd) { states[rd.state] = (states[rd.state] || 0) + 1; });
+        for (var y = 0; y < H2 - 1; y++) for (var x = 0; x < W2 - 1; x++) {
+          if (fl(x, y) && fl(x + 1, y + 1) && wl(x + 1, y) && wl(x, y + 1)) openCorners++;
+          if (fl(x + 1, y) && fl(x, y + 1) && wl(x, y) && wl(x + 1, y + 1)) openCorners++;
+        }
         c.corrLens.forEach(function (l) { lens.push(l); }); c.corrWidths.forEach(function (x) { if (wtally[x] !== undefined) wtally[x]++; });
       });
     }
-    return { buckets: buckets, nodes: nodes, unreach: unreach, lens: lens, wtally: wtally, dens: dens, roomCounts: roomCounts, symmetric: symmetric, totalRooms: totalRooms };
+    return { nodes: nodes, unreach: unreach, lens: lens, wtally: wtally, dens: dens, roomCounts: roomCounts,
+      openCorners: openCorners, roomsNoDoor: roomsNoDoor, corridorless: corridorless, states: states };
   }
   var GEO = surveyGeometry();
   function median(a) { a = a.slice().sort(function (x, y) { return x - y; }); return a[Math.floor(a.length / 2)]; }
 
-  test("CONSTRUCTION LAW: at least 5 distinct room footprint classes appear (50 seeds)", function () {
-    var n = Object.keys(GEO.buckets).length;
-    assert(n >= 5, "only " + n + " footprint classes: " + JSON.stringify(GEO.buckets));
+  test("ARCHITECTURE: every node has a corridor net; rooms reach it through a doorway", function () {
+    eq(GEO.corridorless, 0, "nodes with no corridor: " + GEO.corridorless);
+    eq(GEO.roomsNoDoor, 0, "rooms not reaching the corridor via a doorway: " + GEO.roomsNoDoor);
   });
 
-  test("R1.5 FLOOR DENSITY: a level fills 25-40% of the screen (not one room at ~12%)", function () {
+  test("ARCHITECTURE: zero open-corner adjacencies across 50 seeds", function () {
+    eq(GEO.openCorners, 0, "diagonal floor leaks: " + GEO.openCorners);
+  });
+
+  test("ARCHITECTURE: density is corridors-and-rooms (legible), never a blob", function () {
     var md = median(GEO.dens), mx = Math.max.apply(null, GEO.dens);
-    assert(md >= 0.25 && md <= 0.40, "median floor density is " + (100 * md).toFixed(0) + "% (target 25-40%)");
-    assert(mx <= 0.52, "no level is a near-solid blob (densest is " + (100 * mx).toFixed(0) + "%)");
+    assert(md >= 0.06 && md <= 0.30, "median floor density is " + (100 * md).toFixed(0) + "% (corridors-first band 6-30%)");
+    assert(mx <= 0.42, "no node is a blob (densest is " + (100 * mx).toFixed(0) + "%)");
   });
 
-  test("R1.5 CLUSTER: every level is 3-6 rooms (not a single chamber)", function () {
+  test("ARCHITECTURE: rooms hang off the corridor (a few per node)", function () {
     var mn = Math.min.apply(null, GEO.roomCounts), mx = Math.max.apply(null, GEO.roomCounts);
-    assert(mn >= 3 && mx <= 6, "rooms per level span " + mn + "-" + mx + " (law: 3-6)");
-    assert(median(GEO.roomCounts) >= 4, "the typical level has several spaces (median " + median(GEO.roomCounts) + ")");
+    assert(mn >= 1 && mx <= 7, "rooms per node span " + mn + "-" + mx);
+    assert(median(GEO.roomCounts) >= 2, "the typical node has several rooms (median " + median(GEO.roomCounts) + ")");
   });
 
-  test("R1.5 SYMMETRIC LAW (as a test): crosses + symmetric rects < 10% of rooms", function () {
-    var pct = 100 * GEO.symmetric / GEO.totalRooms;
-    assert(pct < 10, "symmetric (cross/square) rooms are " + pct.toFixed(1) + "% of " + GEO.totalRooms + " (law: <10%)");
+  test("ARCHITECTURE: doors carry states (closed / ajar / open all occur)", function () {
+    assert(GEO.states.closed && GEO.states.ajar && GEO.states.open,
+      "all three door states appear: " + JSON.stringify(GEO.states));
   });
 
   test("R1.5 HALLWAYS: corridors of width 1 AND 2 AND 3 all occur, lengths vary", function () {

@@ -287,7 +287,7 @@
         var seen = exp.has(k), bright = vis.has(k);
         if (!seen) continue;
         var ch = vw.grid[y][x], px = x * TS, py = y * TS;
-        var door = (vw.doors || {})[k], plain = (vw.plain || {})[k];
+        var door = (vw.doors || {})[k], plain = (vw.plain || {})[k], rdoor = (vw.roomDoors || {})[k];
         var glyph = "", col = "#000", bg = null;
         if (door) {
           bg = (vw.pendingDoor === k) ? P.pendingBg : P.doorBg; col = door.red ? P.redlight : P.door;
@@ -298,6 +298,10 @@
           else glyph = "+";
         } else if (plain) {
           bg = (vw.pendingDoor === k) ? P.pendingBg : "#37301f"; glyph = plain.open ? "'" : "+"; col = P.door;
+        } else if (rdoor) {
+          // v21 — a room doorway in a wall run, rendered by state (Dungeon Architecture Law):
+          // closed "+", ajar "╎", open "'". One hue (the door hue); glyph distinguishes state.
+          bg = "#37301f"; col = P.door; glyph = rdoor.state === "open" ? "'" : (rdoor.state === "ajar" ? "╎" : "+");
         } else if (ch === ".") {
           var gt = vw.ground && vw.ground[k];                                  // C3 ground variation (render-only)
           if (gt === "redlight") { bg = "#3a1622"; glyph = "·"; col = P.redlight; }   // the red-lit district
@@ -725,7 +729,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map vO", BUILD = "7bd65f7";
+  var VERSION = "play-map vP", BUILD = "f5dc963";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();
