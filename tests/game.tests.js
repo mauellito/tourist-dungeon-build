@@ -419,6 +419,45 @@ function TD_GAME_TESTS() {
     assert(v.creatures.length >= 2 && v.creatures.every(function (c) { return c.friendly; }), "2+ friendly patrons");
   });
 
+  // E1 — ENTRY ANNOUNCEMENT
+  test("E1 ANNOUNCEMENT: entering a named space posts exactly one banner welcome; quick re-entry does not spam", function () {
+    var g = game();
+    var before = g._shared().messages.length;
+    g._goto("hotel");
+    var ann = g._shared().messages.slice(before).filter(function (m) { return m.banner && /entered/i.test(m.text); });
+    eq(ann.length, 1, "exactly one banner announcement on entry");
+    assert(/HOTEL|KRAKEN/i.test(ann[0].text), "it names the place: " + ann[0].text);
+    // quick re-entry (no turns pass) must NOT re-announce
+    var mid = g._shared().messages.length;
+    g._goto("hotel");
+    var again = g._shared().messages.slice(mid).filter(function (m) { return m.banner; });
+    eq(again.length, 0, "re-entering the same space in quick succession does not spam");
+  });
+
+  test("E1 ANNOUNCEMENT: crossing into a town district announces it (the Bureau welcomes you)", function () {
+    var g = game(); var rl = g._town().meta.redlight.rect;
+    g._warp(rl[0] + 1, rl[1] - 2);                          // just outside the red-light mouth
+    var before = g._shared().messages.length;
+    // step into the district (walk toward the mouth); find an open tile inside
+    var done = false;
+    for (var i = 0; i < 30 && !done; i++) { g.move("down"); if (g._shared().messages.slice(before).some(function (m) { return m.banner && /RED LIGHT/i.test(m.text); })) done = true; }
+    assert(done, "entering the red-light district posts its banner");
+  });
+
+  test("E2: the town view exposes named buildings + the entrance; size grammar survives", function () {
+    var g = game(); var v = g.view();
+    assert(v.buildings && v.buildings.length >= 10, "the view carries the building list (" + (v.buildings || []).length + ")");
+    var church = v.buildings.filter(function (b) { return b.id === "church"; })[0];
+    var hotel = v.buildings.filter(function (b) { return b.id === "hotel"; })[0];
+    assert(church && church.glyph === "C" && TD_UI.buildingCategory("church") === "faith", "the church reads as faith (glyph C)");
+    assert(hotel && hotel.glyph === "H" && TD_UI.buildingCategory("hotel") === "lodging", "the hotel reads as lodging (glyph H)");
+    assert(v.dungeonEntrance, "the dungeon entrance is exposed for the map");
+    v.buildings.forEach(function (b) { if (b.id !== "church") assert(church.area >= b.area, "size grammar: church >= " + b.id); });
+    // the C2 storefront grammar is present to render (operator reported it did not read)
+    var by = {}; Object.keys(v.features).forEach(function (k) { var t = v.features[k].type; by[t] = (by[t] || 0) + 1; });
+    assert((by.window || 0) >= 5 && (by.awning || 0) >= 3 && (by.sign || 0) >= 3, "storefront features present to render (win/awn/sign " + by.window + "/" + by.awning + "/" + by.sign + ")");
+  });
+
   test("a named NPC spec overrides the type pool", function () {
     var named = TD_VOICES.dialogue("vendor", "townsfolk"), type = TD_VOICES.dialogue("townsfolk", "townsfolk");
     assert(/cart|permit/i.test(named.greetings.join(" ")), "the named vendor pool is used, not the townsfolk type pool");

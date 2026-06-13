@@ -101,6 +101,7 @@
     background:rgba(140,28,22,.94); color:#fff; font-family:"Georgia",serif; font-weight:bold; font-size:14px;
     padding:7px 16px; border:1px solid #f4e3b0; border-radius:4px; opacity:0; pointer-events:none; box-shadow:0 1px 8px rgba(0,0,0,.4); }
   .banner.show { animation: flashbanner 2s ease forwards; }
+  .banner.entry { background:rgba(42,38,28,.95); border-color:#caa15a; color:#f3e7c8; }   /* E1 entry announcement: Bureau brass, not crisis red */
   @keyframes flashbanner { 0%{opacity:0;transform:translateX(-50%) translateY(-6px);} 8%{opacity:1;transform:translateX(-50%) translateY(0);} 72%{opacity:1;} 100%{opacity:0;} }
 
   /* the --more-- halt */
@@ -317,6 +318,21 @@
         if (glyph) { ctx.fillStyle = bright ? col : dim(col); ctx.fillText(glyph, px + TS / 2, py + TS / 2 + 1); }
       }
     }
+    // E2 — each named building's GLYPH, large + centred on its footprint, coloured
+    // by KIND (civic/lodging/faith/commerce/vice). You read the town without entering.
+    (vw.buildings || []).forEach(function (b) {
+      if (!/^[A-Z0-9]$/.test(b.glyph || "")) return;                       // the named buildings only (skip filler sheds/homes)
+      ctx.font = Math.round(TS * 1.7) + "px Consolas, monospace";
+      ctx.fillStyle = (window.TD_UI && TD_UI.buildingColor) ? TD_UI.buildingColor(b.id) : P.wall;
+      ctx.fillText(b.glyph, (b.x0 + b.w / 2) * TS, (b.y0 + b.h / 2) * TS + 1);
+    });
+    if (vw.dungeonEntrance) {                                              // the dungeon entrance mouth, largest of all
+      var de = vw.dungeonEntrance;
+      ctx.font = Math.round(TS * 1.9) + "px Consolas, monospace";
+      ctx.fillStyle = (window.TD_UI && TD_UI.buildingColor) ? TD_UI.buildingColor("DUNGEON") : P.door;
+      ctx.fillText("Ω", (de.rect[0] + de.rect[2] + 1) / 2 * TS, (de.rect[1] + de.rect[3] + 1) / 2 * TS + 1);
+    }
+    ctx.font = FONT;                                                        // restore the tile font
     Object.keys(vw.items || {}).forEach(function (k) {
       if (!vis.has(k)) return;
       var it = vw.items[k], xy = k.split(","), ix = +xy[0], iy = +xy[1];
@@ -547,9 +563,10 @@
   function setReviewFilter(f) { reviewFilter = f; renderReview(); }
   function maybeBanner(vw) {
     var msgs = vw.messages || [], m = msgs[msgs.length - 1];
-    if (m && m.urgent && m !== lastCrit) {
+    if (m && (m.urgent || m.banner) && m !== lastCrit) {
       lastCrit = m; bannerEl.textContent = m.text;
-      bannerEl.classList.remove("show"); void bannerEl.offsetWidth; bannerEl.classList.add("show");
+      bannerEl.className = "banner" + (m.banner && !m.urgent ? " entry" : "");   // E1: entry announcements get Bureau-brass, not crisis red
+      void bannerEl.offsetWidth; bannerEl.classList.add("show");
     }
   }
   // the --more-- halt: a pending critical shows here; the keydown handler blocks input
@@ -708,7 +725,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map vI", BUILD = "3841a77";
+  var VERSION = "play-map vJ", BUILD = "aa12d26";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

@@ -94,7 +94,7 @@ var TD_GAME = (function () {
     });
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
-    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, pendingExit, exitReturn, left, returnScreen;
+    var invOpen, invSel, look, sensedWater, vendor, pendingVendor, pendingExit, exitReturn, left, returnScreen, lastDungeonLevel;
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
@@ -105,6 +105,7 @@ var TD_GAME = (function () {
       placeId = START_SCREEN; dungeon = null; dead = false; won = false; returnScreen = START_SCREEN;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; pendingExit = false; exitReturn = null; left = false;
+      lastDungeonLevel = null; announcedAt = {};
       buildPlaces();
       player = { x: places[START_SCREEN].spawn.x, y: places[START_SCREEN].spawn.y };
       vendor = null;
@@ -118,8 +119,27 @@ var TD_GAME = (function () {
     function logMsg(t, urgent, meta) {
       if (!t) return; meta = meta || {};
       lastEvent = t; lastUrgent = !!urgent;
-      shared.messages.push({ text: t, urgent: !!urgent, ch: meta.ch || "event", kind: meta.kind || null, obj: meta.obj || null });
+      shared.messages.push({ text: t, urgent: !!urgent, ch: meta.ch || "event", kind: meta.kind || null, obj: meta.obj || null, banner: !!meta.banner });
       if (shared.messages.length > 120) shared.messages.shift();
+    }
+    // E1 — ENTRY ANNOUNCEMENT: on crossing into a named space, the Bureau welcomes
+    // you (one line, banner-flagged). Debounced per-label so quick re-entry of the
+    // same space does not spam (a genuine return, many turns later, re-announces).
+    var announcedAt = {};
+    function announce(label) {
+      if (!label) return;
+      var t = (typeof shared.turn === "number") ? shared.turn : 0;
+      if (announcedAt[label] != null && (t - announcedAt[label]) < 8) return;
+      announcedAt[label] = t;
+      logMsg("You have entered " + label.toUpperCase() + ".", false, { banner: true });
+    }
+    function inRect(r, x, y) { return r && x >= r[0] && y >= r[1] && x <= r[2] && y <= r[3]; }
+    function districtAt(x, y) {
+      var T = places.TOWN, m = T ? T.meta : null; if (!m) return null;
+      if (m.redlight && inRect(m.redlight.rect, x, y)) return "the Red Light District";
+      if (m.districts.waterfront && inRect(m.districts.waterfront.rect, x, y)) return "the Waterfront";
+      if (m.districts.market && inRect(m.districts.market.rect, x, y)) return "the Market";
+      return null;
     }
     function senses(t, kind, obj, urgent) { logMsg(t, !!urgent, { ch: "senses", kind: kind, obj: obj }); }
     function makeRation() { return TD_MAP.makeItem("ration"); }
@@ -389,6 +409,7 @@ var TD_GAME = (function () {
       if (P.exit && nx === P.exit.x && ny === P.exit.y) { pendingExit = true; exitReturn = { x: ox, y: oy }; logMsg("The Bureau reminds departing visitors that itineraries, once surrendered, are not reissued. Leave town? (y / n)"); return { moved: true, exitPrompt: true }; }
       shared.turn += 1;
       walkersStep();
+      var dist = districtAt(nx, ny); if (dist) announce(dist);            // E1: crossing into a named district
       // the senses emitter (town): the harbour makes itself heard near the water
       var nearW = waterAdjacent(P, nx, ny);
       if (nearW && !sensedWater) senses("Down at the quay the water laps at the stone, patient and cold.", "heard", "OBJ");
@@ -691,6 +712,7 @@ var TD_GAME = (function () {
       if (to === "locked") { logMsg("The door is locked; no one answers. (A stub, for now.)"); return; }   // filler stub
       returnTile = { x: player.x, y: player.y }; returnScreen = isTownScreen(placeId) ? placeId : returnScreen;   // come back to this screen, where we entered
       placeId = to; player = { x: places[to].spawn.x, y: places[to].spawn.y };
+      announce(places[to].title);                                          // E1: the Bureau welcomes you in
       logMsg((places[to].sign || []).join("  —  "));
       var vb = voice(KEEPER[to]); if (vb) { speak(vb, "greeting"); speak(vb, "reaction", playerState()); }   // the keeper speaks
     }
@@ -699,6 +721,8 @@ var TD_GAME = (function () {
       if (dungeon.isDead() && !dead) { dead = true; bankKnowledge(); }
       if (dungeon.isComplete()) won = true;
       lastEvent = dungeon.view().lastEvent;
+      var lvl = dungeon.view().level;                                     // E1: announce on entering a new dungeon level
+      if (lvl >= 1 && lvl !== lastDungeonLevel) { lastDungeonLevel = lvl; announce("the Dungeon — Level " + lvl); }
     }
 
     // ---- views -----------------------------------------------------------
@@ -712,6 +736,7 @@ var TD_GAME = (function () {
         phase: town ? "town" : "interior", w: pw, h: ph, screen: placeId,
         grid: P.grid.map(function (r) { return r.join(""); }),
         doors: P.doors, features: P.features, ground: P.ground || {}, items: {}, plain: {},
+        buildings: town ? (P.buildings || []) : [], dungeonEntrance: town && P.meta ? P.meta.dungeonEntrance : null,   // E2: read at a glance
         player: { x: player.x, y: player.y },
         creatures: town
           ? npcs().map(function (n) { return { x: n.x, y: n.y, kind: "npc", glyph: n.glyph, name: n.name, hp: 1, maxHp: 1, dmg: 0, friendly: true }; })
@@ -784,7 +809,7 @@ var TD_GAME = (function () {
       _place: function () { return placeId; }, _player: function () { return player; },
       _dungeon: function () { return dungeon; },
       _shared: function () { return shared; },
-      _goto: function (id) { pendingDoor = null; pendingCounter = null; pendingVendor = false; placeId = id; player = { x: places[id].spawn.x, y: places[id].spawn.y }; return view(); },
+      _goto: function (id) { pendingDoor = null; pendingCounter = null; pendingVendor = false; placeId = id; player = { x: places[id].spawn.x, y: places[id].spawn.y }; if (places[id] && places[id].title && !isTownScreen(id) && id !== "DUNGEON") announce(places[id].title); return view(); },
       _pendingCounter: function () { return pendingCounter ? pendingCounter.act : null; },
       _pendingVendor: function () { return pendingVendor; },
       _vendor: function () { return vendor; },

@@ -174,6 +174,21 @@ function TD_UI_TESTS() {
     assert(/Bureau|one-way/.test(b.lines.first_descent), "barks are in the municipal voice");
   });
 
+  test("E2: a building's KIND is classifiable, and each kind owns a distinct hue", function () {
+    var cat = TD_UI.buildingCategory;
+    eq(cat("church"), "faith", "church is faith");
+    eq(cat("hotel"), "lodging", "hotel is lodging");
+    eq(cat("motel"), "lodging", "motel is lodging");
+    eq(cat("bank"), "civic", "bank is civic");
+    eq(cat("DUNGEON"), "civic", "the dungeon office/entrance is civic");
+    eq(cat("redshop"), "vice", "red-light shop is vice");
+    eq(cat("coffee"), "commerce", "a shop defaults to commerce");
+    var ids = { faith: "church", lodging: "hotel", civic: "bank", vice: "redshop", commerce: "coffee" };
+    var hues = Object.keys(ids).map(function (k) { return TD_UI.buildingColor(ids[k]); });
+    var uniq = hues.filter(function (v, i, a) { return a.indexOf(v) === i; });
+    eq(uniq.length, 5, "the five building kinds own five distinct hues");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

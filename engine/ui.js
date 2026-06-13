@@ -30,6 +30,11 @@ var TD_UI = (function () {
     gate:      "#caa15a",  // brass — a gate (passage through a barrier)
     storefront: "#b5763e", // terracotta — commercial frontage (shop sign / window / awning)
     fixture:    "#8f8a7a", // pewter — fixed street furniture (lamppost, bench, crate, well, hitching post)
+    // building-KIND hues (E2: read a building's function from its glyph colour)
+    civic:     "#9aa6b8", // slate — civic / bureaucratic (bank, agency, kiosk, tim, the dungeon office)
+    lodging:   "#b58fd0", // lavender — lodging (hotel, motel)
+    faith:     "#dcc879", // pale gold — faith (the church)
+    vice:      "#e0559a", // = redlight pink — vice (red-light businesses)
     // damage-number meanings (kept consistent with the category rules)
     dmgDealt: "#f5c542",   // = player gold (your output)
     dmgTaken: "#ff2d1f",   // = critical red (harm to you)
@@ -207,8 +212,21 @@ var TD_UI = (function () {
     };
   }
 
+  // E2 — classify a building by FUNCTION so its glyph can be coloured by kind
+  // (civic / lodging / faith / commerce / vice). Glyph still tells the specific
+  // building; colour tells the category at a glance.
+  var BUILDING_KIND = {
+    church: "faith",
+    hotel: "lodging", motel: "lodging",
+    bank: "civic", agency: "civic", kiosk: "civic", tim: "civic", DUNGEON: "civic", office: "civic",
+    bodega: "vice", redshop: "vice", redlit: "vice", palmreader: "vice"
+  };
+  function buildingCategory(id) { return BUILDING_KIND[id] || "commerce"; }   // commerce is the default frontage
+  function buildingColor(id) { var c = buildingCategory(id); return c === "commerce" ? PALETTE.storefront : (c === "vice" ? PALETTE.vice : PALETTE[c]); }
+
   return {
     PALETTE: PALETTE, CATEGORY_KEYS: CATEGORY_KEYS,
+    buildingCategory: buildingCategory, buildingColor: buildingColor,
     autoExplore: autoExplore, stepToFrontier: stepToFrontier,
     labels: labels, threats: threats, moreGate: moreGate,
     Barker: Barker, BARK_LINES: BARK_LINES,
