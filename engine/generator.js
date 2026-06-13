@@ -204,7 +204,9 @@ var TD_GEN = (function () {
     if (vaultsOn) {
       var placed = 0;
       for (var VL = 1; VL <= depth; VL++) {
-        var pool = TD_VAULTS.forLevel(VL);
+        // exclude the "placed" family (libraries, office interior) — those are placed
+        // deterministically by their own passes, not rolled into the random splice.
+        var pool = TD_VAULTS.forLevel(VL).filter(function (v) { return !(v.tags && v.tags.indexOf("placed") >= 0); });
         if (!pool.length) continue;
         // v18 R3 (outcome #4): a vault EVERY level. Guarantee one per level
         // (was a per-level coin-flip, so levels often had none); a second is
@@ -304,6 +306,25 @@ var TD_GEN = (function () {
       label: "Duck into the Cafeteria (the door sighs shut behind you)." });
     edge({ id: "e_caf_out", from: "cafeteria", to: "hub_" + depth, label: "Leave the Cafeteria, back to the concourse." });
 
+    // ---- v20 R2 — THE LIBRARY FAMILY as placed rooms. One library per level (the four
+    // cycle by level); the DEEPEST level (>=3) is Finis Africae, the forbidden innermost.
+    // Each is a placed vault node — node.vault renders its hand-authored interior and its
+    // register-voice signage — two-way to the hub, region discontinued, announced by
+    // title. STATIC dressing; no mechanics. (Skipped if the vault library is unavailable.)
+    if (typeof TD_VAULTS !== "undefined") {
+      var LIB_CYCLE = ["dungeon-library", "ghost-library", "dragon-library", "monster-library"];
+      for (var LB = 1; LB <= depth; LB++) {
+        var libId = (LB === depth && depth >= 3) ? "finis-africae" : LIB_CYCLE[(LB - 1) % LIB_CYCLE.length];
+        var lv = TD_VAULTS.byId(libId);
+        if (!lv) continue;
+        var lnid = "library_" + LB;
+        node(lnid, { level: LB, vault: libId, tags: (lv.tags || []).slice(), region: "discontinued",
+          title: "Level " + LB + " — " + lv.title, desc: "A placed room: " + lv.title + "." });
+        edge({ id: "e_lib_in_" + LB, from: "hub_" + LB, to: lnid, label: "Step into " + lv.title + "." });
+        edge({ id: "e_lib_out_" + LB, from: lnid, to: "hub_" + LB, label: "Leave " + lv.title + ", back to the concourse." });
+      }
+    }
+
     // ---- v19 R1 — STAIR LATTICE: the legible SPINE vs the DISCONTINUED regions,
     // and one Bureau OFFICE per level (static set dressing — door, sign, a posted
     // closure notice as FIXED flavour; calendar-driven closure stays firewalled). -
@@ -324,7 +345,10 @@ var TD_GEN = (function () {
     ];
     for (var OL = 1; OL <= depth; OL++) {
       var oid = "office_" + OL;
-      node(oid, { level: OL, office: true, region: "discontinued",
+      // v20 R2 — OFFICES AS PLACES: a vault layout gives the office a real interior (a
+      // shuttered counter, a handbell), rendered instead of a procedural room. The
+      // per-level closure notice stays in the desc; the office flag/region are unchanged.
+      node(oid, { level: OL, office: true, region: "discontinued", vault: "bureau-office",
         title: "Level " + OL + " — the Bureau Office",
         desc: "The level's Office, as advertised — a door, a sign, and posted upon it: “" + CLOSURE[(OL - 1) % CLOSURE.length] + "”" });
       edge({ id: "e_office_in_" + OL, from: "hub_" + OL, to: oid, label: "Step off the main way to the Level " + OL + " Office." });

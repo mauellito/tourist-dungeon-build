@@ -74,6 +74,130 @@ var TD_VAULTS = (function () {
       items: [{ x: 1, y: 1, kind: "bandage" }],
       creatures: [],
       secret: { x: 5, y: 1, tell: "rhyme", kind: "souvenir" }
+    },
+
+    // ---- v20 R2 — THE LIBRARY FAMILY + the office interior. Placed deterministically
+    // by the generator (tag "placed" keeps them OUT of the random splice). Bookshelves
+    // are "#" stacks (the only renderable wall glyph) read as aisles; signage is a
+    // register-voice feature; every secret tell is from the one vocabulary. STATIC
+    // dressing — no mechanics. Finis Africae is the forbidden innermost, deepest only.
+    {
+      id: "dungeon-library", title: "The Dungeon Library", tags: ["library", "placed"],
+      levels: [1, 9], rarity: 0, required: false, connections: 1, size: [11, 9],
+      layout: [
+        "###########",
+        "#.........#",
+        "#.#.#.#.#.#",
+        "#.#.#.#.#.#",
+        "+....@....#",
+        "#.#.#.#.#.#",
+        "#.#.#.#.#.#",
+        "#.........#",
+        "###########"
+      ],
+      features: [{ x: 5, y: 1, glyph: "¶", channel: "OBJ", kind: "seen", obj: "OBJ",
+        text: "BUREAU OF SUBTERRANEAN RECORDS. Silence is the first citation; the second is not posted, for reasons the first should make plain." }],
+      items: [{ x: 1, y: 1, kind: "ration" }],
+      creatures: [],
+      secret: { x: 2, y: 2, tell: "hollow", kind: "bandage" }
+    },
+    {
+      id: "ghost-library", title: "The Ghost Library", tags: ["library", "placed"],
+      levels: [1, 9], rarity: 0, required: false, connections: 1, size: [11, 9],
+      layout: [
+        "###########",
+        "#.........#",
+        "#..#...#..#",
+        "#.........#",
+        "+....@....#",
+        "#.........#",
+        "#..#...#..#",
+        "#.........#",
+        "###########"
+      ],
+      features: [{ x: 5, y: 7, glyph: "¶", channel: "OBJ", kind: "seen", obj: "OBJ",
+        text: "DEPARTMENT OF FORMER PERSONS. Returns are accepted at any hour; the dead, as a class, keep irregular ones." }],
+      items: [{ x: 9, y: 1, kind: "souvenir" }],
+      creatures: [],
+      secret: { x: 3, y: 2, tell: "draft", kind: "ration" }
+    },
+    {
+      id: "dragon-library", title: "The Dragon Library", tags: ["library", "placed"],
+      levels: [2, 9], rarity: 0, required: false, connections: 1, size: [11, 9],
+      layout: [
+        "###########",
+        "#.#.#.#.#.#",
+        "#.........#",
+        "#.........#",
+        "+...@.....#",
+        "#.........#",
+        "#.........#",
+        "#.#.#.#.#.#",
+        "###########"
+      ],
+      features: [{ x: 6, y: 4, glyph: "¶", channel: "OBJ", kind: "seen", obj: "OBJ",
+        text: "REGISTRY OF LARGE CLAIMANTS. Do not wake the catalogue. It is current, it is enormous, and it remembers being borrowed from." }],
+      items: [{ x: 5, y: 2, kind: "ration" }],
+      creatures: [],
+      secret: { x: 2, y: 1, tell: "rhyme", kind: "souvenir" }
+    },
+    {
+      id: "monster-library", title: "The Monster Library", tags: ["library", "placed"],
+      levels: [1, 9], rarity: 0, required: false, connections: 1, size: [11, 9],
+      layout: [
+        "###########",
+        "#.#.#.#.#.#",
+        "#.#.#.#.#.#",
+        "#.........#",
+        "+....@....#",
+        "#.........#",
+        "#.#.#.#.#.#",
+        "#.#.#.#.#.#",
+        "###########"
+      ],
+      features: [{ x: 5, y: 3, glyph: "¶", channel: "OBJ", kind: "seen", obj: "OBJ",
+        text: "INDEX OF UNFILED THINGS. Every title here was shelved under itself, against the advice of everyone who survived the attempt." }],
+      items: [{ x: 1, y: 3, kind: "bandage" }],
+      creatures: [],
+      secret: { x: 2, y: 1, tell: "hollow", kind: "souvenir" }
+    },
+    {
+      id: "finis-africae", title: "Finis Africae", tags: ["library", "forbidden", "placed"],
+      levels: [3, 9], rarity: 0, required: false, connections: 1, size: [9, 9],
+      layout: [
+        "#########",
+        "#.......#",
+        "#.#####.#",
+        "#.#...#.#",
+        "+...@.#.#",
+        "#.#.#.#.#",
+        "#.#.#...#",
+        "#.....#.#",
+        "#########"
+      ],
+      features: [{ x: 1, y: 1, glyph: "¶", channel: "OBJ", kind: "seen", obj: "OBJ",
+        text: "FINIS AFRICAE — the end of the map. No card admits you that you would still be holding on the way out." }],
+      items: [],
+      creatures: [],
+      secret: { x: 5, y: 2, tell: "rhyme", kind: "souvenir" }
+    },
+    {
+      id: "bureau-office", title: "the Bureau Office", tags: ["office", "placed"],
+      levels: [1, 9], rarity: 0, required: false, connections: 1, size: [9, 7],
+      layout: [
+        "#########",
+        "#.......#",
+        "#.......#",
+        "+...@...#",
+        "#.#####.#",
+        "#.......#",
+        "#########"
+      ],
+      features: [{ x: 4, y: 5, glyph: "¶", channel: "OBJ", kind: "seen", obj: "OBJ",
+        text: "The counter, shuttered. A handbell, a sign reserving the right to be elsewhere, and a queue-tape across a chair no one will sit in." }],
+      items: [],
+      creatures: [],
+      secret: { x: 4, y: 4, tell: "hollow", kind: "ration" }
     }
   ];
 
