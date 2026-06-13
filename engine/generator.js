@@ -23,6 +23,55 @@ var TD_GEN = (function () {
     "Somewhere above, a door you cannot see is breathing."
   ];
 
+  // v19 R2 — REMOTE UNLOCKS ON THE LATTICE. Each is a state-conditional edge: a
+  // placed MECHANISM node (visiting it grants a STATIC condition flag) and a placed
+  // LOCKED node (a door that requires that flag), both two-way to the level hub, and
+  // an omen that telegraphs the door (graded by its tell — draft = faint, hollow =
+  // nearer, rhyme = a legible clue). The flag is pure lattice topology, exactly like
+  // the depth-unlocks-breadth token; NOTHING here keys to the calendar, economy, or a
+  // permit/horoscope SYSTEM — those stay firewalled. The flavours that NAME such
+  // systems (permit, exact-change, horoscope) read their condition off a placed node
+  // you visit, with the real system left as a FUTURE HOOK (see the divination canon).
+  // `tell` is a key into TD_VAULTS.TELLS — the one tell vocabulary; never invent one.
+  var UNLOCKS = [
+    { key: "closet",    tell: "hollow",
+      mechTitle: "A Maintenance Recess", mechDesc: "A recess with a numbered hook and a key that is, against all municipal odds, present. You pocket it.",
+      doorTitle: "The Impenetrable Closet", doorDesc: "The closet that would not open now obliges, the borrowed key turning with a grudge.",
+      omen: "Your knuckles find a hollow note in a closet door three corridors back." },
+    { key: "lever",     tell: "rhyme",
+      mechTitle: "The Lever Room", mechDesc: "A lever, helpfully labelled for a door it does not adjoin. You throw it; something distant gives.",
+      doorTitle: "The Lever-Sprung Door", doorDesc: "The door the far lever governs, now sprung ajar and faintly resentful about it.",
+      omen: "A scratched couplet by the stair rhymes a lever with a door it cannot see." },
+    { key: "ghost",     tell: "draft",
+      mechTitle: "A Witnessed Vigil", mechDesc: "A cold spot, a register of names, and the expectation that you sign. Witnessed, the cold relents.",
+      doorTitle: "The Ghost Door", doorDesc: "A door that was only ever shut by a draft; witnessed, the draft has gone elsewhere.",
+      omen: "A cold draft slides from a door that the map swears is solid." },
+    { key: "well",      tell: "draft",
+      mechTitle: "The Overpaid Well", mechDesc: "A wishing-well with a posted minimum and a grateful echo for anyone who exceeds it. You overpay.",
+      doorTitle: "The Well-Obliged Grate", doorDesc: "A grate that opens, the notice says, only to the conspicuously generous. You qualified.",
+      omen: "Air moves, coin-cold, from a grate near the overpaid well." },
+    { key: "permit",    tell: "rhyme",
+      mechTitle: "The Permit Counter", mechDesc: "A counter, a stamp, and a form already three-quarters complete. Stamped, it is suddenly a credential.",
+      doorTitle: "The Permit Door", doorDesc: "The door that admits only the permitted. Your stamp, fresh, is grudgingly accepted.",
+      omen: "A scratched line by the door cites a permit number you have only just earned." },
+    { key: "change",    tell: "hollow",
+      mechTitle: "The Change Machine", mechDesc: "A machine that makes change and, with a hollow clunk, a particular exact-change you did not know you needed.",
+      doorTitle: "The Exact-Change Door", doorDesc: "A turnstile insisting on exact change. You have, improbably, exact change.",
+      omen: "A hollow clunk answers your knock on the exact-change door." },
+    { key: "horoscope", tell: "rhyme",
+      mechTitle: "The Posted Horoscope", mechDesc: "A horoscope, posted and undated, whose reading happens to concern a door. You read it; it reads back.",
+      doorTitle: "The Horoscope Door", doorDesc: "A door the posted reading favours. (The calendar that would truly govern it is not yet wired.)",
+      omen: "A scratched couplet under the horoscope rhymes your sign with a nearby door." },
+    { key: "patron",    tell: "draft",
+      mechTitle: "A Patron's Confidence", mechDesc: "A patron, leaning, who tells you a thing about a door in exchange for nothing you will miss.",
+      doorTitle: "The Tipped-Off Door", doorDesc: "The door the patron meant — you would never have found it, and now cannot un-know it.",
+      omen: "A draft, and a patron's muttered hint, point the same way at once." },
+    { key: "scratched", tell: "rhyme",
+      mechTitle: "The Scratched Name", mechDesc: "A name scratched into the plaster, and the strong sense it is a password as much as a memorial.",
+      doorTitle: "The Scratched-Name Door", doorDesc: "A door that answers to a name. You have, lately, learned the name.",
+      omen: "A scratched name by the lintel rhymes, unmistakably, with this door." }
+  ];
+
   function generate(seed, opts) {
     opts = opts || {};
     var rng = TD_RNG.make((seed >>> 0) || 1);
@@ -190,6 +239,29 @@ var TD_GEN = (function () {
         desc: "Calendar omens permitting." });
     }
 
+    // ---- v19 R2 — REMOTE UNLOCKS: one state-conditional unlock per dungeon level.
+    // The mechanism node grants a STATIC condition flag; the locked door requires it;
+    // an omen telegraphs the (consequential) locked edge so no signal is orphaned and
+    // no door is untelegraphed. The Phase 5.5 irrelevant-flag collapse keeps these
+    // cheap — each cond_* gates only its own optional, two-way closet.
+    var unlockFlavours = [];                          // for meta/render: per-level flavour + edges
+    for (var UL = 1; UL <= depth; UL++) {
+      var uf = UNLOCKS[((seed >>> 0) + UL) % UNLOCKS.length];
+      var cond = "cond_" + uf.key + "_" + UL;
+      var mechId = "unlock_" + uf.key + "_" + UL, lockId = "locked_" + uf.key + "_" + UL;
+      node(mechId, { level: UL, region: "discontinued", title: "Level " + UL + " — " + uf.mechTitle, desc: uf.mechDesc });
+      node(lockId, { level: UL, region: "discontinued", title: "Level " + UL + " — " + uf.doorTitle, desc: uf.doorDesc });
+      edge({ id: "e_mech_in_" + uf.key + "_" + UL, from: "hub_" + UL, to: mechId, grants: [cond],
+        label: "See to " + uf.mechTitle + " (the condition for a door elsewhere on this level)." });
+      edge({ id: "e_mech_out_" + uf.key + "_" + UL, from: mechId, to: "hub_" + UL, label: "Back to the Level " + UL + " concourse." });
+      var lockEdge = "e_lock_in_" + uf.key + "_" + UL;
+      edge({ id: lockEdge, from: "hub_" + UL, to: lockId, requires: [cond],
+        label: "Open " + uf.doorTitle + " — its condition is now met." });
+      edge({ id: "e_lock_out_" + uf.key + "_" + UL, from: lockId, to: "hub_" + UL, label: "Leave " + uf.doorTitle + "." });
+      signals["sig_unlock_" + uf.key + "_" + UL] = { channel: "OBJ", telegraphs: lockEdge, text: uf.omen, tell: uf.tell };
+      unlockFlavours.push({ level: UL, key: uf.key, locked_edge: lockEdge, mech_edge: "e_mech_in_" + uf.key + "_" + UL, tell: uf.tell });
+    }
+
     // ---- v19 R1 — STAIR LATTICE: the legible SPINE vs the DISCONTINUED regions,
     // and one Bureau OFFICE per level (static set dressing — door, sign, a posted
     // closure notice as FIXED flavour; calendar-driven closure stays firewalled). -
@@ -224,7 +296,7 @@ var TD_GEN = (function () {
       arrival_day: arrivalDay,
       meta: { seed: (seed >>> 0) || 1, depth: depth, express: !!(withExpress && depth >= 2),
         vestibule_fork: !!withVestibuleFork, portal: !!withPortal, side_loops: sideLoops,
-        offices: depth, generator: "TD_GEN/0.2-lattice" },
+        offices: depth, unlocks: unlockFlavours, generator: "TD_GEN/0.2-lattice" },
       nodes: nodes,
       edges: edges,
       signals: signals
