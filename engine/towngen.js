@@ -28,7 +28,7 @@ var TD_TOWN = (function () {
     nw: [["hotel", "H", "hotel"], ["bank", "B", "shop"], ["tim", "G", "shop"], ["blacksmith", "L", "shop"], ["spa", "P", "shop"], ["saloon", "S", "shop"], ["locked", "h", "filler"], ["locked", "h", "shop"], ["locked", "h", "filler"]],
     ne: [["agency", "A", "shop"], ["coffee", "O", "cafe"], ["restaurant", "E", "eatery"], ["barber", "R", "shop"], ["tattoo", "Z", "shop"], ["chinese", "N", "takeout"], ["locked", "h", "filler"], ["locked", "h", "shop"], ["locked", "h", "filler"]],
     strip: [["gate", ">", "shop", "DUNGEON"], ["gift1", "1", "shop"], ["gift2", "2", "shop"], ["kiosk", "K", "shop"]],
-    wf: [["tavern", "T", "shop"], ["boat", "Y", "shop"], ["motel", "M", "shop"], ["clamshack", "F", "takeout"], ["empty", "w", "shop"]]
+    wf: [["tavern", "T", "shop"], ["motel", "M", "shop"], ["clamshack", "F", "takeout"], ["empty", "w", "shop"]]
   };
 
   function compose(seed) {
@@ -121,14 +121,16 @@ var TD_TOWN = (function () {
     var rowStart = buildings.length;
     packZone(CX + 3, CY + 3, W - 4, CY + 7, CAST.strip); meta.districts.strip = { rect: [CX + 3, CY + 3, W - 4, CY + 7] };
     meta.shopRows.push({ ids: buildings.slice(rowStart).map(function (b) { return b.id; }) });
+    // the BOAT RENTAL is placed at the EAST END of the waterfront (Round D.1), so
+    // the pier district sits right beside it; the wf packer fills around it.
+    stamp(58, CY + 9, 5, 4, "boat", "Y", "boat");
     packZone(CX + 3, CY + 8, W - 4, SHORE - 3, CAST.wf); meta.districts.waterfront = { rect: [CX + 3, CY + 8, W - 4, SHORE - 3] };
 
-    // --- piers (D1): a PIER DISTRICT clustered at the east end of the waterfront,
-    // by the boat rental (the waterfront buildings sit east, x>=38, after Round C);
-    // the rest of the shoreline stays open. FLAG: clustered EAST because the boat
-    // rental and the whole wf district are there — flip the xs if you want it west.
-    meta.pierDistrict = [46, 56];
-    [47, 50, 53].forEach(function (px) { for (var py = SHORE; py < WATER_Y + 3; py++) { if (g[py]) { g[py][px] = "."; piers.push(key(px, py)); } } });
+    // --- piers (D.1): a tight PIER DISTRICT at the EAST END, adjacent to the boat
+    // rental; the rest of the shoreline stays open. FLAG: clustered EAST because
+    // the boat rental and the wf district are there — flip the xs to go west.
+    meta.pierDistrict = [58, 64];
+    [59, 61, 63].forEach(function (px) { for (var py = SHORE; py < WATER_Y + 3; py++) { if (g[py]) { g[py][px] = "."; piers.push(key(px, py)); } } });
 
     // --- DENSITY PASS (Round C1): square the cross to 4-5, then break every big
     // empty with row-homes / sheds / storefront fillers, so no open plaza is

@@ -22,9 +22,9 @@ function TD_TOWN_TESTS() {
   });
 
   // 2. figure-ground: open is a healthy 40-65% (was 9-17% in the dead lump)
-  test("FIGURE-GROUND: open space is 40-65% of the map", function () {
+  test("FIGURE-GROUND: open space is 40-60% of the map", function () {
     var pct = 100 * count(".") / TOT;
-    assert(pct >= 40 && pct <= 65, "open is " + pct.toFixed(0) + "% (FLAG: spec says 40-60; 63% is figure-ground-natural with 24 islands, ratify)");
+    assert(pct >= 40 && pct <= 60, "open is " + pct.toFixed(1) + "% (law band 40-60; Round D.1 density brought it in-band)");
   });
 
   // 3. buildings are FREESTANDING islands (not fused into the border mass)
@@ -236,12 +236,16 @@ function TD_TOWN_TESTS() {
   });
 
   // 20. D1 PIERS: clustered at one end (a pier district), not spread
-  test("D1 PIERS: clustered into a district at one end, open shoreline elsewhere", function () {
+  test("D.1 PIERS: a tight district at the END, the boat rental adjacent", function () {
     var px = T.piers.map(function (k) { return +k.split(",")[0]; });
     var uniq = px.filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
     assert(uniq.length >= 2, "several pier columns (" + uniq.length + ")");
-    assert(uniq[uniq.length - 1] - uniq[0] <= 10, "piers cluster within ~10 tiles (span " + (uniq[uniq.length - 1] - uniq[0]) + "), not spread");
-    assert(T.meta.pierDistrict, "the pier district is recorded");
+    assert(uniq[uniq.length - 1] - uniq[0] <= 5, "TIGHT cluster (span " + (uniq[uniq.length - 1] - uniq[0]) + " <= 5)");
+    assert(uniq[0] >= W - 16, "at the EAST END of the waterfront (leftmost pier x=" + uniq[0] + ")");
+    var boat = T.buildings.filter(function (b) { return b.id === "boat"; })[0];
+    assert(boat, "the boat rental is placed");
+    var mid = (uniq[0] + uniq[uniq.length - 1]) / 2;
+    assert(Math.abs((boat.x0 + boat.w / 2) - mid) <= 6, "the boat rental is adjacent to the pier district (boat@" + boat.x0 + ", piers~" + mid + ")");
   });
 
   // 21. D2 REDLIGHT SPAGHETTI: many bent alleys, junctions + dead-ends, lined with small shops
