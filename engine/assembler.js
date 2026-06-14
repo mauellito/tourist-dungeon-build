@@ -29,6 +29,32 @@ var TD_ASSEMBLER = (function () {
   };
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
 
+  // ---- TYPE STANDARD parameters + per-level DRIFT (Dungeon Type STANDARD v1). paramsFor
+  // rolls a drift band per (seed, level) — 50% base / 20% ±5% / 20% ±10% / 10% ±15% — and
+  // jitters each numeric knob within it, yielding the level's TARGET BAND. The gate validates
+  // each level against THIS band (a +15% outlier is sanctioned, not a failure). ----
+  var STANDARD_BASE = { roomMin: 10, roomMax: 20, sizeSpreadMax: 3, regularMax: 0.50, straightMax: 0.30, corridorMin: 0.20, deadEndsMin: 1, secretsMin: 3, loopsMin: 1 };
+  function _h(a, b, c) { var h = (a >>> 0) ^ 0x9e3779b9; h = Math.imul(h ^ (b >>> 0), 16777619) >>> 0; h = Math.imul(h ^ ((c || 0) >>> 0), 16777619) >>> 0; return h >>> 0; }
+  function driftBandOf(seed, level) { var r = (_h(seed, level, 7) % 1000) / 1000; return r < 0.5 ? 0 : (r < 0.7 ? 0.05 : (r < 0.9 ? 0.10 : 0.15)); }
+  function paramsFor(seed, level) {
+    var band = driftBandOf(seed, level), rng = TD_RNG.make(_h(seed, level, 13) || 1);
+    function roll() { return (rng.next() * 2 - 1) * band; }                  // signed jitter in [-band, +band]
+    function cl(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+    var B0 = STANDARD_BASE;
+    return {
+      drift: band,
+      roomMin: B0.roomMin,                                                    // hard floor — never drifts below 10
+      roomMax: Math.max(B0.roomMin, Math.round(B0.roomMax * (1 + roll()))),
+      sizeSpreadMax: B0.sizeSpreadMax,
+      regularMax: cl(B0.regularMax * (1 + roll()), 0.20, 0.80),
+      straightMax: cl(B0.straightMax * (1 + roll()), 0.12, 0.50),
+      corridorMin: cl(B0.corridorMin * (1 + roll()), 0.12, 0.35),
+      deadEndsMin: B0.deadEndsMin,
+      secretsMin: Math.max(1, Math.round(B0.secretsMin * (1 + roll()))),
+      loopsMin: B0.loopsMin
+    };
+  }
+
   function generate(seed, typeName) {
     var B = BUNDLES[typeName] || BUNDLES.STANDARD;
     var rng = TD_RNG.make(((seed >>> 0) ^ 0x1a2b3c4d) || 1);
@@ -122,7 +148,7 @@ var TD_ASSEMBLER = (function () {
     return best;
   }
 
-  return { generate: generate, generateGated: generateGated, BUNDLES: BUNDLES };
+  return { generate: generate, generateGated: generateGated, BUNDLES: BUNDLES, paramsFor: paramsFor, driftBandOf: driftBandOf, STANDARD_BASE: STANDARD_BASE };
 })();
 
 if (typeof module !== "undefined" && module.exports) { module.exports = TD_ASSEMBLER; }

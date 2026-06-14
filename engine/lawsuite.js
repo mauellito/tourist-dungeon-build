@@ -231,7 +231,64 @@ var TD_LAWS = (function () {
     }
   }
 
-  return { check: check, WALK_TAGS: WALK_TAGS };
+  // ---- TYPE PARAMETERS (Dungeon Type STANDARD v1): the measured knobs that DRIFT per
+  // level. measureType returns the numbers; conformsType checks them against a level's band.
+  function measureType(m) {
+    var W = m.w, H = m.h, area = W * H, D = D4;
+    function wk(x, y) { return x >= 0 && y >= 0 && x < W && y < H && m.grid[y][x] !== "#"; }
+    function tg(x, y) { return (m.tag[y] && m.tag[y][x]) || "wall"; }
+    // room regions (with bbox, for regularity + size-spread)
+    var seen = {}, rooms = [];
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+      if (seen[x + "," + y] || !(wk(x, y) && tg(x, y) === "room")) continue;
+      var q = [[x, y]], cells = [], minx = x, maxx = x, miny = y, maxy = y; seen[x + "," + y] = 1;
+      while (q.length) { var c = q.pop(); cells.push(c); if (c[0] < minx) minx = c[0]; if (c[0] > maxx) maxx = c[0]; if (c[1] < miny) miny = c[1]; if (c[1] > maxy) maxy = c[1]; for (var i = 0; i < 4; i++) { var nx = c[0] + D[i][0], ny = c[1] + D[i][1]; if (wk(nx, ny) && tg(nx, ny) === "room" && !seen[nx + "," + ny]) { seen[nx + "," + ny] = 1; q.push([nx, ny]); } } }
+      rooms.push({ size: cells.length, bw: maxx - minx + 1, bh: maxy - miny + 1, minx: minx, miny: miny, maxx: maxx, maxy: maxy });
+    }
+    var big = rooms.filter(function (r) { return r.size >= 6; });
+    // regular = bounding box is entirely room (a clean rectangle, no irregular bite)
+    var regular = big.filter(function (r) { return r.size === r.bw * r.bh; }).length;
+    // size spread: most rooms sharing one (bw x bh) footprint
+    var sizeCount = {}, maxOneSize = 0; big.forEach(function (r) { var k = r.bw + "x" + r.bh; sizeCount[k] = (sizeCount[k] || 0) + 1; if (sizeCount[k] > maxOneSize) maxOneSize = sizeCount[k]; });
+    // corridors + straightness (a cell is "straight" if in a >=4 run horizontally or vertically)
+    var corr = [], V = 0, E = 0;
+    for (var y2 = 0; y2 < H; y2++) for (var x2 = 0; x2 < W; x2++) {
+      if (!wk(x2, y2)) continue; V++;
+      if (wk(x2 + 1, y2)) E++; if (wk(x2, y2 + 1)) E++;                      // orthogonal adjacencies (each once)
+      if (tg(x2, y2) === "corridor") corr.push([x2, y2]);
+    }
+    function runLen(x, y, dx, dy) { var n = 1, a = x + dx, b = y + dy; while (tg(a, b) === "corridor") { n++; a += dx; b += dy; } a = x - dx; b = y - dy; while (tg(a, b) === "corridor") { n++; a -= dx; b -= dy; } return n; }
+    var straight = 0; corr.forEach(function (c) { if (runLen(c[0], c[1], 1, 0) >= 4 || runLen(c[0], c[1], 0, 1) >= 4) straight++; });
+    // secrets, dead-ends, loops (independent cycles = E - V + components; the net is connected)
+    var secrets = 0, deadEnds = 0;
+    for (var y3 = 0; y3 < H; y3++) for (var x3 = 0; x3 < W; x3++) { if (tg(x3, y3) === "secret") secrets++; if (tg(x3, y3) === "corridor") { var n = 0; for (var i = 0; i < 4; i++) if (wk(x3 + D[i][0], y3 + D[i][1])) n++; if (n === 1) deadEnds++; } }
+    var loops = E - V + 1;
+    return {
+      roomCount: big.length, maxOneSize: maxOneSize,
+      regularPct: big.length ? regular / big.length : 0,
+      straightPct: corr.length ? straight / corr.length : 0,
+      corridorPct: corr.length / area,
+      secrets: secrets, deadEnds: deadEnds, loops: loops
+    };
+  }
+
+  // conformsType — measured params vs a level's drifted target band. Returns {pass, checks}.
+  function conformsType(m, t) {
+    var p = measureType(m), checks = {};
+    function chk(id, ok, val) { checks[id] = { pass: !!ok, value: val }; }
+    chk("room_count", p.roomCount >= t.roomMin && p.roomCount <= t.roomMax, p.roomCount + " (band " + t.roomMin + "-" + t.roomMax + ")");
+    chk("size_spread", p.maxOneSize <= t.sizeSpreadMax, p.maxOneSize + " of one size (max " + t.sizeSpreadMax + ")");
+    chk("regularity", p.regularPct <= t.regularMax + 1e-9, (100 * p.regularPct).toFixed(0) + "% regular (max " + (100 * t.regularMax).toFixed(0) + "%)");
+    chk("straightness", p.straightPct <= t.straightMax + 1e-9, (100 * p.straightPct).toFixed(0) + "% straight (max " + (100 * t.straightMax).toFixed(0) + "%)");
+    chk("corridor_amount", p.corridorPct >= t.corridorMin - 1e-9, (100 * p.corridorPct).toFixed(0) + "% corridor (min " + (100 * t.corridorMin).toFixed(0) + "%)");
+    chk("dead_ends", p.deadEnds >= t.deadEndsMin, p.deadEnds + " (min " + t.deadEndsMin + ")");
+    chk("secrets", p.secrets >= t.secretsMin, p.secrets + " (min " + t.secretsMin + ")");
+    chk("loops", p.loops >= t.loopsMin, p.loops + " (min " + t.loopsMin + ")");
+    var pass = Object.keys(checks).every(function (k) { return checks[k].pass; });
+    return { pass: pass, checks: checks, measured: p };
+  }
+
+  return { check: check, measureType: measureType, conformsType: conformsType, WALK_TAGS: WALK_TAGS };
 })();
 
 if (typeof module !== "undefined" && module.exports) { module.exports = TD_LAWS; }

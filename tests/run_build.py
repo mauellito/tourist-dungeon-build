@@ -23,6 +23,7 @@ SUITES = [
     ("vault format + parser (P1)", "run_vaultfmt.py"),
     ("spatial law-suite / THE GATE (P3)", "run_lawsuite.py"),
     ("vault assembler, gated (P2/P4)", "run_assembler.py"),
+    ("STANDARD drift bands + type params", "run_drift.py"),
 ]
 
 
