@@ -18,6 +18,7 @@ SUITES = [
     ("town + forks + signals", "run_game.py"),
     ("UI quality-of-life", "run_ui.py"),
     ("town composition law (TD_TOWN)", "run_towncompose.py"),
+    ("procedural TOWN generator + law-suite", "run_towngen.py"),
     ("E2E real keypresses on play-map.html", "run_keys.py"),
     # Master Directive — the gate is independently verifiable on the mirror now:
     ("vault format + parser (P1)", "run_vaultfmt.py"),
