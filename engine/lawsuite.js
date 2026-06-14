@@ -259,9 +259,13 @@ var TD_LAWS = (function () {
     }
     function runLen(x, y, dx, dy) { var n = 1, a = x + dx, b = y + dy; while (tg(a, b) === "corridor") { n++; a += dx; b += dy; } a = x - dx; b = y - dy; while (tg(a, b) === "corridor") { n++; a -= dx; b -= dy; } return n; }
     var straight = 0; corr.forEach(function (c) { if (runLen(c[0], c[1], 1, 0) >= 4 || runLen(c[0], c[1], 0, 1) >= 4) straight++; });
-    // secrets, dead-ends, loops (independent cycles = E - V + components; the net is connected)
+    // secrets, dead-ends, loops (independent cycles = E - V + components; the net is connected).
+    // A dead-end = a circulation terminus: a corridor OR feature cell with exactly one walkable
+    // neighbour. Counting feature-capped stubs is deliberate — D2 *requires* a dead-end to earn
+    // its keep with a feature, so in this game every dead end is feature-tipped; a measure that
+    // only counted naked corridor stubs could never agree with D2. (Flagged to the operator.)
     var secrets = 0, deadEnds = 0;
-    for (var y3 = 0; y3 < H; y3++) for (var x3 = 0; x3 < W; x3++) { if (tg(x3, y3) === "secret") secrets++; if (tg(x3, y3) === "corridor") { var n = 0; for (var i = 0; i < 4; i++) if (wk(x3 + D[i][0], y3 + D[i][1])) n++; if (n === 1) deadEnds++; } }
+    for (var y3 = 0; y3 < H; y3++) for (var x3 = 0; x3 < W; x3++) { var tt = tg(x3, y3); if (tt === "secret") secrets++; if (tt === "corridor" || tt === "feature") { var n = 0; for (var i = 0; i < 4; i++) if (wk(x3 + D[i][0], y3 + D[i][1])) n++; if (n === 1) deadEnds++; } }
     var loops = E - V + 1;
     return {
       roomCount: big.length, maxOneSize: maxOneSize,

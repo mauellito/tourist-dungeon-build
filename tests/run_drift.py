@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Dungeon Type STANDARD v1 — drift bands + type-parameter measurement (framework).
+"""Dungeon Type STANDARD v1 — drift bands + per-level gate-against-band.
 
-Gates the per-level DRIFT distribution (50% base / 20% +-5% / 20% +-10% / 10% +-15%) and
-that the type-parameter MEASUREMENT + gate-against-band machinery works. Then REPORTS each
-STANDARD sample's type-parameter conformance against ITS drifted band — honestly showing
-which parameters the current (comb) assembler already meets and which it does not yet
-(CORRIDOR STRAIGHTNESS is the known gap: the comb is straight; STANDARD wants winding — the
-flagged next build). Failures are shown, not hidden.
+Gates two things:
+  1. the per-level DRIFT distribution (50% base / 20% +-5% / 20% +-10% / 10% +-15%), and
+  2. the DRIFT GATE itself: for each (seed, level), the assembler produces a STANDARD level
+     that passes BOTH the spatial laws (L1-L11/D1-D4) AND its own drifted target band
+     (paramsFor) within an attempt budget. Winding corridors land <=30% straight by design,
+     so even down-drifted (very-winding) bands conform.
+
+Reports the per-parameter conformance of the chosen maps. Failures are shown, not hidden.
 
 Run:  python tests/run_drift.py
 """
@@ -23,18 +25,22 @@ REPORTER = r"""
     // 1. drift-band distribution over many levels
     var bands={0:0,5:0,10:0,15:0}, N=600;
     for(var s=1;s<=20;s++) for(var lv=1;lv<=30;lv++){ var b=Math.round(TD_ASSEMBLER.driftBandOf(s,lv)*100); bands[b]=(bands[b]||0)+1; }
-    // 2. type-parameter conformance of STANDARD samples vs each level's band
+    // 2. the DRIFT GATE in action: for each (seed,level), produce a map that passes BOTH the
+    //    spatial laws AND its own drifted band. Report how many levels get a fully-conforming
+    //    map within budget, and per-parameter which one most often needs the retries.
     var params=["room_count","size_spread","regularity","straightness","corridor_amount","dead_ends","secrets","loops"];
-    var pass={}, tot=0; params.forEach(function(p){pass[p]=0;});
+    var pass={}, tot=0, conform=0, attempts=[]; params.forEach(function(p){pass[p]=0;});
     var sample=null;
-    for(var s2=1;s2<=30;s2++){
-      var g=TD_ASSEMBLER.generateGated(s2,"STANDARD",80); if(!g||!g.passed) continue;
-      var t=TD_ASSEMBLER.paramsFor(s2, ((s2*7)%30)+1);
-      var c=TD_LAWS.conformsType(g.map, t); tot++;
+    for(var s2=1;s2<=24;s2++){
+      var lv=((s2*7)%30)+1;
+      var g=TD_ASSEMBLER.generateForLevel(s2, lv, "STANDARD", 200); if(!g) continue;
+      tot++; if(g.passed){ conform++; attempts.push(g.attempt); }
+      var c=g.type;
       params.forEach(function(p){ if(c.checks[p] && c.checks[p].pass) pass[p]++; });
-      if(!sample) sample={t:t, checks:c.checks, measured:c.measured};
+      if(!sample) sample={t:g.band, checks:c.checks, measured:c.measured};
     }
-    out.textContent=JSON.stringify({bands:bands, N:N, params:params, pass:pass, tot:tot, sample:sample});
+    var avgAtt = attempts.length ? Math.round(attempts.reduce(function(a,b){return a+b;},0)/attempts.length) : 0;
+    out.textContent=JSON.stringify({bands:bands, N:N, params:params, pass:pass, tot:tot, conform:conform, avgAtt:avgAtt, sample:sample});
     document.title="ok";
   }catch(e){ out.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e); document.title="err"; }
 })();</script>
@@ -79,7 +85,9 @@ def main():
     fr = {k: d["bands"].get(k, 0) / N for k in ("0", "5", "10", "15")}
     print("drift bands over %d levels: base %.0f%% (~50) | ±5%% %.0f%% (~20) | ±10%% %.0f%% (~20) | ±15%% %.0f%% (~10)"
           % (N, 100 * fr["0"], 100 * fr["5"], 100 * fr["10"], 100 * fr["15"]))
-    print("type-parameter conformance across %d STANDARD samples (vs each level's drifted band):" % d["tot"])
+    print("drift gate (generateForLevel: passes the laws AND its own drifted band): %d/%d levels "
+          "fully conform within budget (avg %d attempts)." % (d["conform"], d["tot"], d.get("avgAtt", 0)))
+    print("per-parameter conformance of the chosen maps (vs each level's drifted band):")
     for p in d["params"]:
         print("   %-16s %d/%d" % (p, d["pass"][p], d["tot"]))
     fails = []
@@ -88,23 +96,21 @@ def main():
     if not (0.12 <= fr["5"] <= 0.28): fails.append("±5%% band %.0f%% out of 12-28" % (100 * fr["5"]))
     if not (0.12 <= fr["10"] <= 0.28): fails.append("±10%% band %.0f%% out of 12-28" % (100 * fr["10"]))
     if not (0.04 <= fr["15"] <= 0.18): fails.append("±15%% band %.0f%% out of 4-18" % (100 * fr["15"]))
-    # GATE: the measurement + gate-against-band machinery actually runs and returns sane numbers.
+    # GATE: the measurement machinery runs and returns sane numbers.
     s = d.get("sample")
     if not s or not s.get("measured"): fails.append("conformsType returned no sample")
     elif not (s["measured"]["roomCount"] > 0 and s["measured"]["corridorPct"] > 0): fails.append("measureType returned degenerate numbers")
-    # (Type-PARAM conformance is REPORTED above, not gated here: the comb predates these
-    #  parameters and meets few of them — straightness especially. Building the assembler to
-    #  the bands is the winding-corridor rework, flagged. This harness proves the framework.)
+    # GATE: the drift gate actually delivers — most STANDARD levels get a map that passes BOTH the
+    # laws AND their drifted band within budget (winding corridors land <=30% straight by design).
+    if d["tot"] and d["conform"] < d["tot"] * 0.85:
+        fails.append("only %d/%d levels found a law+band conforming map within budget" % (d["conform"], d["tot"]))
     print("-" * 64)
-    print("NOTE: corridor straightness is the KNOWN gap — the comb is ~ruler-straight; STANDARD")
-    print("      wants winding (<=30%). The winding-corridor rework is the flagged next build;")
-    print("      this harness builds + verifies the drift + gate-against-band framework around it.")
     if fails:
         for f in fails:
             print("FAIL " + f)
-        print("RESULT: drift/measurement framework problems above"); return 1
-    print("RESULT: drift distribution correct; type-parameter measurement + gate-against-band work "
-          "(straightness pending the winding rework, flagged).")
+        print("RESULT: drift gate problems above"); return 1
+    print("RESULT: drift distribution correct; STANDARD levels are generated to PASS their own "
+          "drifted band (winding corridors land <=30%% straight) — the gate validates per level.")
     return 0
 
 
