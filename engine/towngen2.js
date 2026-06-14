@@ -10,7 +10,7 @@
 
 var TD_TOWNGEN = (function () {
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-  var GLYPH = { water: "~", pier: "=", bridge: "b", street: ".", plaza: ",", park: '"', graveyard: "+", fence: "f", building: "#", gate: "G", church: "C", dungeon: ">", wall: "#" };
+  var GLYPH = { water: "~", pier: "=", bridge: "b", street: ".", plaza: ",", park: '"', graveyard: "+", fence: "f", building: "#", gate: "G", church: "C", dungeon: ">", wall: "#", alley: ":" };
 
   function generate(seed) {
     var W = 80, H = 56, rng = TD_RNG.make(((seed >>> 0) ^ 0x70774e21) || 1);
@@ -83,6 +83,12 @@ var TD_TOWNGEN = (function () {
       if (bw < 2 || bh < 2 || bw > w || bh > h) return;
       var ox = x0 + rng.int(0, w - bw), oy = y0 + rng.int(0, h - bh);
       for (var yy = oy; yy < oy + bh; yy++) for (var xx = ox; xx < ox + bw; xx++) if (t(xx, yy) === "street") set(xx, yy, opts.tag || "building");
+      // organic-ise: bite a CORNER (L-shape/notch) so building fronts aren't flat regular rows
+      if (bw >= 3 && bh >= 3 && rng.chance(0.55)) {
+        var cw = 1 + rng.int(0, bw >> 1), ch = 1 + rng.int(0, bh >> 1);
+        var bx = rng.chance(0.5) ? ox : ox + bw - cw, by = rng.chance(0.5) ? oy : oy + bh - ch;
+        for (var yy2 = by; yy2 < by + ch; yy2++) for (var xx2 = bx; xx2 < bx + cw; xx2++) if (t(xx2, yy2) === (opts.tag || "building")) set(xx2, yy2, "street");
+      }
     }
     function packBuildings(L, opts) {
       opts = opts || {};
@@ -96,6 +102,28 @@ var TD_TOWNGEN = (function () {
         if (lr) { var c = x0 + 4 + rng.int(0, w - 8 - 1); bsp(x0, y0, c, y1, d + 1); bsp(c + 1, y0, x1, y1, d + 1); }
         else { var c2 = y0 + 4 + rng.int(0, h - 8 - 1); bsp(x0, y0, x1, c2, d + 1); bsp(x0, c2 + 1, x1, y1, d + 1); }
       })(L.x0 + 1, L.y0 + 1, L.x1 - 1, L.y1 - 1, 0);
+    }
+
+    // ---- RED-LIGHT: a SELF-CONCEALING district — a solid outward-facing building RING, exactly
+    // ONE entrance, a hidden alley-warren inside, and NO through-route (you enter and leave by the
+    // same gap). It must read as "a place apart" on the map.
+    function buildRedlight(L) {
+      var x0 = L.x0, y0 = L.y0, x1 = L.x1, y1 = L.y1;
+      function ringSet(x, y) { if (t(x, y) === "street" || t(x, y) === "building") set(x, y, "building"); }
+      for (var x = x0; x <= x1; x++) { ringSet(x, y0); ringSet(x, y1); }
+      for (var y = y0; y <= y1; y++) { ringSet(x0, y); ringSet(x1, y); }
+      // interior: a 1-cell perimeter alley (street) just inside the ring, then a packed inner core
+      // whose margins are the hidden warren — all reachable only from the perimeter alley.
+      packBuildings({ x0: x0 + 1, y0: y0 + 1, x1: x1 - 1, y1: y1 - 1 }, {});
+      for (var x = x0 + 1; x <= x1 - 1; x++) { if (t(x, y0 + 1) !== "alley" && t(x, y0 + 1) === "street") set(x, y0 + 1, "alley"); if (t(x, y1 - 1) === "street") set(x, y1 - 1, "alley"); }
+      for (var y = y0 + 1; y <= y1 - 1; y++) { if (t(x0 + 1, y) === "street") set(x0 + 1, y, "alley"); if (t(x1 - 1, y) === "street") set(x1 - 1, y, "alley"); }
+      // retag the inner-core street margins (the warren) as alley so the district reads distinct
+      for (var y = y0 + 1; y <= y1 - 1; y++) for (var x = x0 + 1; x <= x1 - 1; x++) if (t(x, y) === "street") set(x, y, "alley");
+      // ONE entrance on the side facing the town centre: a single gap, connected in AND out
+      var ex = (x0 + x1) >> 1, side = (y0 > 4) ? "top" : "bot";
+      if (side === "top") { set(ex, y0, "street"); set(ex, y0 + 1, "alley"); for (var k = 1; k <= 3; k++) if (inb(ex, y0 - k) && t(ex, y0 - k) !== "water") set(ex, y0 - k, "street"); }
+      else { set(ex, y1, "street"); set(ex, y1 - 1, "alley"); for (var k = 1; k <= 3; k++) if (inb(ex, y1 + k) && t(ex, y1 + k) !== "water") set(ex, y1 + k, "street"); }
+      meta.redlight = { x0: x0, y0: y0, x1: x1, y1: y1, entrance: [ex, side === "top" ? y0 : y1] };
     }
 
     // ---- CIVIC: a central PLAZA with the CHURCH + DUNGEON mouth; pack civic with big buildings.
@@ -119,17 +147,18 @@ var TD_TOWNGEN = (function () {
         set(L.cx, L.y1, "graveyard");
         return;
       }
-      if (L.role === "redlight") { packBuildings(L, {}); meta.redlight = { x0: L.x0, y0: L.y0, x1: L.x1, y1: L.y1 }; return; }
+      if (L.role === "redlight") { buildRedlight(L); return; }
       packBuildings(L, L.role === "warehouse" ? { wide: true } : {});
     });
 
     // ---- SPINE + GATE: a wide main street from a top-border GATE straight down to the plaza,
     // bulldozing buildings in its path (the navigational backbone). Bridges where it crosses water.
-    var gx = px;                                                 // gate aligned above the plaza
-    for (var y = 0; y <= py; y++) { for (var dx = -1; dx <= 1; dx++) { var cx = gx + dx; if (!inb(cx, y)) continue; if (t(cx, y) === "water") set(cx, y, "bridge"); else if (t(cx, y) !== "plaza" && t(cx, y) !== "dungeon" && t(cx, y) !== "church") set(cx, y, "street"); } }
+    var gx = px, RL = meta.redlight;                            // gate aligned above the plaza
+    function inRL(x, y) { return RL && x >= RL.x0 && x <= RL.x1 && y >= RL.y0 && y <= RL.y1; }   // never bulldoze the red-light ring (keeps its single entrance)
+    for (var y = 0; y <= py; y++) { for (var dx = -1; dx <= 1; dx++) { var cx = gx + dx; if (!inb(cx, y) || inRL(cx, y)) continue; if (t(cx, y) === "water") set(cx, y, "bridge"); else if (t(cx, y) !== "plaza" && t(cx, y) !== "dungeon" && t(cx, y) !== "church") set(cx, y, "street"); } }
     set(gx, 0, "gate");
     // a cross street to the harbour so warehouse/piers connect, bridging water
-    for (var x = 1; x < W - 1; x++) { var ry = landBot; if (t(x, ry) === "water") set(x, ry, "bridge"); else if (t(x, ry) === "building") set(x, ry, "street"); }
+    for (var x = 1; x < W - 1; x++) { var ry = landBot; if (inRL(x, ry)) continue; if (t(x, ry) === "water") set(x, ry, "bridge"); else if (t(x, ry) === "building") set(x, ry, "street"); }
 
     // ---- render grid
     var grid = []; for (var y = 0; y < H; y++) { var r = ""; for (var x = 0; x < W; x++) r += (GLYPH[tag[y][x]] || "?"); grid.push(r); }

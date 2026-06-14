@@ -17,7 +17,7 @@
 
 var TD_TOWNLAWS = (function () {
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-  var WALK = { street: 1, plaza: 1, park: 1, graveyard: 1, pier: 1, bridge: 1, gate: 1, church: 1, dungeon: 1 };
+  var WALK = { street: 1, plaza: 1, park: 1, graveyard: 1, pier: 1, bridge: 1, gate: 1, church: 1, dungeon: 1, alley: 1 };
 
   function tg(m, x, y) { return (m.tag[y] && m.tag[y][x]) || "void"; }
   function walk(m, x, y) { return x >= 0 && y >= 0 && x < m.w && y < m.h && WALK[tg(m, x, y)]; }
@@ -97,7 +97,30 @@ var TD_TOWNLAWS = (function () {
     var maxFront = 0;
     for (var y = 0; y < m.h; y++) { var rn = 0, rs = 0; for (var x = 0; x < m.w; x++) { rn = (isBld(x, y) && open(x, y - 1)) ? rn + 1 : 0; rs = (isBld(x, y) && open(x, y + 1)) ? rs + 1 : 0; if (rn > maxFront) maxFront = rn; if (rs > maxFront) maxFront = rs; } }
     for (var x = 0; x < m.w; x++) { var rw = 0, re = 0; for (var y = 0; y < m.h; y++) { rw = (isBld(x, y) && open(x - 1, y)) ? rw + 1 : 0; re = (isBld(x, y) && open(x + 1, y)) ? re + 1 : 0; if (rw > maxFront) maxFront = rw; if (re > maxFront) maxFront = re; } }
-    law("T16_antigrid", maxFront <= 13, maxFront + "-cell straight building front (max 13)");
+    law("T16_antigrid", maxFront <= 10, maxFront + "-cell straight building front (max 10)");
+
+    // T_REDLIGHT SELF-CONCEALMENT — the red-light district reads as a place apart: a solid
+    // outward-facing building RING with exactly ONE entrance (no through-route), a hidden
+    // alley-warren inside. Measured on its bbox perimeter: >=75% building, exactly one open run.
+    var RL = m.meta && m.meta.redlight, rlOk = false, rlVal = "no red-light";
+    if (RL) {
+      var per = [], i;
+      for (var x = RL.x0; x <= RL.x1; x++) { per.push(tg(m, x, RL.y0)); per.push(tg(m, x, RL.y1)); }
+      for (var y = RL.y0 + 1; y < RL.y1; y++) { per.push(tg(m, RL.x0, y)); per.push(tg(m, RL.x1, y)); }
+      var bld = 0, openRuns = 0, prevOpen = false, perWalk = 0;
+      // walk the ring in order to count contiguous OPEN runs (entrances)
+      var ring = [];
+      for (var x = RL.x0; x <= RL.x1; x++) ring.push(tg(m, x, RL.y0));
+      for (var y = RL.y0 + 1; y <= RL.y1; y++) ring.push(tg(m, RL.x1, y));
+      for (var x = RL.x1 - 1; x >= RL.x0; x--) ring.push(tg(m, x, RL.y1));
+      for (var y = RL.y1 - 1; y > RL.y0; y--) ring.push(tg(m, RL.x0, y));
+      for (i = 0; i < ring.length; i++) { var isWalk = !!WALK[ring[i]]; if (ring[i] === "building" || ring[i] === "water" || ring[i] === "fence") bld++; if (isWalk) { perWalk++; if (!prevOpen) openRuns++; prevOpen = true; } else prevOpen = false; }
+      if (WALK[ring[0]] && WALK[ring[ring.length - 1]]) openRuns = Math.max(1, openRuns - 1);   // wrap-around merge
+      var hidden = 0; for (var y = RL.y0 + 1; y < RL.y1; y++) for (var x = RL.x0 + 1; x < RL.x1; x++) if (tg(m, x, y) === "alley") hidden++;
+      rlOk = (bld >= ring.length * 0.75) && openRuns === 1 && hidden >= 6;
+      rlVal = (100 * bld / ring.length).toFixed(0) + "% ring, " + openRuns + " entrance, " + hidden + " hidden alley";
+    }
+    law("T_redlight", rlOk, rlVal);
 
     var pass = Object.keys(laws).every(function (k) { return laws[k].pass; });
     return { pass: pass, laws: laws };
