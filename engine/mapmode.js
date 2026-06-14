@@ -111,7 +111,54 @@ var TD_MAP = (function () {
     return TD_RNG.make(h || 1);
   }
   var DIR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  // Option A (node-as-assembler-floor): a node's GEOMETRY is a NODE-sized scattered vault floor
+  // from TD_ASSEMBLER; the lattice GRAPH is untouched — we retrofit the graph edge-doors + room
+  // doors + dead-ends onto the assembler floor. Falls back to the legacy geometry (composeNodeOld)
+  // if the assembler isn't loaded or can't host this node's edge-degree.
+  function composeNodeAssembler(seed, nodeKey, numDoors) {
+    if (typeof TD_ASSEMBLER === "undefined") return null;
+    var R = nodeRng(seed, nodeKey + ":asm");
+    var res = TD_ASSEMBLER.generateGated(R.int(1, 2000000000) >>> 0, "NODE", 400);
+    if (!res || !res.passed || !res.map) return null;
+    var mm = res.map; if (mm.h !== H || mm.w !== W) return null;
+    var g = []; for (var y = 0; y < H; y++) g.push(mm.grid[y].slice());
+    function isF(x, y) { return g[y] && g[y][x] === "."; }
+    var spawn = { x: mm.entry.x, y: mm.entry.y };
+    var roomDoors = [], featDead = [], featOther = [], deadEnds = [], corrCount = 0, ax = 0, ay = 0, nF = 0;
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+      var t = mm.tag[y][x];
+      if (g[y][x] === ".") { nF++; ax += x; ay += y; }
+      if (t === "corridor") corrCount++;
+      if (t === "door") roomDoors.push({ x: x, y: y, state: R.pick(["closed", "closed", "ajar", "open"]) });
+      if (t === "feature") {
+        var fn = DIR4.filter(function (d) { return isF(x + d[0], y + d[1]); });
+        if (fn.length === 1) { var d = fn[0]; deadEnds.push({ x: x, y: y, wallX: x - d[0], wallY: y - d[1] }); featDead.push({ x: x, y: y }); }
+        else featOther.push({ x: x, y: y });
+      }
+    }
+    // graph edge-doors: spread dead-end features first (natural outward exits), then other
+    // features, then the farthest floor cells. Need numDoors distinct cells, never the spawn.
+    var seend = {}, edge = [];
+    function addCand(c) { var k = c.x + "," + c.y; if (!seend[k] && !(c.x === spawn.x && c.y === spawn.y)) { seend[k] = 1; edge.push(c); } }
+    featDead.forEach(addCand); featOther.forEach(addCand);
+    if (edge.length < numDoors) {
+      var fl = []; for (var y2 = 1; y2 < H - 1; y2++) for (var x2 = 1; x2 < W - 1; x2++) if (g[y2][x2] === "." && !seend[x2 + "," + y2] && !(x2 === spawn.x && y2 === spawn.y)) fl.push([x2, y2]);
+      fl.sort(function (a, b) { return (Math.abs(b[0] - spawn.x) + Math.abs(b[1] - spawn.y)) - (Math.abs(a[0] - spawn.x) + Math.abs(a[1] - spawn.y)); });
+      for (var i = 0; i < fl.length && edge.length < numDoors; i++) addCand({ x: fl[i][0], y: fl[i][1] });
+    }
+    if (edge.length < numDoors) return null;
+    var roomList = (mm.rooms || []).map(function (rm) { return { tag: "room", aspect: (rm.x1 - rm.x0 + 1) / Math.max(1, rm.y1 - rm.y0 + 1), area: (rm.x1 - rm.x0 + 1) * (rm.y1 - rm.y0 + 1), x0: rm.x0, y0: rm.y0, x1: rm.x1, y1: rm.y1, door: rm.door || { x: rm.cx, y: rm.cy } }; });
+    return {
+      grid: g, spawn: spawn, doorPts: edge.slice(0, numDoors), roomDoors: roomDoors, deadEnds: deadEnds,
+      tag: "vault", rooms: roomList.length, roomList: roomList, corridorCells: corrCount,
+      corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: nF / (W * H), source: "assembler"
+    };
+  }
   function composeNode(seed, nodeKey, numDoors) {
+    var a = composeNodeAssembler(seed, nodeKey, numDoors);
+    return a || composeNodeOld(seed, nodeKey, numDoors);
+  }
+  function composeNodeOld(seed, nodeKey, numDoors) {
     var R = nodeRng(seed, nodeKey), g = newGrid();
     var corr = {};                                   // corridor cell keys "x,y"
     var LO = 2, HIX = W - 3, HIY = H - 3;             // 2-wide wall border (room for door runs)
@@ -934,6 +981,7 @@ var TD_MAP = (function () {
         events: ctrl.fx, water: ctrl.water, chasm: ctrl.chasm,
         pendingFall: ctrl.pendingFall ? key(ctrl.pendingFall.x, ctrl.pendingFall.y) : null,
         vault: (world.nodes[ctrl.node] || {}).vault || null,
+        compSource: ctrl.composition ? ctrl.composition.source : null,
         discoveries: discoveries, lastEvent: ctrl.lastEvent, lastUrgent: ctrl.lastUrgent,
         pendingDoor: ctrl.pendingDoor ? key(ctrl.pendingDoor.x, ctrl.pendingDoor.y) : null,
         dead: ctrl.dead, won: ctrl.won, cause: ctrl.cause

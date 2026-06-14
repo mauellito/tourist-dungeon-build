@@ -81,23 +81,32 @@ F.onload = function(){
     for(var i=0;i<ds.length;i++){ var nx=p.x+ds[i][0],ny=p.y+ds[i][1]; if(v.grid[ny]&&v.grid[ny][nx]==='#') return {x:nx,y:ny}; } return null; }
   function findDoor(to){ var d=view().doors||{}; for(var k in d){ if(d[k].to===to){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   function findCounter(){ var f=view().features||{}; for(var k in f){ if(f[k].act && f[k].act!=='lookout'){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
+  function findKiosk(){ var f=view().features||{}; for(var k in f){ if(f[k].act==='kiosk'){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
+  // a cell whose whole 3x3 is walkable — lets diagonal/numpad key bindings be
+  // tested without the procedural town geography refusing the step under test.
+  function openSpot(){ var v=view(); for(var y=2;y<v.grid.length-2;y++) for(var x=2;x<v.grid[0].length-2;x++){
+      var all=walkable(v,x,y); for(var d in DV){ if(!all)break; if(!walkable(v,x+DV[d][0],y+DV[d][1]))all=false; }
+      if(all) return {x:x,y:y}; } return view().player; }
   try {
     // ============================ SCROLLING CAMERA (Phase B) ==============
-    var cam0=win.__TD_CAMERA();
+    var cam0=win.__TD_CAMERA(); var pc=view().player;
     ok('the town uses a scrolling camera (viewport smaller than the town)', !!cam0 && cam0.town && cam0.vpw < view().w);
-    var pc=view().player;
     ok('the avatar is inside the camera viewport', pc.x>=cam0.x && pc.x<cam0.x+cam0.vpw && pc.y>=cam0.y && pc.y<cam0.y+cam0.vph);
-    for(var ci=0;ci<8;ci++) press('down');
+    // walk the spine down to the dungeon mouth (well past the viewport mid-line) so
+    // the camera is forced to scroll vertically to keep tracking the avatar.
+    var mouth0=findDoor('DUNGEON'); goAdjacent(mouth0[0],mouth0[1]);
+    var hub=view().player;   // a mouth-adjacent cell, reachable; we return here after the warp tests
     var cam1=win.__TD_CAMERA(), pc1=view().player;
-    ok('the camera follows the avatar (it scrolled to track movement)', cam1.y>cam0.y || pc1.y===pc.y);
+    ok('the camera follows the avatar (it scrolled to track movement)', cam1.y>cam0.y);
     ok('the avatar stays inside the viewport after scrolling', pc1.x>=cam1.x && pc1.x<cam1.x+cam1.vpw && pc1.y>=cam1.y && pc1.y<cam1.y+cam1.vph);
-    for(var ci2=0;ci2<8;ci2++) press('up');   // back toward spawn for the rest of the route
 
-    // ============================ MOVEMENT + DIAGONALS ====================
+    // ===================== MOVEMENT PRIMITIVES (controlled open cell) ======
+    // diagonals + numpad test the KEY BINDINGS; warp onto a cell with a fully-open
+    // 3x3 so the procedural town geography can't refuse the step under test.
+    var spot=openSpot(); win.__TD_SIM()._warp(spot.x,spot.y);
     var p0=view().player; press('ur'); var p1=view().player;
     ok('diagonal key (u = up-right) moves both axes', p1.x===p0.x+1 && p1.y===p0.y-1);
-
-    // ============================ NUMPAD (NumLock on) =====================
+    win.__TD_SIM()._warp(spot.x,spot.y);
     var n0=view().player; pkc('4','Numpad4'); var n1=view().player;
     ok('numpad 4 moves left', n1.x===n0.x-1 && n1.y===n0.y);
     pkc('9','Numpad9'); var n2=view().player;
@@ -115,34 +124,26 @@ F.onload = function(){
     pk('Enter');
     ok('Enter buys a carryable hot dog', (view().inventory||[]).some(function(i){return i.name==='a hot dog';}));
     win.__TD_SIM()._setVendor(5,18);   // park him out of the rest of the route
+    win.__TD_SIM()._warp(hub.x,hub.y); // back to the connected hub before resuming the route
 
-    // ============== GATE REJECTION POINTS (no ticket -> never a dead end) =
+    // ============== GATE REJECTION (no ticket -> points to the Kiosk) ======
     var gateXY=findDoor('DUNGEON'); var gd=goAdjacent(gateXY[0],gateXY[1]); press(gd); pk('Enter'); var vgate=view();
     ok('the unticketed gate is refused but POINTS to where admission is sold',
-       vgate.phase==='town' && /Kiosk \(K\)/.test(vgate.lastEvent||'') && /Agency \(A\)/.test(vgate.lastEvent||''));
+       vgate.phase==='town' && /Kiosk \(K\)/.test(vgate.lastEvent||''));
 
-    // ============== DOORS: BUMP vs COMMIT (town; layout-agnostic) =========
-    var kioskXY=findDoor('kiosk'); var bd=goAdjacent(kioskXY[0],kioskXY[1]); press(bd); var vb=view();
-    ok('bumping a building does NOT enter it (still town)', vb.phase==='town');
-    ok('the bump reveals an Enter prompt', /Enter/.test(vb.lastEvent||''));
-    pk('Enter'); var vin=view();
-    ok('Enter enters the Kiosk interior', vin.phase==='interior' && /Kiosk/.test(vin.title));
-
-    // ============== PURCHASE IS A CONVERSATION (contact -> Enter) =========
-    var cXY=findCounter(); var cd=goAdjacent(cXY[0],cXY[1]); press(cd); var vcounter=view();
-    ok('bumping the counter does NOT buy — it opens a conversation',
-       vcounter.ticket==null && vcounter.phase==='interior');
-    ok('the clerk pitches with a clear offer line', /Enter to accept/.test(vcounter.lastEvent||''));
+    // ===== BUY ADMISSION AT THE PLAZA KIOSK (fronts-as-flavor: a town counter) =
+    var kioskXY=findKiosk(); var bd=goAdjacent(kioskXY[0],kioskXY[1]); press(bd); var vb=view();
+    ok('bumping the kiosk counter does NOT buy on contact — it opens a conversation',
+       vb.ticket==null && vb.phase==='town');
+    ok('the kiosk pitches with a clear offer line', /Enter to accept/.test(vb.lastEvent||''));
     pk('Enter');
     ok('Enter closes the deal — a Standard ticket', view().ticket==='standard');
     ok('the stats panel exposes a turn counter', typeof view().turn==='number');
     ok('the ticket is carried as an inspectable inventory item',
        (view().inventory||[]).some(function(it){return it.kind==='ticket';}));
 
-    var exitXY=findDoor('TOWN'); var ed=goAdjacent(exitXY[0],exitXY[1]); press(ed); pk('Enter');
-    ok('leaving the interior returns to the harbour', view().phase==='town');
-
-    var gateXY=findDoor('DUNGEON'); var gd=goAdjacent(gateXY[0],gateXY[1]); press(gd);
+    // ============== DESCEND (ticket in hand) ==============================
+    var gateXY2=findDoor('DUNGEON'); var gd2=goAdjacent(gateXY2[0],gateXY2[1]); press(gd2);
     ok('bumping the dungeon gate does not descend on contact', view().phase==='town');
     pk('Enter');
     ok('Enter at the gate (ticket in hand) descends into the dungeon', view().phase==='dungeon');

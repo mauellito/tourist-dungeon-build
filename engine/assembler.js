@@ -27,7 +27,10 @@ var TD_ASSEMBLER = (function () {
   var BUNDLES = {
     STANDARD: { w: 49, h: 35, tiers: [5, 6, 7], loops: [3, 4], minRooms: 9, trunkW: 2 },
     WARREN:   { w: 47, h: 33, tiers: [5, 6, 7], loops: [3, 5], minRooms: 9, trunkW: 1 },
-    HALLS:    { w: 53, h: 37, tiers: [6, 7], loops: [2, 3], minRooms: 6, trunkW: 2 }
+    HALLS:    { w: 53, h: 37, tiers: [6, 7], loops: [2, 3], minRooms: 6, trunkW: 2 },
+    // NODE — a single dungeon GRAPH-NODE floor at the controller's 41x23 (smaller leaves so a
+    // tight floor still scatters a few authored vaults). Used by TD_MAP.composeNode (Option A).
+    NODE:     { w: 41, h: 23, tiers: [5, 6], loops: [1, 2], minRooms: 4, trunkW: 1, minW: 8, minH: 7, maxW: 12, maxH: 9 }
   };
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
 
@@ -179,7 +182,7 @@ var TD_ASSEMBLER = (function () {
     function carveOK(x, y) { return canCarve(x, y) && corrNbrs(x, y) <= 1 && straightOK(x, y); }   // thin + no >=4 run -> winding (for connect spines)
     function fillCarve(x, y) { return canCarve(x, y) && straightOK(x, y); }   // filler: denser allowed (chunk rock / raise walkable) but still no >=4 straight run
 
-    var MINW = 10, MINH = 8, MAXW = 15, MAXH = 10, leaves = [];
+    var MINW = B.minW || 10, MINH = B.minH || 8, MAXW = B.maxW || 15, MAXH = B.maxH || 10, leaves = [];
     (function bsp(x0, y0, x1, y1, depth) {
       var w = x1 - x0 + 1, h = y1 - y0 + 1;
       var canLR = w >= 2 * MINW + 1, canTB = h >= 2 * MINH + 1, must = (w > MAXW || h > MAXH);

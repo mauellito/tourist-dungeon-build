@@ -243,7 +243,14 @@ var TD_GAME = (function () {
 
     function buildPlaces() {
       places = {};
-      places.TOWN = adaptTown(TD_TOWN.compose((world.meta && world.meta.seed) || 1));
+      var tseed = (world.meta && world.meta.seed) || 1;
+      // LIVE town: the procedural figure/ground town (TD_TOWNGEN) when it is loaded (play-map);
+      // legacy TD_TOWN remains the fallback (e.g. unit tests that don't load towngen2).
+      if (typeof TD_TOWNGEN !== "undefined" && TD_TOWNGEN.generateGated) {
+        var tg = TD_TOWNGEN.generateGated(tseed, 250);
+        if (tg && tg.map) { places.TOWN = adaptTownGen(tg.map); }
+      }
+      if (!places.TOWN) places.TOWN = adaptTown(TD_TOWN.compose(tseed));
       Object.keys(INTERIORS).forEach(function (id) { places[id] = buildInterior(id); });
     }
     // wrap the figure-ground generator output (Town Composition Law v1) into a
@@ -270,6 +277,67 @@ var TD_GAME = (function () {
       return p;
     }
 
+
+    // adapt the PROCEDURAL town (TD_TOWNGEN, figure/ground inverted) into a live TOWN place.
+    // Tags -> grid chars + a ground colour layer; the dungeon mouth -> a ticketed DUNGEON door;
+    // POIs -> bump-to-read FEATURES (fronts are flavour — no interiors yet, operator ruling).
+    function adaptTownGen(m) {
+      var Wt = m.w, Ht = m.h, grid = [], ground = {}, doors = {}, features = {}, buildings = [], cells = [];
+      var gateCell = null, mouth = null;
+      var GT = { plaza: "stone", park: "grass", graveyard: "grass", alley: "redlight", pier: "plank", bridge: "plank", street: "cobble", gate: "cobble", dungeon: "stone", landmark: "stone", notice: "cobble", vendor: "cobble", npc: "cobble", kiosk: "stone" };
+      for (var y = 0; y < Ht; y++) {
+        var row = [];
+        for (var x = 0; x < Wt; x++) {
+          var t = m.tag[y][x], ch = ".";
+          if (t === "water") ch = "~";
+          else if (t === "building" || t === "wall" || t === "townsecret") ch = "#";
+          else if (t === "fence") ch = ":";
+          row.push(ch);
+          if (ch === "." && GT[t]) ground[key(x, y)] = GT[t];
+          if (t === "gate") gateCell = { x: x, y: y };
+          else if (t === "dungeon") mouth = { x: x, y: y };
+          else if (t === "church") buildings.push({ id: "church", glyph: "C", x0: x, y0: y, w: 1, h: 1 });
+          else if (t === "landmark") features[key(x, y)] = { type: "view", glyph: "☼", col: "signal", label: "a district landmark", text: "A weenie the quarter gathers around. (Its content arrives with the interiors pass.)", act: "look" };
+          else if (t === "notice") features[key(x, y)] = { type: "notice", glyph: "¶", label: "a Bureau notice", text: "A Bureau notice, freshly pasted and already contradicting the one beside it.", act: "read" };
+          else if (t === "vendor") features[key(x, y)] = { type: "view", glyph: "₪", col: "signal", label: "a street vendor", text: "A vendor's cart, permits fluttering. The goods are flavour for now; the till is firewalled.", act: "look" };
+          else if (t === "npc") features[key(x, y)] = { type: "view", glyph: "o", col: "npc", label: "a townsperson", text: "A townsperson going about Bureau-sanctioned business.", act: "look" };
+          else if (t === "kiosk") features[key(x, y)] = { type: "counter", glyph: "K", col: "signal", label: "the Kiosk — admission to the dungeon", text: "The Kiosk. Admission to the commute is sold here (a stub for now).", act: "kiosk" };
+        }
+        grid.push(row);
+      }
+      // spawn JUST INSIDE the gate, on the spine side (toward the dungeon mouth /
+      // map centre) — the gate sits on the map border, so spawning on it would jam
+      // the player against the edge with no room to move or for the camera to track.
+      var spawn = gateCell || { x: 1, y: 1 };
+      if (gateCell) {
+        var aim = mouth || { x: Wt >> 1, y: Ht >> 1 }, best = null, bestD = 1e9;
+        for (var sy = -1; sy <= 1; sy++) for (var sx = -1; sx <= 1; sx++) {
+          if (!sx && !sy) continue;
+          var qx = gateCell.x + sx, qy = gateCell.y + sy;
+          if (qy < 0 || qy >= Ht || qx < 0 || qx >= Wt) continue;
+          if (grid[qy][qx] !== "." || features[key(qx, qy)] || doors[key(qx, qy)]) continue;
+          var qd = Math.abs(qx - aim.x) + Math.abs(qy - aim.y);
+          if (qd < bestD) { bestD = qd; best = { x: qx, y: qy }; }
+        }
+        if (best) spawn = best;
+      }
+      var dungeonEntrance = null;
+      if (mouth) {
+        doors[key(mouth.x, mouth.y)] = { to: "DUNGEON", glyph: "Ω", label: "the dungeon mouth. Press Enter to descend.", gate: function () { if (!character.ticket) return { block: "The gate does not open for the unticketed. Admission is sold at the Kiosk (K) on the plaza." }; return null; } };
+        dungeonEntrance = { rect: [mouth.x, mouth.y, mouth.x, mouth.y] };
+      }
+      // meta: district rects (for districtAt's flavour) + the dungeon entrance overlay
+      var dmeta = { redlight: null, waterfront: null, market: null };
+      (m.meta.districts || []).forEach(function (D) {
+        var r = [D.x0, D.y0, D.x1, D.y1];
+        if (D.role === "warehouse" && !dmeta.waterfront) dmeta.waterfront = { rect: r };
+        if (D.role === "market" && !dmeta.market) dmeta.market = { rect: r };
+      });
+      var rl = m.meta.redlight ? { rect: [m.meta.redlight.x0, m.meta.redlight.y0, m.meta.redlight.x1, m.meta.redlight.y1] } : null;
+      var meta = { seed: m.seed, dungeonEntrance: dungeonEntrance, redlight: rl, districts: dmeta };
+      for (var y2 = 0; y2 < Ht; y2++) for (var x2 = 0; x2 < Wt; x2++) if (grid[y2][x2] === "." && !features[key(x2, y2)] && !doors[key(x2, y2)]) cells.push({ x: x2, y: y2 });
+      return { id: "TOWN", title: "The Harbour", grid: grid, doors: doors, features: features, ground: ground, occupants: [], actors: [], cells: cells, spawn: spawn, exit: null, buildings: buildings, piers: [], meta: meta, H: Ht, W: Wt };
+    }
 
     function occupantName(spec) {
       if (spec.act === "hotel" || spec.act === "rest") return "a hotel guest";
