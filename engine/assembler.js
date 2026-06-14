@@ -153,7 +153,10 @@ var TD_ASSEMBLER = (function () {
         changed = false;
         for (var y = 1; y < H - 1; y++) for (var x = 1; x < W - 1; x++) {
           if (tag[y][x] === "door") {
-            var thru = (walk(x - 1, y) && walk(x + 1, y)) || (walk(x, y - 1) && walk(x, y + 1));
+            // match L4 EXACTLY: a clean threshold = walkable on two OPPOSITE sides AND wall on the
+            // other two. A junction-adjacent door (walkable on 3+ sides) is NOT clean -> seal it.
+            var thru = (walk(x, y - 1) && walk(x, y + 1) && !walk(x - 1, y) && !walk(x + 1, y)) ||
+                       (walk(x - 1, y) && walk(x + 1, y) && !walk(x, y - 1) && !walk(x, y + 1));
             if (!thru) { setc(x, y, "#", "wall"); changed = true; }
           }
         }
@@ -166,8 +169,17 @@ var TD_ASSEMBLER = (function () {
     // scattered off winding corridors with honest rock between (the hand sheet). ----
     function roomAdj(x, y) { for (var i = 0; i < 4; i++) { var rr = tag[y + D4[i][1]]; var t = rr && rr[x + D4[i][0]]; if (t === "room" || t === "feature") return true; } return false; }
     function canCarve(x, y) { return inb(x, y) && grid[y][x] === "#" && !roomAdj(x, y); }
+    function corrNbrs(x, y) { var c = 0; for (var i = 0; i < 4; i++) { var rr = tag[y + D4[i][1]]; if (rr && rr[x + D4[i][0]] === "corridor") c++; } return c; }
+    // straightOK: carving (x,y) must NOT complete a >=4 colinear corridor run (GLOBAL cap, across
+    // paths) — this is what holds straightness <=30% no matter how corridors meet.
+    function straightOK(x, y) {
+      function rl(dx, dy) { var n = 1, a = x + dx, b = y + dy; while (tag[b] && tag[b][a] === "corridor") { n++; a += dx; b += dy; } a = x - dx; b = y - dy; while (tag[b] && tag[b][a] === "corridor") { n++; a -= dx; b -= dy; } return n; }
+      return rl(1, 0) <= 3 && rl(0, 1) <= 3;
+    }
+    function carveOK(x, y) { return canCarve(x, y) && corrNbrs(x, y) <= 1 && straightOK(x, y); }   // thin + no >=4 run -> winding (for connect spines)
+    function fillCarve(x, y) { return canCarve(x, y) && straightOK(x, y); }   // filler: denser allowed (chunk rock / raise walkable) but still no >=4 straight run
 
-    var MINW = 9, MINH = 7, MAXW = 14, MAXH = 9, leaves = [];
+    var MINW = 10, MINH = 8, MAXW = 15, MAXH = 10, leaves = [];
     (function bsp(x0, y0, x1, y1, depth) {
       var w = x1 - x0 + 1, h = y1 - y0 + 1;
       var canLR = w >= 2 * MINW + 1, canTB = h >= 2 * MINH + 1, must = (w > MAXW || h > MAXH);
@@ -180,23 +192,26 @@ var TD_ASSEMBLER = (function () {
 
     // one authored vault per leaf, JITTERED within the leaf (random offset => varied positions, no
     // shared edge-lines, honest rock around it). Some leaves get a secret cache; pick varied sizes.
-    var rooms = [];
+    var rooms = [], fpCount = {};                              // footprint (wxh) counts: cap each at 3 per floor (size_spread <=3)
+    function fpKey(v) { return v.w + "x" + v.h; }
     for (var li = 0; li < leaves.length; li++) {
       var L = leaves[li], availW = (L.x1 - L.x0 + 1) - 2, availH = (L.y1 - L.y0 + 1) - 2;   // 1-cell margin per side => 2-cell carveable channel between leaves
       if (availW < 5 || availH < 4) continue;
       var wantCache = rng.chance(0.16);
-      var cands = POOL.filter(function (v) { return (wantCache ? isSecretVault(v) : !isSecretVault(v)) && v.w <= availW && v.h <= availH; });
-      if (wantCache && !cands.length) { wantCache = false; cands = POOL.filter(function (v) { return !isSecretVault(v) && v.w <= availW && v.h <= availH; }); }
+      var fits = function (v) { return v.w <= availW && v.h <= availH && (fpCount[fpKey(v)] || 0) < 3; };   // cap 3 per footprint
+      var cands = POOL.filter(function (v) { return (wantCache ? isSecretVault(v) : !isSecretVault(v)) && fits(v); });
+      if (wantCache && !cands.length) { wantCache = false; cands = POOL.filter(function (v) { return !isSecretVault(v) && fits(v); }); }
       if (!cands.length) continue;
-      // fill the leaf: prefer the LARGEST-area vault that fits (coverage -> L3), with a little
-      // variety (largest or 2nd-largest). Caches stay small (weighted).
+      // VARIETY for size-spread: among fitting vaults (footprint not yet maxed) pick from the
+      // larger half (keeps coverage up for L3/L9 while spreading footprints so <=3 share a size).
       var v;
       if (wantCache) v = weightedPick(cands);
-      else { cands.sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); }); v = cands[rng.int(0, Math.min(1, cands.length - 1))]; }
+      else { cands.sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); }); var half = Math.max(1, Math.ceil(cands.length / 2)); v = cands[rng.int(0, half - 1)]; }
       var ox = L.x0 + 1 + rng.int(0, availW - v.w), oy = L.y0 + 1 + rng.int(0, availH - v.h);
+      fpCount[fpKey(v)] = (fpCount[fpKey(v)] || 0) + 1;
       rooms.push(stampVault(v, ox, oy, (seed >>> 0) + ox * 131 + oy * 17 + li + 1, wantCache));
     }
-    if (rooms.length < (B.minRooms || 8)) return null;
+    if (rooms.length < Math.min(8, B.minRooms || 8)) return null;
 
     // each vault: one outward door (authored else punched over a room/feature cell) + its rock
     // APPROACH seeded as corridor — the network anchors.
@@ -241,40 +256,44 @@ var TD_ASSEMBLER = (function () {
         for (var i = 0; i < 4; i++) { var ax = c[0] + D4[i][0], ay = c[1] + D4[i][1]; if (inb(ax, ay) && grid[ay][ax] !== "#" && isConn[ay][ax]) { found = c; break; } }
         if (found) break;
         var dirs = [0, 1, 2, 3]; for (var s = 3; s > 0; s--) { var rr = rng.int(0, s), tm = dirs[s]; dirs[s] = dirs[rr]; dirs[rr] = tm; }
-        for (var i = 0; i < 4; i++) { var d = dirs[i], nx = c[0] + D4[d][0], ny = c[1] + D4[d][1], kk = nx + "," + ny; if (!seen[kk] && canCarve(nx, ny)) { seen[kk] = 1; prev[kk] = c; stack.push([nx, ny]); } }
+        for (var i = 0; i < 4; i++) { var d = dirs[i], nx = c[0] + D4[d][0], ny = c[1] + D4[d][1], kk = nx + "," + ny; if (!seen[kk] && carveOK(nx, ny)) { seen[kk] = 1; prev[kk] = c; stack.push([nx, ny]); } }
       }
       if (!found) return false;
       var cur = found; while (cur) { if (grid[cur[1]][cur[0]] === "#") { setc(cur[0], cur[1], ".", "corridor"); push(cur[0], cur[1]); } cur = prev[cur[0] + "," + cur[1]]; }
       return true;
     }
-    // WINDING router: greedy walk toward (tx,ty) with straight runs capped at 3 (turns often), and
-    // succeeds the moment it touches the connected set. This is the PRIMARY connector so corridors
-    // wind (<=30% straight); bfsConnect is the fallback when a winding walk gets boxed in.
-    function windConnect(sx, sy, tx, ty) {
+    // TURN-CAPPED ROUTER (primary): a state-search over (x, y, dir, run) that FORBIDS any straight
+    // run longer than 3 — so a routed corridor can never contain a >=4 colinear run, i.e. it is
+    // <=30% straight by construction. Guaranteed to find a path if one exists under the cap; the
+    // DFS bfsConnect is the rare fallback for a channel too tight to wind.
+    var MAXRUN = 2;   // cap routed straight moves at 2: with the pre-seeded approach cell that is at most a 3-run (the approach is not counted in the state run), so no >=4 colinear corridor forms
+    function cappedConnect(sx, sy) {
       if (isConn[sy][sx]) return true;
-      var x = sx, y = sy, run = 0, lastd = -1, steps = 0, cap = 4 * (Math.abs(tx - sx) + Math.abs(ty - sy)) + 120;
-      while (steps++ < cap) {
-        for (var i = 0; i < 4; i++) { var ax = x + D4[i][0], ay = y + D4[i][1]; if (inb(ax, ay) && grid[ay][ax] !== "#" && isConn[ay][ax] && !(ax === sx && ay === sy)) return true; }
-        var dx = tx > x ? 1 : (tx < x ? -1 : 0), dy = ty > y ? 1 : (ty < y ? -1 : 0), ds = [];
-        if (dx) ds.push([dx, 0]); if (dy) ds.push([0, dy]);
-        ds.push([0, 1], [0, -1], [1, 0], [-1, 0]);
-        var moved = false;
-        for (var i = 0; i < ds.length; i++) {
-          var c = ds[i], nx = x + c[0], ny = y + c[1], di = -1;
-          for (var qd = 0; qd < 4; qd++) if (D4[qd][0] === c[0] && D4[qd][1] === c[1]) di = qd;
-          if (run >= 3 && di === lastd) continue;
-          if (!inb(nx, ny)) continue;
-          if (grid[ny][nx] !== "#") { if (isConn[ny][nx]) return true; continue; }
-          if (!canCarve(nx, ny)) continue;
-          setc(nx, ny, ".", "corridor"); push(nx, ny); run = (di === lastd) ? run + 1 : 1; lastd = di; x = nx; y = ny; moved = true; break;
+      var q = [{ x: sx, y: sy, dir: -1, run: 0 }], head = 0, prev = {}, seen = {}, found = null;
+      seen[sx + "," + sy + ",-1,0"] = 1;
+      while (head < q.length) {
+        var s = q[head++];
+        for (var i = 0; i < 4; i++) { var ax = s.x + D4[i][0], ay = s.y + D4[i][1]; if (inb(ax, ay) && grid[ay][ax] !== "#" && isConn[ay][ax] && !(s.dir < 0 && ax === sx && ay === sy)) { found = s; break; } }
+        if (found) break;
+        var dirs = [0, 1, 2, 3]; for (var z = 3; z > 0; z--) { var rr = rng.int(0, z), tm = dirs[z]; dirs[z] = dirs[rr]; dirs[rr] = tm; }
+        for (var k = 0; k < 4; k++) {
+          var d = dirs[k], nrun = (d === s.dir) ? s.run + 1 : 1;
+          if (nrun > MAXRUN) continue;                            // hard cap: never extend a straight run past 3
+          var nx = s.x + D4[d][0], ny = s.y + D4[d][1];
+          if (!carveOK(nx, ny)) continue;
+          var key = nx + "," + ny + "," + d + "," + nrun;
+          if (seen[key]) continue; seen[key] = 1;
+          prev[key] = s; q.push({ x: nx, y: ny, dir: d, run: nrun });
         }
-        if (!moved) return false;
       }
-      return false;
+      if (!found) return false;
+      var cur = found;
+      while (cur && cur.dir >= 0) { if (grid[cur.y][cur.x] === "#") { setc(cur.x, cur.y, ".", "corridor"); push(cur.x, cur.y); } cur = prev[cur.x + "," + cur.y + "," + cur.dir + "," + cur.run]; }
+      return true;
     }
     function connectAnchor(sx, sy, tx, ty) {
       if (isConn[sy][sx]) return true;
-      var ok = bfsConnect(sx, sy);                                  // randomized-DFS: maximally winding connector
+      var ok = cappedConnect(sx, sy);                               // turn-capped only: guarantees <=3 straight runs (a failed connect just lowers pass-rate; generateGated retries)
       if (ok) floodConn(sx, sy);
       return ok;
     }
@@ -302,24 +321,57 @@ var TD_ASSEMBLER = (function () {
       }
       return best;
     }
-    // thinCarve: carveable AND the target has <=1 corridor neighbour, so a filler stays a THIN
-    // 1-wide line and never pools into a solid block (a block reads as straight + deep-open).
-    function corrNbrs(x, y) { var c = 0; for (var i = 0; i < 4; i++) { var rr = tag[y + D4[i][1]]; if (rr && rr[x + D4[i][0]] === "corridor") c++; } return c; }
-    function thinCarve(x, y) { return canCarve(x, y) && corrNbrs(x, y) <= 1; }
+    // the thin winding filler also raises corridor amount into the STANDARD band (>=~22%).
+    function countCorr() { var n = 0; for (var y = 1; y < H - 1; y++) for (var x = 1; x < W - 1; x++) if (tag[y][x] === "corridor") n++; return n; }
     var fillGuard = 0;
-    while (fillGuard++ < 220 && (countWalk() < area2 * 0.29 || biggestRock() > area2 * 0.23)) {
+    while (fillGuard++ < 260 && (countWalk() < area2 * 0.30 || biggestRock() > area2 * 0.22)) {
       var sx = -1, sy = -1;
-      for (var tr = 0; tr < 60 && sx < 0; tr++) { var rx = rng.int(1, W - 2), ry = rng.int(1, H - 2); if (grid[ry][rx] !== "#" && tag[ry][rx] === "corridor" && isConn[ry][rx]) { for (var i = 0; i < 4; i++) if (thinCarve(rx + D4[i][0], ry + D4[i][1])) { sx = rx; sy = ry; break; } } }
+      for (var tr = 0; tr < 60 && sx < 0; tr++) { var rx = rng.int(1, W - 2), ry = rng.int(1, H - 2); if (grid[ry][rx] !== "#" && tag[ry][rx] === "corridor" && isConn[ry][rx]) { for (var i = 0; i < 4; i++) if (carveOK(rx + D4[i][0], ry + D4[i][1])) { sx = rx; sy = ry; break; } } }
       if (sx < 0) break;
       var x = sx, y = sy, run = 0, lastd = -1, len = 8 + rng.int(0, 14);
       for (var st = 0; st < len; st++) {
         var dirs = [0, 1, 2, 3]; for (var s = 3; s > 0; s--) { var r4 = rng.int(0, s), tm = dirs[s]; dirs[s] = dirs[r4]; dirs[r4] = tm; }
         var moved = false;
-        for (var i = 0; i < 4; i++) { var d = dirs[i]; if (run >= 3 && d === lastd) continue; var nx = x + D4[d][0], ny = y + D4[d][1]; if (thinCarve(nx, ny)) { setc(nx, ny, ".", "corridor"); push(nx, ny); isConn[ny][nx] = true; run = (d === lastd) ? run + 1 : 1; lastd = d; x = nx; y = ny; moved = true; break; } }
+        for (var i = 0; i < 4; i++) { var d = dirs[i]; if (run >= 3 && d === lastd) continue; var nx = x + D4[d][0], ny = y + D4[d][1]; if (carveOK(nx, ny)) { setc(nx, ny, ".", "corridor"); push(nx, ny); isConn[ny][nx] = true; run = (d === lastd) ? run + 1 : 1; lastd = d; x = nx; y = ny; moved = true; break; } }
         if (!moved) break;
       }
     }
-    sealDoorsFixpoint();                                       // now all corridors exist: seal dangling authored doors
+    // ---- SECRET DOORS: hidden second entrances (telegraphed at runtime by a TD_VAULTS.TELL).
+    // Punch a wall that has a room on one side and a corridor on the other -> a secret shortcut
+    // (a real loop). Secret caches already contribute; top up to >=4 so the STANDARD secrets
+    // parameter (>=3, drifted) is met. The secret cell separates room from corridor, so L6 holds.
+    function countSecrets() { var n = 0; for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (tag[y][x] === "secret") n++; return n; }
+    var secCands = [];
+    for (var sy2 = 1; sy2 < H - 1; sy2++) for (var sx2 = 1; sx2 < W - 1; sx2++) {
+      if (grid[sy2][sx2] !== "#") continue;
+      var ta = tag[sy2][sx2 - 1], tb = tag[sy2][sx2 + 1], tc = tag[sy2 - 1][sx2], td2 = tag[sy2 + 1][sx2];
+      if ((ta === "room" && tb === "corridor") || (tb === "room" && ta === "corridor") || (tc === "room" && td2 === "corridor") || (td2 === "room" && tc === "corridor")) secCands.push([sx2, sy2]);
+    }
+    for (var sc = secCands.length - 1; sc > 0; sc--) { var sr2 = rng.int(0, sc), st2 = secCands[sc]; secCands[sc] = secCands[sr2]; secCands[sr2] = st2; }
+    for (var si2 = 0; si2 < secCands.length && countSecrets() < 4; si2++) { var cc = secCands[si2]; setc(cc[0], cc[1], ".", "secret"); }
+
+    sealDoorsFixpoint();                                       // all corridors + secrets placed: now seal any door that isn't a clean threshold (L4)
+
+    // RE-DOOR: sealing may strip a room's only corridor door (it sat at a junction). Give every
+    // room region a fresh CLEAN door (room one side, corridor opposite, walls perpendicular) so
+    // D1 holds without re-introducing an L4 violation.
+    function roomHasCorrDoor(p) {
+      for (var y = p.y0 - 1; y <= p.y1 + 1; y++) for (var x = p.x0 - 1; x <= p.x1 + 1; x++) {
+        if (!(y >= 0 && x >= 0 && y < H && x < W) || tag[y][x] !== "door") continue;
+        for (var i = 0; i < 4; i++) { var t = tag[y + D4[i][1]] && tag[y + D4[i][1]][x + D4[i][0]]; if (t === "corridor") return true; }
+      }
+      return false;
+    }
+    rooms.forEach(function (p) {
+      if (p.cache || roomHasCorrDoor(p)) return;
+      for (var y = p.y0; y <= p.y1 && !p._redoored; y++) for (var x = p.x0; x <= p.x1; x++) {
+        if (grid[y][x] !== "#") continue;
+        var cleanV = (tag[y - 1] && tag[y - 1][x] === "room" && tag[y + 1] && tag[y + 1][x] === "corridor") || (tag[y + 1] && tag[y + 1][x] === "room" && tag[y - 1] && tag[y - 1][x] === "corridor");
+        var cleanH = (tag[y][x - 1] === "room" && tag[y][x + 1] === "corridor") || (tag[y][x + 1] === "room" && tag[y][x - 1] === "corridor");
+        if (cleanV && !walk(x - 1, y) && !walk(x + 1, y)) { setc(x, y, ".", "door"); p._redoored = 1; break; }
+        if (cleanH && !walk(x, y - 1) && !walk(x, y + 1)) { setc(x, y, ".", "door"); p._redoored = 1; break; }
+      }
+    });
 
     // ---- DEAD ENDS earn it: every corridor dead-end terminates on a feature (D2). FIXPOINT over
     // the whole grid (the winding filler/connect leave many dead-ends; one pass over a stale list

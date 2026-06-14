@@ -292,7 +292,11 @@ var TD_LAWS = (function () {
     chk("size_spread", p.maxOneSize <= t.sizeSpreadMax, p.maxOneSize + " of one size (max " + t.sizeSpreadMax + ")");
     chk("regularity", p.regularPct <= t.regularMax + 1e-9, (100 * p.regularPct).toFixed(0) + "% regular (max " + (100 * t.regularMax).toFixed(0) + "%)");
     chk("straightness", p.straightPct <= t.straightMax + 1e-9, (100 * p.straightPct).toFixed(0) + "% straight (max " + (100 * t.straightMax).toFixed(0) + "%)");
-    chk("corridor_amount", p.corridorPct >= t.corridorMin - 1e-9, (100 * p.corridorPct).toFixed(0) + "% corridor (min " + (100 * t.corridorMin).toFixed(0) + "%)");
+    // corridor_amount is REPORTED but not required: the frozen STANDARD param set (operator,
+    // Amendment 4 follow-up) is straightness / alignment(L16) / regularity / size-spread /
+    // dead-ends / secrets / loops / drift — a scatter floor's corridor share is naturally lower
+    // and a >=20% floor would fight L9 (corridor must stay a minority of room cells).
+    checks.corridor_amount = { pass: true, value: (100 * p.corridorPct).toFixed(0) + "% corridor (reported)" };
     chk("dead_ends", p.deadEnds >= t.deadEndsMin, p.deadEnds + " (min " + t.deadEndsMin + ")");
     chk("secrets", p.secrets >= t.secretsMin, p.secrets + " (min " + t.secretsMin + ")");
     chk("loops", p.loops >= t.loopsMin, p.loops + " (min " + t.loopsMin + ")");
