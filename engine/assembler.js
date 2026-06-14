@@ -27,7 +27,7 @@ var TD_ASSEMBLER = (function () {
   var BUNDLES = {
     STANDARD: { w: 49, h: 35, tiers: [5, 6, 7], loops: [3, 4], minRooms: 10, trunkW: 2 },
     WARREN:   { w: 47, h: 33, tiers: [5, 6, 7], loops: [3, 5], minRooms: 8, trunkW: 1 },
-    HALLS:    { w: 55, h: 37, tiers: [7], loops: [2, 3], minRooms: 6, trunkW: 2 }
+    HALLS:    { w: 53, h: 37, tiers: [6, 7], loops: [2, 3], minRooms: 6, trunkW: 2 }
   };
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
 
@@ -88,27 +88,48 @@ var TD_ASSEMBLER = (function () {
       if (t === "stair") return "stair";
       return "wall";                                                          // wall, pillar (o), secret cache (?) -> authored rock, renders as #
     }
-    // a 1-row tooth running trunk-to-trunk (x=1 .. W-2): the thin horizontal circulation a band
-    // of vaults hangs off. (Straightness/winding is a DEFERRED corridor parameter — it is applied
-    // on top AFTER the vault wire-in proves out; the job now is authored rooms + a legal floor.)
-    function straightTooth(row) { for (var x = 1; x <= W - 2; x++) { carveC(x, row); push(x, row); } }
+    // a WINDING tooth in rows [sr, sr+1] running trunk-to-trunk: horizontal runs of <=3 then a
+    // 1-cell vertical jog, so corridor straight-runs stay <=30% (no straight filing-cabinet lane).
+    function windTooth(sr) {
+      var up = sr, low = sr + 1, x = 1, row = up;
+      carveC(x, row); push(x, row);
+      while (x < W - 2) {
+        var lim = Math.min(2, (W - 2) - x);
+        for (var k = 0; k < lim; k++) { x++; carveC(x, row); push(x, row); }
+        if (x < W - 2) { row = (row === up) ? low : up; carveC(x, row); push(x, row); }
+      }
+      carveC(W - 2, row); push(W - 2, row);
+    }
     function weightedPick(cands) {
       var tot = 0, i; for (i = 0; i < cands.length; i++) tot += (cands[i].weight || 10);
       var r = rng.int(0, tot - 1), acc = 0;
       for (i = 0; i < cands.length; i++) { acc += (cands[i].weight || 10); if (r < acc) return cands[i]; }
       return cands[cands.length - 1];
     }
-    // stamp a resolved vault at (ox, oy); returns its placed record (name + bbox + floor cells).
-    function stampVault(v, ox, oy, pseed) {
+    function isSecretVault(v) { return v.tags && v.tags.indexOf("secret") >= 0; }
+    // stamp a resolved vault at (ox, oy). asCache => a hidden CACHE: its interior is tagged
+    // "feature" (not "room"), so a tiny secret vault is content behind a secret door, not a
+    // room that would trip L8/L11. Returns the placed record (name + bbox + interior cells).
+    function stampVault(v, ox, oy, pseed, asCache) {
       var r = TD_VAULTFMT.resolve(v, pseed), floor = [];
       for (var yy = 0; yy < r.h; yy++) for (var xx = 0; xx < r.w; xx++) {
         var gx = ox + xx, gy = oy + yy;
         if (!(gx >= 1 && gy >= 1 && gx < W - 1 && gy < H - 1)) continue;
         var mt = mapTag(r.tags[yy][xx]);
+        if (asCache && mt === "room") mt = "feature";
         setc(gx, gy, r.grid[yy][xx], mt);
-        if (mt === "room") floor.push([gx, gy]);
+        if (mt === "room" || (asCache && mt === "feature")) floor.push([gx, gy]);
       }
-      return { name: v.name, x0: ox, y0: oy, x1: ox + r.w - 1, y1: oy + r.h - 1, floor: floor, vault: v };
+      return { name: v.name, x0: ox, y0: oy, x1: ox + r.w - 1, y1: oy + r.h - 1, floor: floor, vault: v, cache: !!asCache };
+    }
+    // connect a CACHE up to the tooth via a SECRET door (telegraphed at runtime) above a feature
+    // cell — the Secret Grammar / Purpose law: secret content reached only through a secret.
+    function connectCache(p) {
+      var bTop = p.y0, tRow = bTop - 1, dcol = -1, x;
+      for (x = p.x0 + 1; x <= p.x1 - 1; x++) if (grid[bTop][x] === "#" && tag[bTop + 1] && tag[bTop + 1][x] === "feature") { setc(x, bTop, ".", "secret"); dcol = x; break; }
+      if (dcol < 0) return false;
+      if (grid[tRow][dcol] === "#") { setc(dcol, tRow, ".", "corridor"); push(dcol, tRow); }
+      p.cx = dcol; p.cy = bTop + 1; return true;
     }
     // connect a stamped vault UP to the tooth directly above its top wall (tRow = p.y0 - 1). The
     // connect door must sit above a ROOM cell (so the room component owns a door onto a corridor,
@@ -145,26 +166,33 @@ var TD_ASSEMBLER = (function () {
     // door auto-links a vault to the band below (an authored loop). Two flanking trunks (left,
     // right) face the side borders and stitch every tooth together. ----
     var rooms = [], lastBot = 0, y = 1;
-    while (y + 1 + TIERS[0] <= H - 2) {
-      var tRow = y; straightTooth(tRow);
-      var bTop = tRow + 1, rem = (H - 2) - bTop;               // rows for the band before the bottom border
+    while (y + 2 + TIERS[0] <= H - 1) {
+      var tRow = y; windTooth(tRow);                           // 2-row winding tooth (rows tRow, tRow+1)
+      var bTop = tRow + 2, rem = (H - 2) - bTop;               // vaults sit below the 2-row tooth
       var tier = TIERS[rng.int(0, TIERS.length - 1)];
       while (tier > rem && tier > TIERS[0]) tier--;
       if (tier > rem) break;
       var bBot = bTop + tier - 1, ox = 2;                      // x=1 left trunk; vault left wall at x=2
       while (ox < W - 3) {
         var maxW = (W - 2) - ox;                               // leave x=W-2 for the right trunk
-        var cands = POOL.filter(function (v) { return v.h === tier && v.w <= maxW; });
+        // occasionally drop a SECRET CACHE (tiny secret vault) instead of a room — only in a
+        // tier-5 band so its 4-tall body leaves just one faced row below (no buried rock).
+        var wantCache = rng.chance(0.30) && tier === 5;
+        var cands = wantCache
+          ? POOL.filter(function (v) { return isSecretVault(v) && v.w <= maxW && v.h <= tier; })
+          : POOL.filter(function (v) { return v.h === tier && v.w <= maxW && !isSecretVault(v); });
+        if (wantCache && !cands.length) { wantCache = false; cands = POOL.filter(function (v) { return v.h === tier && v.w <= maxW && !isSecretVault(v); }); }
         if (!cands.length) break;
         var v = weightedPick(cands);
-        var p = stampVault(v, ox, bTop, (seed >>> 0) + ox * 131 + tRow * 17 + 1);
-        if (connectUp(p)) { rooms.push(p); lastBot = bBot; }   // only keep a vault we could wire to the spine
+        var p = stampVault(v, ox, bTop, (seed >>> 0) + ox * 131 + tRow * 17 + 1, wantCache);
+        var ok = wantCache ? connectCache(p) : connectUp(p);
+        if (ok) { rooms.push(p); if (!wantCache) lastBot = bBot; }   // only keep a vault we could wire to the spine
         ox = p.x1 + 1;                                         // next vault shares the boundary wall
       }
       y = bBot + 1;                                            // next tooth sits directly below this band's bottom wall
     }
     if (rooms.length < 4) return null;
-    if (lastBot < H - 3) straightTooth(H - 2);                 // bottom tooth faces the lower border
+    if (lastBot < H - 4) windTooth(H - 3);                     // bottom winding tooth faces the lower border
     for (var ty = 1; ty <= H - 2; ty++) {
       carveC(1, ty); if (tag[ty][1] === "corridor") push(1, ty);                                  // left trunk (faces the left border)
       carveC(W - 2, ty); if (tag[ty][W - 2] === "corridor") push(W - 2, ty);                      // right trunk (faces the right border)
@@ -193,9 +221,10 @@ var TD_ASSEMBLER = (function () {
       return best || (p.floor.length ? p.floor[0] : null);
     }
     var stairs = [];
-    var upR = rooms[0], dnR = rooms[rooms.length - 1];
-    var u = safeStairCell(upR); if (u) { setc(u[0], u[1], ".", "stair"); stairs.push({ x: u[0], y: u[1], kind: "up", hidden: false }); }
-    var dn = safeStairCell(dnR); if (dn) { setc(dn[0], dn[1], ".", "stair"); stairs.push({ x: dn[0], y: dn[1], kind: "down", hidden: rng.chance(0.4) }); }
+    var normalRooms = rooms.filter(function (r) { return !r.cache; });          // stairs live in rooms, never in hidden caches
+    var upR = normalRooms[0], dnR = normalRooms[normalRooms.length - 1];
+    var u = upR && safeStairCell(upR); if (u) { setc(u[0], u[1], ".", "stair"); stairs.push({ x: u[0], y: u[1], kind: "up", hidden: false }); }
+    var dn = dnR && safeStairCell(dnR); if (dn) { setc(dn[0], dn[1], ".", "stair"); stairs.push({ x: dn[0], y: dn[1], kind: "down", hidden: rng.chance(0.4) }); }
 
     return { w: W, h: H, grid: grid, tag: tag, entry: { x: corridorCells[0][0], y: corridorCells[0][1] }, stairs: stairs, rooms: rooms, type: typeName || "STANDARD", minRooms: B.minRooms };
   }
