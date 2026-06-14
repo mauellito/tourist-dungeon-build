@@ -65,7 +65,7 @@ def main():
         sys.exit("FATAL: no Chrome/Edge found.")
     os.makedirs(TMP, exist_ok=True)
     parts = ['<!doctype html><meta charset=utf-8><title>p</title><pre id=out>p</pre>']
-    for fn in ("rng.js", "lawsuite.js", "assembler.js"):
+    for fn in ("rng.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js", "assembler.js"):
         parts.append("<script>\n" + open(os.path.join(ENGINE, fn), encoding="utf-8").read() + "\n</script>")
     parts.append(REPORTER % (json.dumps(TYPES), N))
     rp = os.path.join(TMP, "assembler_runner.html"); open(rp, "w", encoding="utf-8").write("\n".join(parts))

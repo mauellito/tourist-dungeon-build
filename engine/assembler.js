@@ -24,9 +24,9 @@ var TD_ASSEMBLER = (function () {
   // not tall — bandH sets coverage, kept so L3 lands in 35-55%. Each band = a WINDING tooth
   // (2 rows: sr, sr+1) + gutter + bandH room rows + gutter, so sweepGap = bandH + 4.
   var BUNDLES = {
-    STANDARD: { w: 49, h: 35, bandH: 3, roomMin: 7, roomMax: 13, irregular: 0.6, loops: [3, 4], minRooms: 10, trunkW: 2 },
-    WARREN:   { w: 47, h: 33, bandH: 4, roomMin: 5, roomMax: 8, irregular: 0.5, loops: [3, 5], minRooms: 12, trunkW: 2 },
-    HALLS:    { w: 53, h: 37, bandH: 4, roomMin: 8, roomMax: 14, irregular: 0.4, loops: [2, 3], minRooms: 7, trunkW: 2 }
+    STANDARD: { w: 49, h: 35, tiers: [5, 6, 7], loops: [3, 4], minRooms: 10, trunkW: 2 },
+    WARREN:   { w: 47, h: 33, tiers: [5, 6, 7], loops: [3, 5], minRooms: 8, trunkW: 1 },
+    HALLS:    { w: 55, h: 37, tiers: [7], loops: [2, 3], minRooms: 6, trunkW: 2 }
   };
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
 
@@ -66,89 +66,108 @@ var TD_ASSEMBLER = (function () {
     function setc(x, y, g, t) { grid[y][x] = g; tag[y][x] = t; }
     function carveC(x, y) { if (inb(x, y) && grid[y][x] === "#") setc(x, y, ".", "corridor"); }
 
-    // ---- SPINE: WINDING teeth + a thin trunk (steal-list Option A, jogged spine). The teeth
-    // are the bulk of the corridor and they ZIGZAG (max 3-cell straightaways between 1-cell
-    // vertical jogs) so straight runs stay <=30% (STANDARD wants winding). A thin straight
-    // trunk at x=1 stitches the teeth together — it is a tiny fraction of corridor, so the
-    // straightness budget survives it. Each tooth ends on a feature (terminating vista). ----
-    var bandH = B.bandH, sweepGap = bandH + 4;               // tooth(2) + gutter(1) + rooms(bandH) + gutter(1)
-    var lastRow = H - bandH - 4;                             // final tooth: its bandH-row band lands exactly on H-2
-    var nTeeth = Math.max(2, Math.round((lastRow - 1) / sweepGap) + 1);  // evenly spaced teeth, last band on H-2
-    var sweepRows = []; for (var ti = 0; ti < nTeeth; ti++) sweepRows.push(Math.round(1 + (lastRow - 1) * ti / (nTeeth - 1)));
     var corridorCells = [];
     function push(x, y) { corridorCells.push([x, y]); }
 
-    // a winding tooth living in rows [sr, sr+1]: runs of <=3 along a row, then a 1-cell jog to
-    // the other row. Returns the set of columns where the LOWER row (sr+1) is corridor — those
-    // are the legal door-attach columns for the room band below.
-    function windTooth(sr) {
-      var up = sr, low = sr + 1, attach = {}, x = 1, row = up;
-      carveC(x, row); push(x, row);
-      while (x < W - 2) {
-        var lim = Math.min(2, (W - 2) - x);                  // <=2 new cells -> with the jog cell, runs cap at 3
-        for (var k = 0; k < lim; k++) { x++; carveC(x, row); push(x, row); if (row === low) attach[x] = 1; }
-        if (x < W - 2) { row = (row === up) ? low : up; carveC(x, row); push(x, row); if (row === low) attach[x] = 1; }
-      }
-      setc(W - 2, row, ".", "feature");                      // the tooth ends on a feature, not a blank wall
-      delete attach[W - 2];                                  // the end column is now a feature, not a door-attach corridor
-      return { attach: attach, lowRow: low, upRow: up };
-    }
-    var teeth = [];
-    for (var si = 0; si < sweepRows.length; si++) teeth.push(windTooth(sweepRows[si]));
-    var topSR = sweepRows[0], botSR = sweepRows[sweepRows.length - 1], trunkW = B.trunkW || 2;
-    for (var ty0 = topSR; ty0 <= botSR + 1; ty0++) for (var tx = 1; tx <= trunkW; tx++) { carveC(tx, ty0); if (grid[ty0][tx] === ".") push(tx, ty0); }  // the trunk (circulation spine; x=trunkW+1 stays the wall gutter to the rooms)
+    // THE WIRE-IN: rooms ARE authored vaults. The assembler PARSES the vault library
+    // (TD_VAULTLIB via TD_VAULTFMT) and STAMPS a selected vault into each room slot, resolving
+    // its variation chunks — it never draws a blank rectangle. The spine (winding teeth + a thin
+    // trunk) is circulation ONLY; the rooms' character (pillars, irregular walls, loot, secret
+    // caches) comes entirely from the authored vaults.
+    if (typeof TD_VAULTLIB === "undefined" || typeof TD_VAULTFMT === "undefined") return null;
+    var POOL = TD_VAULTLIB.all(), trunkW = B.trunkW || 2, TIERS = B.tiers || [5, 6, 7];
 
-    // ---- ROOMS (the bulk): fill each band below a tooth with a row of rooms, each hanging off
-    // the tooth ABOVE via a clean door at a column where the tooth's LOWER row is corridor.
-    // 1-cell walls to the trunk and between rooms (spacing law). ----
-    var rooms = [], bands = [];
-    for (var bi = 0; bi < sweepRows.length; bi++) {
-      var sr = sweepRows[bi], tooth = teeth[bi];
-      var nextSr = (bi + 1 < sweepRows.length) ? sweepRows[bi + 1] : H - 1;
-      var bTop = sr + 3, bBot = (bi + 1 < sweepRows.length) ? nextSr - 2 : H - 2;   // gutter at sr+2 and at nextSr-1
-      if (bBot - bTop + 1 > bandH) bBot = bTop + bandH - 1;                          // cap every band at bandH (last tooth is placed so its band lands on H-2 anyway)
-      if (bBot - bTop + 1 < 2) continue;
-      var cx = trunkW + 2, bandRooms = [];                   // x=1..trunkW trunk, x=trunkW+1 wall gutter
-      while (cx <= W - 3) {
-        var rw = rng.int(B.roomMin, B.roomMax);
-        var x0 = cx, x1 = Math.min(cx + rw - 1, W - 3);      // leave x=W-2 for the tooth-end feature lane
-        if (x1 - x0 + 1 < B.roomMin) break;
-        var rh = rng.int(Math.max(2, bandH - 2), bBot - bTop + 1);   // vary room HEIGHT too (size-spread); >=2 keeps size>=6
-        var y0 = bTop, y1 = bTop + rh - 1;
-        // door column: prefer a column where the tooth's lower row is already corridor; else tap.
-        var dc = -1; for (var ax = x0; ax <= x1; ax++) if (tooth.attach[ax]) { dc = ax; break; }
-        if (dc < 0) dc = (x0 + x1) >> 1;
-        // bulletproof stub: carve BOTH tooth rows at dc so the door always meets the tooth (the
-        // zigzag passes dc on exactly one row; carving both guarantees a connected through-passage).
-        if (grid[sr][dc] === "#") { setc(dc, sr, ".", "corridor"); push(dc, sr); }
-        if (grid[sr + 1][dc] === "#") { setc(dc, sr + 1, ".", "corridor"); push(dc, sr + 1); }
-        for (var yy = y0; yy <= y1; yy++) for (var xx = x0; xx <= x1; xx++) setc(xx, yy, ".", "room");
-        if (rng.chance(B.irregular)) { var bw = rng.int(1, Math.max(1, rw >> 1)), bh = rng.int(1, Math.max(1, (y1 - y0) >> 1)), bx2 = rng.chance(0.5) ? x0 : x1 - bw + 1, by2 = rng.chance(0.5) ? y0 : y1 - bh + 1; for (var iy = by2; iy < by2 + bh; iy++) for (var ix = bx2; ix < bx2 + bw; ix++) if (ix >= x0 && ix <= x1 && iy >= y0 && iy <= y1 && !(ix === dc && iy === y0)) setc(ix, iy, "#", "wall"); }
-        if (grid[y0][dc] !== ".") setc(dc, y0, ".", "room");
-        setc(dc, sr + 2, ".", "door");                        // door through the gutter to the tooth's lower row
-        var R = { x0: x0, y0: y0, x1: x1, y1: y1, cx: dc, cy: (y0 + y1) >> 1, door: { x: dc, y: sr + 2 }, sr: sr, nextSr: nextSr };
-        rooms.push(R); bandRooms.push(R);
-        cx = x1 + 2;
+    // vault tag -> the assembler/law vocabulary. Walkable: room/door/stair/feature; else wall
+    // (a pillar 'o' and a secret-cache '?' are authored rock inside the room — they render as #).
+    function mapTag(t) {
+      if (t === "floor" || t === "loot" || t === "landmark") return "room";   // $/G are floor here (room); their CONTENT is a runtime concern. Keeping them "room" preserves room connectivity, so a $/G in a pillared vault's middle row doesn't split its floor into doorless sub-regions (D1/L11).
+      if (t === "water") return "feature";
+      if (t === "door") return "door";
+      if (t === "stair") return "stair";
+      return "wall";                                                          // wall, pillar (o), secret cache (?) -> authored rock, renders as #
+    }
+    // a 1-row tooth running trunk-to-trunk (x=1 .. W-2): the thin horizontal circulation a band
+    // of vaults hangs off. (Straightness/winding is a DEFERRED corridor parameter — it is applied
+    // on top AFTER the vault wire-in proves out; the job now is authored rooms + a legal floor.)
+    function straightTooth(row) { for (var x = 1; x <= W - 2; x++) { carveC(x, row); push(x, row); } }
+    function weightedPick(cands) {
+      var tot = 0, i; for (i = 0; i < cands.length; i++) tot += (cands[i].weight || 10);
+      var r = rng.int(0, tot - 1), acc = 0;
+      for (i = 0; i < cands.length; i++) { acc += (cands[i].weight || 10); if (r < acc) return cands[i]; }
+      return cands[cands.length - 1];
+    }
+    // stamp a resolved vault at (ox, oy); returns its placed record (name + bbox + floor cells).
+    function stampVault(v, ox, oy, pseed) {
+      var r = TD_VAULTFMT.resolve(v, pseed), floor = [];
+      for (var yy = 0; yy < r.h; yy++) for (var xx = 0; xx < r.w; xx++) {
+        var gx = ox + xx, gy = oy + yy;
+        if (!(gx >= 1 && gy >= 1 && gx < W - 1 && gy < H - 1)) continue;
+        var mt = mapTag(r.tags[yy][xx]);
+        setc(gx, gy, r.grid[yy][xx], mt);
+        if (mt === "room") floor.push([gx, gy]);
       }
-      bands.push(bandRooms);
+      return { name: v.name, x0: ox, y0: oy, x1: ox + r.w - 1, y1: oy + r.h - 1, floor: floor, vault: v };
+    }
+    // connect a stamped vault UP to the tooth directly above its top wall (tRow = p.y0 - 1). The
+    // connect door must sit above a ROOM cell (so the room component owns a door onto a corridor,
+    // D1) — never above a feature/pillar. Prefer an authored top-edge door; else punch one.
+    function connectUp(p) {
+      var bTop = p.y0, tRow = bTop - 1, dcol = -1, x;
+      for (x = p.x0 + 1; x <= p.x1 - 1; x++) if (tag[bTop][x] === "door" && tag[bTop + 1] && tag[bTop + 1][x] === "room") { dcol = x; break; }
+      if (dcol < 0) for (x = p.x0 + 1; x <= p.x1 - 1; x++) if (grid[bTop][x] === "#" && tag[bTop + 1] && tag[bTop + 1][x] === "room") { setc(x, bTop, ".", "door"); dcol = x; break; }
+      if (dcol < 0) return false;                             // no room cell under the top wall (rejected upstream)
+      if (grid[tRow][dcol] === "#") { setc(dcol, tRow, ".", "corridor"); push(dcol, tRow); }   // ensure the tooth meets the door
+      p.cx = dcol; p.cy = bTop + 1; return true;
+    }
+    // seal every door that does NOT open onto walkable cells on both sides, so each surviving
+    // door is a clean through-passage (L4). Run to a FIXPOINT over ALL doors: sealing a dangling
+    // door can strand its neighbour door, so one pass is not enough. Connect doors survive (their
+    // tooth-corridor side is never a door, so they stay through). Adjacent vaults whose facing
+    // edge doors line up also stay open — a free authored room<->room link.
+    function sealDoorsFixpoint() {
+      var changed = true;
+      while (changed) {
+        changed = false;
+        for (var y = 1; y < H - 1; y++) for (var x = 1; x < W - 1; x++) {
+          if (tag[y][x] === "door") {
+            var thru = (walk(x - 1, y) && walk(x + 1, y)) || (walk(x, y - 1) && walk(x, y + 1));
+            if (!thru) { setc(x, y, "#", "wall"); changed = true; }
+          }
+        }
+      }
+    }
+
+    // ---- SPINE + VAULT BANDS (top-down). Each band is a 1-row tooth + a row of authored vaults
+    // (height == a vault tier, so they fit exactly), placed ADJACENT (shared wall = spacing law).
+    // The tooth sits directly above the vaults; the next tooth sits directly below, so an S-edge
+    // door auto-links a vault to the band below (an authored loop). Two flanking trunks (left,
+    // right) face the side borders and stitch every tooth together. ----
+    var rooms = [], lastBot = 0, y = 1;
+    while (y + 1 + TIERS[0] <= H - 2) {
+      var tRow = y; straightTooth(tRow);
+      var bTop = tRow + 1, rem = (H - 2) - bTop;               // rows for the band before the bottom border
+      var tier = TIERS[rng.int(0, TIERS.length - 1)];
+      while (tier > rem && tier > TIERS[0]) tier--;
+      if (tier > rem) break;
+      var bBot = bTop + tier - 1, ox = 2;                      // x=1 left trunk; vault left wall at x=2
+      while (ox < W - 3) {
+        var maxW = (W - 2) - ox;                               // leave x=W-2 for the right trunk
+        var cands = POOL.filter(function (v) { return v.h === tier && v.w <= maxW; });
+        if (!cands.length) break;
+        var v = weightedPick(cands);
+        var p = stampVault(v, ox, bTop, (seed >>> 0) + ox * 131 + tRow * 17 + 1);
+        if (connectUp(p)) { rooms.push(p); lastBot = bBot; }   // only keep a vault we could wire to the spine
+        ox = p.x1 + 1;                                         // next vault shares the boundary wall
+      }
+      y = bBot + 1;                                            // next tooth sits directly below this band's bottom wall
     }
     if (rooms.length < 4) return null;
-
-    // ---- LOOPS via SECRET doors (reward-first): a hidden door punched through the 1-cell wall
-    // between two adjacent rooms in a band — a real second route (room -> tooth -> room -> secret
-    // -> room). Telegraphed at runtime by a TD_VAULTS.TELL; here it is structural placement. ----
-    var nLoops = rng.int(B.loops[0], B.loops[1]), made = 0;
-    for (var bj = 0; bj < bands.length && made < nLoops; bj++) {
-      var brs = bands[bj];
-      for (var ri = 0; ri + 1 < brs.length && made < nLoops; ri++) {
-        var A = brs[ri], Bb = brs[ri + 1], wx = A.x1 + 1;     // the shared wall column between A and B
-        if (Bb.x0 !== wx + 1) continue;                       // only when they are wall-adjacent (1-cell gap)
-        var ly = Math.max(A.y0, Bb.y0), hy = Math.min(A.y1, Bb.y1);
-        if (hy < ly) continue;
-        var wy = (ly + hy) >> 1;
-        if (grid[wy][wx] === "#" && grid[wy][wx - 1] === "." && grid[wy][wx + 1] === ".") { setc(wx, wy, ".", "secret"); made++; }
-      }
+    if (lastBot < H - 3) straightTooth(H - 2);                 // bottom tooth faces the lower border
+    for (var ty = 1; ty <= H - 2; ty++) {
+      carveC(1, ty); if (tag[ty][1] === "corridor") push(1, ty);                                  // left trunk (faces the left border)
+      carveC(W - 2, ty); if (tag[ty][W - 2] === "corridor") push(W - 2, ty);                      // right trunk (faces the right border)
     }
+    sealDoorsFixpoint();                                       // now all corridors exist: seal dangling authored doors
 
     // ---- DEAD ENDS earn it: any corridor cell that is a dead-end gets a feature (D2). ----
     function walkN(x, y) { var n = 0; for (var i = 0; i < 4; i++) if (walk(x + D4[i][0], y + D4[i][1])) n++; return n; }
@@ -159,12 +178,22 @@ var TD_ASSEMBLER = (function () {
       }
     });
 
-    // ---- STAIRS: up + down in two rooms, variable distance, sometimes hidden ----
+    // ---- STAIRS: up + down placed inside two authored vaults. The stair cell is retagged from
+    // "room", so it must be a LEAF (fewest room neighbours) — never a bridge whose removal would
+    // split a pillared vault into a doorless/tiny sub-region (D1/L11). ----
+    function safeStairCell(p) {
+      var best = null, bestDeg = 9;
+      for (var k = 0; k < p.floor.length; k++) {
+        var c = p.floor[k]; if (c[0] === p.cx && c[1] === p.cy) continue;     // not the connect-door's room cell
+        var deg = 0; for (var d = 0; d < 4; d++) if (tag[c[1] + D4[d][1]] && tag[c[1] + D4[d][1]][c[0] + D4[d][0]] === "room") deg++;
+        if (deg < bestDeg) { bestDeg = deg; best = c; }
+      }
+      return best || (p.floor.length ? p.floor[0] : null);
+    }
     var stairs = [];
-    var upR = rooms[0], dnR = rooms[Math.min(rooms.length - 1, (rooms.length >> 1) + rng.int(0, rooms.length >> 1))];
-    if (dnR === upR) dnR = rooms[rooms.length - 1];
-    setc(upR.cx, upR.cy, ".", "stair"); stairs.push({ x: upR.cx, y: upR.cy, kind: "up", hidden: false });
-    setc(dnR.cx, dnR.cy, ".", "stair"); stairs.push({ x: dnR.cx, y: dnR.cy, kind: "down", hidden: rng.chance(0.4) });
+    var upR = rooms[0], dnR = rooms[rooms.length - 1];
+    var u = safeStairCell(upR); if (u) { setc(u[0], u[1], ".", "stair"); stairs.push({ x: u[0], y: u[1], kind: "up", hidden: false }); }
+    var dn = safeStairCell(dnR); if (dn) { setc(dn[0], dn[1], ".", "stair"); stairs.push({ x: dn[0], y: dn[1], kind: "down", hidden: rng.chance(0.4) }); }
 
     return { w: W, h: H, grid: grid, tag: tag, entry: { x: corridorCells[0][0], y: corridorCells[0][1] }, stairs: stairs, rooms: rooms, type: typeName || "STANDARD", minRooms: B.minRooms };
   }

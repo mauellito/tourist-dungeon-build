@@ -22,6 +22,7 @@ SUITES = [
     # Master Directive — the gate is independently verifiable on the mirror now:
     ("vault format + parser (P1)", "run_vaultfmt.py"),
     ("spatial law-suite / THE GATE (P3)", "run_lawsuite.py"),
+    ("VAULT WIRE-IN (rooms are authored vaults)", "run_vaultwire.py"),
     ("vault assembler, gated (P2/P4)", "run_assembler.py"),
     ("STANDARD drift bands + type params", "run_drift.py"),
 ]
