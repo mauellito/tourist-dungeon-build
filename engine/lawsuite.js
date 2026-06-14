@@ -23,13 +23,14 @@ var TD_LAWS = (function () {
     var seen = {}, comps = [], max = 0, total = 0;
     for (var y = 0; y < m.h; y++) for (var x = 0; x < m.w; x++) {
       if (!pred(x, y) || seen[x + "," + y]) continue;
-      var q = [[x, y]], size = 0, tags = {}; seen[x + "," + y] = 1;
+      var q = [[x, y]], size = 0, tags = {}, minx = x, miny = y, maxx = x, maxy = y; seen[x + "," + y] = 1;
       while (q.length) {
         var c = q.pop(), cx = c[0], cy = c[1]; size++; total++;
+        if (cx < minx) minx = cx; if (cx > maxx) maxx = cx; if (cy < miny) miny = cy; if (cy > maxy) maxy = cy;
         var t = tagAt(m, cx, cy); tags[t] = (tags[t] || 0) + 1;
         for (var i = 0; i < 4; i++) { var nx = cx + D4[i][0], ny = cy + D4[i][1]; if (nx >= 0 && ny >= 0 && nx < m.w && ny < m.h && pred(nx, ny) && !seen[nx + "," + ny]) { seen[nx + "," + ny] = 1; q.push([nx, ny]); } }
       }
-      comps.push({ size: size, tags: tags }); if (size > max) max = size;
+      comps.push({ size: size, tags: tags, minx: minx, miny: miny, maxx: maxx, maxy: maxy, cx: (minx + maxx) >> 1, cy: (miny + maxy) >> 1 }); if (size > max) max = size;
     }
     return { max: max, total: total, comps: comps };
   }
@@ -49,7 +50,7 @@ var TD_LAWS = (function () {
       for (var i = 0; i < 4; i++) if (walkable(m, x + D4[i][0], y + D4[i][1])) return false;
       return true;
     });
-    law("L1", buriedC.max <= area * 0.12, (100 * buriedC.max / area).toFixed(1) + "% solid rock blob");
+    law("L1", buriedC.max <= area * 0.25, (100 * buriedC.max / area).toFixed(1) + "% solid rock blob");   // Amendment 4: honest rock between scattered rooms is legal (<=25%); a rock field swallowing the level is not
 
     // L2 NOT ALL OPEN — no big OPEN BLOB. Largest contiguous DEEP-open region (an open
     // cell whose four orthogonal neighbours are all open — the interior of a fat field,
@@ -71,7 +72,7 @@ var TD_LAWS = (function () {
 
     // L3 COVERAGE BAND — walkable 35-55%
     var walk = openC.total;
-    law("L3", walk >= area * 0.35 && walk <= area * 0.55, (100 * walk / area).toFixed(1) + "% walkable");
+    law("L3", walk >= area * 0.28 && walk <= area * 0.50, (100 * walk / area).toFixed(1) + "% walkable");   // Amendment 4: 28-50% — sparser scatter qualifies; near-empty/near-solid-open still rejected
 
     // collect cells by tag
     var doors = [], corridors = [], rooms = [], waters = [], untagged = [];
@@ -186,6 +187,13 @@ var TD_LAWS = (function () {
     law("L10", bigRooms.length > 0 && corrCount > 0 && untagged.length === 0, "rooms+corridors present, " + untagged.length + " untagged open");
     // L11 NO SPECKLE — no checkerboard: no tiny room regions, no isolated single cells
     law("L11", tinyRooms === 0 && isolated === 0, tinyRooms + " tiny rooms, " + isolated + " isolated cells");
+    // L16 ANTI-GRID (Amendment 4) — no more than 3 rooms share a top-edge row or a left-edge
+    // column. A band/filing-cabinet stacks many rooms in alignment; a scattered hand-sheet does not.
+    var alignT = {}, alignL = {}, maxAlign = 0;
+    bigRooms.forEach(function (c) { alignT[c.miny] = (alignT[c.miny] || 0) + 1; alignL[c.minx] = (alignL[c.minx] || 0) + 1; });
+    Object.keys(alignT).forEach(function (k) { if (alignT[k] > maxAlign) maxAlign = alignT[k]; });
+    Object.keys(alignL).forEach(function (k) { if (alignL[k] > maxAlign) maxAlign = alignL[k]; });
+    law("L16", maxAlign <= 3, maxAlign + " rooms share an edge-line (max 3)");
 
     var pass = Object.keys(laws).every(function (k) { return laws[k].pass; });
     return { pass: pass, laws: laws };

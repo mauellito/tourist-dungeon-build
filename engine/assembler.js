@@ -25,8 +25,8 @@ var TD_ASSEMBLER = (function () {
   // not tall — bandH sets coverage, kept so L3 lands in 35-55%. Each band = a WINDING tooth
   // (2 rows: sr, sr+1) + gutter + bandH room rows + gutter, so sweepGap = bandH + 4.
   var BUNDLES = {
-    STANDARD: { w: 49, h: 35, tiers: [5, 6, 7], loops: [3, 4], minRooms: 10, trunkW: 2 },
-    WARREN:   { w: 47, h: 33, tiers: [5, 6, 7], loops: [3, 5], minRooms: 8, trunkW: 1 },
+    STANDARD: { w: 49, h: 35, tiers: [5, 6, 7], loops: [3, 4], minRooms: 9, trunkW: 2 },
+    WARREN:   { w: 47, h: 33, tiers: [5, 6, 7], loops: [3, 5], minRooms: 9, trunkW: 1 },
     HALLS:    { w: 53, h: 37, tiers: [6, 7], loops: [2, 3], minRooms: 6, trunkW: 2 }
   };
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
@@ -160,53 +160,182 @@ var TD_ASSEMBLER = (function () {
       }
     }
 
-    // ---- SPINE + VAULT BANDS (top-down). Each band is a 1-row tooth + a row of authored vaults
-    // (height == a vault tier, so they fit exactly), placed ADJACENT (shared wall = spacing law).
-    // The tooth sits directly above the vaults; the next tooth sits directly below, so an S-edge
-    // door auto-links a vault to the band below (an authored loop). Two flanking trunks (left,
-    // right) face the side borders and stitch every tooth together. ----
-    var rooms = [], lastBot = 0, y = 1;
-    while (y + 2 + TIERS[0] <= H - 1) {
-      var tRow = y; windTooth(tRow);                           // 2-row winding tooth (rows tRow, tRow+1)
-      var bTop = tRow + 2, rem = (H - 2) - bTop;               // vaults sit below the 2-row tooth
-      var tier = TIERS[rng.int(0, TIERS.length - 1)];
-      while (tier > rem && tier > TIERS[0]) tier--;
-      if (tier > rem) break;
-      var bBot = bTop + tier - 1, ox = 2;                      // x=1 left trunk; vault left wall at x=2
-      while (ox < W - 3) {
-        var maxW = (W - 2) - ox;                               // leave x=W-2 for the right trunk
-        // occasionally drop a SECRET CACHE (tiny secret vault) instead of a room — only in a
-        // tier-5 band so its 4-tall body leaves just one faced row below (no buried rock).
-        var wantCache = rng.chance(0.30) && tier === 5;
-        var cands = wantCache
-          ? POOL.filter(function (v) { return isSecretVault(v) && v.w <= maxW && v.h <= tier; })
-          : POOL.filter(function (v) { return v.h === tier && v.w <= maxW && !isSecretVault(v); });
-        if (wantCache && !cands.length) { wantCache = false; cands = POOL.filter(function (v) { return v.h === tier && v.w <= maxW && !isSecretVault(v); }); }
-        if (!cands.length) break;
-        var v = weightedPick(cands);
-        var p = stampVault(v, ox, bTop, (seed >>> 0) + ox * 131 + tRow * 17 + 1, wantCache);
-        var ok = wantCache ? connectCache(p) : connectUp(p);
-        if (ok) { rooms.push(p); if (!wantCache) lastBot = bBot; }   // only keep a vault we could wire to the spine
-        ox = p.x1 + 1;                                         // next vault shares the boundary wall
-      }
-      y = bBot + 1;                                            // next tooth sits directly below this band's bottom wall
+    // ---- BSP SCATTER + WINDING TUNNELS (Amendment 4). Partition the floor into IRREGULAR leaves
+    // (random cuts => varied size & position), drop one authored vault in each leaf (jittered),
+    // then wire the vaults with WINDING tunnels. No bands, no aligned rows (L16): varied rooms
+    // scattered off winding corridors with honest rock between (the hand sheet). ----
+    function roomAdj(x, y) { for (var i = 0; i < 4; i++) { var rr = tag[y + D4[i][1]]; var t = rr && rr[x + D4[i][0]]; if (t === "room" || t === "feature") return true; } return false; }
+    function canCarve(x, y) { return inb(x, y) && grid[y][x] === "#" && !roomAdj(x, y); }
+
+    var MINW = 9, MINH = 7, MAXW = 14, MAXH = 9, leaves = [];
+    (function bsp(x0, y0, x1, y1, depth) {
+      var w = x1 - x0 + 1, h = y1 - y0 + 1;
+      var canLR = w >= 2 * MINW + 1, canTB = h >= 2 * MINH + 1, must = (w > MAXW || h > MAXH);
+      if (!canLR && !canTB) { leaves.push({ x0: x0, y0: y0, x1: x1, y1: y1 }); return; }
+      if (!must && depth >= 3 && rng.chance(0.20)) { leaves.push({ x0: x0, y0: y0, x1: x1, y1: y1 }); return; }
+      var lr = (canLR && canTB) ? ((w / MAXW) >= (h / MAXH)) : canLR;
+      if (lr) { var c1 = x0 + MINW + rng.int(0, w - 2 * MINW - 1); bsp(x0, y0, c1, y1, depth + 1); bsp(c1 + 1, y0, x1, y1, depth + 1); }
+      else { var c2 = y0 + MINH + rng.int(0, h - 2 * MINH - 1); bsp(x0, y0, x1, c2, depth + 1); bsp(x0, c2 + 1, x1, y1, depth + 1); }
+    })(1, 1, W - 2, H - 2, 0);
+
+    // one authored vault per leaf, JITTERED within the leaf (random offset => varied positions, no
+    // shared edge-lines, honest rock around it). Some leaves get a secret cache; pick varied sizes.
+    var rooms = [];
+    for (var li = 0; li < leaves.length; li++) {
+      var L = leaves[li], availW = (L.x1 - L.x0 + 1) - 2, availH = (L.y1 - L.y0 + 1) - 2;   // 1-cell margin per side => 2-cell carveable channel between leaves
+      if (availW < 5 || availH < 4) continue;
+      var wantCache = rng.chance(0.16);
+      var cands = POOL.filter(function (v) { return (wantCache ? isSecretVault(v) : !isSecretVault(v)) && v.w <= availW && v.h <= availH; });
+      if (wantCache && !cands.length) { wantCache = false; cands = POOL.filter(function (v) { return !isSecretVault(v) && v.w <= availW && v.h <= availH; }); }
+      if (!cands.length) continue;
+      // fill the leaf: prefer the LARGEST-area vault that fits (coverage -> L3), with a little
+      // variety (largest or 2nd-largest). Caches stay small (weighted).
+      var v;
+      if (wantCache) v = weightedPick(cands);
+      else { cands.sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); }); v = cands[rng.int(0, Math.min(1, cands.length - 1))]; }
+      var ox = L.x0 + 1 + rng.int(0, availW - v.w), oy = L.y0 + 1 + rng.int(0, availH - v.h);
+      rooms.push(stampVault(v, ox, oy, (seed >>> 0) + ox * 131 + oy * 17 + li + 1, wantCache));
     }
-    if (rooms.length < 4) return null;
-    if (lastBot < H - 4) windTooth(H - 3);                     // bottom winding tooth faces the lower border
-    for (var ty = 1; ty <= H - 2; ty++) {
-      carveC(1, ty); if (tag[ty][1] === "corridor") push(1, ty);                                  // left trunk (faces the left border)
-      carveC(W - 2, ty); if (tag[ty][W - 2] === "corridor") push(W - 2, ty);                      // right trunk (faces the right border)
+    if (rooms.length < (B.minRooms || 8)) return null;
+
+    // each vault: one outward door (authored else punched over a room/feature cell) + its rock
+    // APPROACH seeded as corridor — the network anchors.
+    function ensureApproach(p) {
+      for (var yy = p.y0; yy <= p.y1; yy++) for (var xx = p.x0; xx <= p.x1; xx++) {
+        var tg = tag[yy][xx]; if (tg !== "door" && tg !== "secret") continue;
+        var ax = xx, ay = yy; if (yy === p.y0) ay--; else if (yy === p.y1) ay++; else if (xx === p.x0) ax--; else if (xx === p.x1) ax++; else continue;
+        if (inb(ax, ay) && grid[ay][ax] === "#") { setc(ax, ay, ".", "corridor"); push(ax, ay); p.cx = ax; p.cy = ay; return { x: ax, y: ay }; }
+      }
+      var want = p.cache ? "feature" : "room", dt = p.cache ? "secret" : "door", cand = [];
+      for (var x2 = p.x0 + 1; x2 <= p.x1 - 1; x2++) { cand.push([x2, p.y0, x2, p.y0 - 1, x2, p.y0 + 1]); cand.push([x2, p.y1, x2, p.y1 + 1, x2, p.y1 - 1]); }
+      for (var y2 = p.y0 + 1; y2 <= p.y1 - 1; y2++) { cand.push([p.x0, y2, p.x0 - 1, y2, p.x0 + 1, y2]); cand.push([p.x1, y2, p.x1 + 1, y2, p.x1 - 1, y2]); }
+      for (var k = 0; k < cand.length; k++) { var T = cand[k];
+        if (grid[T[1]][T[0]] === "#" && inb(T[2], T[3]) && grid[T[3]][T[2]] === "#" && tag[T[5]] && tag[T[5]][T[4]] === want) {
+          setc(T[0], T[1], ".", dt); setc(T[2], T[3], ".", "corridor"); push(T[2], T[3]); p.cx = T[2]; p.cy = T[3]; return { x: T[2], y: T[3] };
+        }
+      }
+      return null;
+    }
+    var anchors = [];
+    for (var ci = 0; ci < rooms.length; ci++) { var a = ensureApproach(rooms[ci]); if (a) { a.room = rooms[ci]; anchors.push(a); } }
+    if (anchors.length < 4) return null;
+
+    // CONNECT (robust): grow ONE connected component. isConn marks cells already in it; each
+    // anchor BFS-routes through carveable rock to a cell adjacent to a *connected* corridor (not
+    // just any corridor — that's what caused islands / L7). After each join, re-flood to absorb the
+    // newly-connected room. BFS is guaranteed if a carveable path exists.
+    var isConn = []; for (var yc = 0; yc < H; yc++) { isConn.push([]); for (var xc = 0; xc < W; xc++) isConn[yc].push(false); }
+    function floodConn(sx, sy) {
+      if (grid[sy][sx] === "#" || isConn[sy][sx]) return;
+      var q = [[sx, sy]], h2 = 0; isConn[sy][sx] = true;
+      while (h2 < q.length) { var c = q[h2++]; for (var i = 0; i < 4; i++) { var nx = c[0] + D4[i][0], ny = c[1] + D4[i][1]; if (inb(nx, ny) && grid[ny][nx] !== "#" && !isConn[ny][nx]) { isConn[ny][nx] = true; q.push([nx, ny]); } } }
+    }
+    floodConn(anchors[0].x, anchors[0].y);
+    // FALLBACK: randomized-DFS path to the connected set (guaranteed if a path exists). DFS with
+    // shuffled neighbours WANDERS, so even the fallback corridor winds (not a straight BFS line).
+    function bfsConnect(sx, sy) {
+      if (isConn[sy][sx]) return true;
+      var stack = [[sx, sy]], prev = {}, seen = {}; seen[sx + "," + sy] = 1; var found = null;
+      while (stack.length) {
+        var c = stack.pop();
+        for (var i = 0; i < 4; i++) { var ax = c[0] + D4[i][0], ay = c[1] + D4[i][1]; if (inb(ax, ay) && grid[ay][ax] !== "#" && isConn[ay][ax]) { found = c; break; } }
+        if (found) break;
+        var dirs = [0, 1, 2, 3]; for (var s = 3; s > 0; s--) { var rr = rng.int(0, s), tm = dirs[s]; dirs[s] = dirs[rr]; dirs[rr] = tm; }
+        for (var i = 0; i < 4; i++) { var d = dirs[i], nx = c[0] + D4[d][0], ny = c[1] + D4[d][1], kk = nx + "," + ny; if (!seen[kk] && canCarve(nx, ny)) { seen[kk] = 1; prev[kk] = c; stack.push([nx, ny]); } }
+      }
+      if (!found) return false;
+      var cur = found; while (cur) { if (grid[cur[1]][cur[0]] === "#") { setc(cur[0], cur[1], ".", "corridor"); push(cur[0], cur[1]); } cur = prev[cur[0] + "," + cur[1]]; }
+      return true;
+    }
+    // WINDING router: greedy walk toward (tx,ty) with straight runs capped at 3 (turns often), and
+    // succeeds the moment it touches the connected set. This is the PRIMARY connector so corridors
+    // wind (<=30% straight); bfsConnect is the fallback when a winding walk gets boxed in.
+    function windConnect(sx, sy, tx, ty) {
+      if (isConn[sy][sx]) return true;
+      var x = sx, y = sy, run = 0, lastd = -1, steps = 0, cap = 4 * (Math.abs(tx - sx) + Math.abs(ty - sy)) + 120;
+      while (steps++ < cap) {
+        for (var i = 0; i < 4; i++) { var ax = x + D4[i][0], ay = y + D4[i][1]; if (inb(ax, ay) && grid[ay][ax] !== "#" && isConn[ay][ax] && !(ax === sx && ay === sy)) return true; }
+        var dx = tx > x ? 1 : (tx < x ? -1 : 0), dy = ty > y ? 1 : (ty < y ? -1 : 0), ds = [];
+        if (dx) ds.push([dx, 0]); if (dy) ds.push([0, dy]);
+        ds.push([0, 1], [0, -1], [1, 0], [-1, 0]);
+        var moved = false;
+        for (var i = 0; i < ds.length; i++) {
+          var c = ds[i], nx = x + c[0], ny = y + c[1], di = -1;
+          for (var qd = 0; qd < 4; qd++) if (D4[qd][0] === c[0] && D4[qd][1] === c[1]) di = qd;
+          if (run >= 3 && di === lastd) continue;
+          if (!inb(nx, ny)) continue;
+          if (grid[ny][nx] !== "#") { if (isConn[ny][nx]) return true; continue; }
+          if (!canCarve(nx, ny)) continue;
+          setc(nx, ny, ".", "corridor"); push(nx, ny); run = (di === lastd) ? run + 1 : 1; lastd = di; x = nx; y = ny; moved = true; break;
+        }
+        if (!moved) return false;
+      }
+      return false;
+    }
+    function connectAnchor(sx, sy, tx, ty) {
+      if (isConn[sy][sx]) return true;
+      var ok = bfsConnect(sx, sy);                                  // randomized-DFS: maximally winding connector
+      if (ok) floodConn(sx, sy);
+      return ok;
+    }
+    var connA = [anchors[0]], pend = anchors.slice(1), guard2 = 0;
+    while (pend.length && guard2++ < 600) {
+      var a = pend.shift(), tx = connA[0].x, ty = connA[0].y, bd = 1e9;
+      for (var j = 0; j < connA.length; j++) { var dd = Math.abs(a.x - connA[j].x) + Math.abs(a.y - connA[j].y); if (dd < bd) { bd = dd; tx = connA[j].x; ty = connA[j].y; } }
+      connectAnchor(a.x, a.y, tx, ty); connA.push(a);
+    }
+    var entryCell = anchors[0];
+
+    // FILLER: bring walkable up into the 28-50% band (L3) and CHUNK big rock blobs (L1 <=25%) by
+    // carving WINDING dead-end corridors from the connected net into open rock — which also adds
+    // the winding feel. Dead-ends get features in the D2 pass below.
+    var area2 = W * H;
+    function countWalk() { var n = 0; for (var y = 1; y < H - 1; y++) for (var x = 1; x < W - 1; x++) if (grid[y][x] !== "#") n++; return n; }
+    function biggestRock() {
+      var seen = {}, best = 0;
+      function buried(x, y) { if (grid[y][x] !== "#") return false; for (var i = 0; i < 4; i++) if (grid[y + D4[i][1]][x + D4[i][0]] !== "#") return false; return true; }
+      for (var y = 1; y < H - 1; y++) for (var x = 1; x < W - 1; x++) {
+        if (seen[x + "," + y] || !buried(x, y)) continue;
+        var q = [[x, y]], h3 = 0, sz = 0; seen[x + "," + y] = 1;
+        while (h3 < q.length) { var c = q[h3++]; sz++; for (var i = 0; i < 4; i++) { var nx = c[0] + D4[i][0], ny = c[1] + D4[i][1]; if (nx > 0 && ny > 0 && nx < W - 1 && ny < H - 1 && !seen[nx + "," + ny] && buried(nx, ny)) { seen[nx + "," + ny] = 1; q.push([nx, ny]); } } }
+        if (sz > best) best = sz;
+      }
+      return best;
+    }
+    // thinCarve: carveable AND the target has <=1 corridor neighbour, so a filler stays a THIN
+    // 1-wide line and never pools into a solid block (a block reads as straight + deep-open).
+    function corrNbrs(x, y) { var c = 0; for (var i = 0; i < 4; i++) { var rr = tag[y + D4[i][1]]; if (rr && rr[x + D4[i][0]] === "corridor") c++; } return c; }
+    function thinCarve(x, y) { return canCarve(x, y) && corrNbrs(x, y) <= 1; }
+    var fillGuard = 0;
+    while (fillGuard++ < 220 && (countWalk() < area2 * 0.29 || biggestRock() > area2 * 0.23)) {
+      var sx = -1, sy = -1;
+      for (var tr = 0; tr < 60 && sx < 0; tr++) { var rx = rng.int(1, W - 2), ry = rng.int(1, H - 2); if (grid[ry][rx] !== "#" && tag[ry][rx] === "corridor" && isConn[ry][rx]) { for (var i = 0; i < 4; i++) if (thinCarve(rx + D4[i][0], ry + D4[i][1])) { sx = rx; sy = ry; break; } } }
+      if (sx < 0) break;
+      var x = sx, y = sy, run = 0, lastd = -1, len = 8 + rng.int(0, 14);
+      for (var st = 0; st < len; st++) {
+        var dirs = [0, 1, 2, 3]; for (var s = 3; s > 0; s--) { var r4 = rng.int(0, s), tm = dirs[s]; dirs[s] = dirs[r4]; dirs[r4] = tm; }
+        var moved = false;
+        for (var i = 0; i < 4; i++) { var d = dirs[i]; if (run >= 3 && d === lastd) continue; var nx = x + D4[d][0], ny = y + D4[d][1]; if (thinCarve(nx, ny)) { setc(nx, ny, ".", "corridor"); push(nx, ny); isConn[ny][nx] = true; run = (d === lastd) ? run + 1 : 1; lastd = d; x = nx; y = ny; moved = true; break; } }
+        if (!moved) break;
+      }
     }
     sealDoorsFixpoint();                                       // now all corridors exist: seal dangling authored doors
 
-    // ---- DEAD ENDS earn it: any corridor cell that is a dead-end gets a feature (D2). ----
+    // ---- DEAD ENDS earn it: every corridor dead-end terminates on a feature (D2). FIXPOINT over
+    // the whole grid (the winding filler/connect leave many dead-ends; one pass over a stale list
+    // misses some). A corridor cell with one walkable neighbour, not already beside a
+    // feature/door/secret/stair, becomes a feature. ----
     function walkN(x, y) { var n = 0; for (var i = 0; i < 4; i++) if (walk(x + D4[i][0], y + D4[i][1])) n++; return n; }
-    corridorCells.forEach(function (c) {
-      if (grid[c[1]][c[0]] === "." && tag[c[1]][c[0]] === "corridor" && walkN(c[0], c[1]) === 1) {
-        var legit = false; for (var i = 0; i < 4; i++) { var t = tag[c[1] + D4[i][1]][c[0] + D4[i][0]]; if (t === "door" || t === "feature" || t === "secret" || t === "stair") legit = true; }
-        if (!legit) setc(c[0], c[1], ".", "feature");
+    var deChanged = true;
+    while (deChanged) {
+      deChanged = false;
+      for (var dy = 1; dy < H - 1; dy++) for (var dx = 1; dx < W - 1; dx++) {
+        if (grid[dy][dx] === "." && tag[dy][dx] === "corridor" && walkN(dx, dy) === 1) {
+          var legit = false; for (var i = 0; i < 4; i++) { var t = tag[dy + D4[i][1]][dx + D4[i][0]]; if (t === "feature" || t === "secret" || t === "stair") legit = true; }   // match law D2: a door does NOT legitimise a dead-end
+          if (!legit) { setc(dx, dy, ".", "feature"); deChanged = true; }
+        }
       }
-    });
+    }
 
     // ---- STAIRS: up + down placed inside two authored vaults. The stair cell is retagged from
     // "room", so it must be a LEAF (fewest room neighbours) — never a bridge whose removal would
@@ -226,7 +355,7 @@ var TD_ASSEMBLER = (function () {
     var u = upR && safeStairCell(upR); if (u) { setc(u[0], u[1], ".", "stair"); stairs.push({ x: u[0], y: u[1], kind: "up", hidden: false }); }
     var dn = dnR && safeStairCell(dnR); if (dn) { setc(dn[0], dn[1], ".", "stair"); stairs.push({ x: dn[0], y: dn[1], kind: "down", hidden: rng.chance(0.4) }); }
 
-    return { w: W, h: H, grid: grid, tag: tag, entry: { x: corridorCells[0][0], y: corridorCells[0][1] }, stairs: stairs, rooms: rooms, type: typeName || "STANDARD", minRooms: B.minRooms };
+    return { w: W, h: H, grid: grid, tag: tag, entry: { x: entryCell.x, y: entryCell.y }, stairs: stairs, rooms: rooms, type: typeName || "STANDARD", minRooms: B.minRooms };
   }
 
   // generateForLevel — the DRIFT gate in action: produce a STANDARD level that passes BOTH the
