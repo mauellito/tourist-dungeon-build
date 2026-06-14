@@ -1,21 +1,22 @@
-// Tourist Dungeon — THE ASSEMBLER (Master Directive P2, Amendment 2). Builds dungeon
-// levels that READ as rooms-hung-off-a-corridor-spine (the operator's sheet), not a
-// uniform speckle. Structure is DELIBERATE, not whatever-passes:
+// Tourist Dungeon — THE ASSEMBLER (Master Directive P2). Builds dungeon levels whose ROOMS
+// ARE AUTHORED VAULTS (stamped from TD_VAULTLIB via the TD_VAULTFMT parser, variation chunks
+// resolved) hung off a corridor spine — never blank rectangles.
 //
-//  - SPINE = a boustrophedon trunk: clean 1-wide horizontal corridor sweeps joined
-//    end-to-end, reaching every band of the map (one legible trunk).
-//  - ROOMS are the BULK: each band BETWEEN sweeps is filled with a row of real rooms,
-//    each a contiguous rectangle (some irregular), separated by 1-cell walls, each with a
-//    clean DOOR threshold onto the sweep it hangs off (room-floor one side, corridor the
-//    other, wall on the perpendicular). Corridors stay a thin MINORITY (circulation).
-//  - SPACING LAW: 1-cell walls between everything -> no fused open (L2), thin floor-faced
-//    rock (L1). Room and corridor are tagged distinctly (the eye separates them).
-//  - D doors / S secret-loops (reward-first, a real loop between two known rooms) /
-//    features at dead-ends / correlated up+down stairs.
+//  - SPINE = a thin corridor lattice: a 1-row tooth above each band + flanking left/right
+//    trunks. Circulation only; a tiny MINORITY of the floor.
+//  - ROOMS are the BULK: each band is a row of AUTHORED VAULTS, selected by height tier +
+//    weight and STAMPED (their walls/pillars/loot/irregular shapes are the room character),
+//    placed adjacent (shared wall = spacing law), each wired to the tooth through a real door.
 //
 // Output (for TD_LAWS.check + the renderer):
-//   { w, h, grid, tag, entry, stairs, rooms, type, minRooms }
-// Classic script: assigns global TD_ASSEMBLER. Requires TD_RNG (+ TD_LAWS for the gate).
+//   { w, h, grid, tag, entry, stairs, rooms:[{name,...}], type, minRooms }
+//
+// LOAD ORDER (REQUIRED): rng.js, vaultfmt.js, vaultlib.js, lawsuite.js, assembler.js.
+//   The assembler PARSES + STAMPS authored vaults, so it HARD-DEPENDS on TD_VAULTFMT and
+//   TD_VAULTLIB. Without them generate() THROWS (it used to return null silently — which read
+//   as "0/60, generates nothing" in a harness that forgot the deps). TD_LAWS is needed only by
+//   the gated entry points (generateGated / generateForLevel).
+// Classic script: assigns global TD_ASSEMBLER.
 "use strict";
 
 var TD_ASSEMBLER = (function () {
@@ -74,7 +75,8 @@ var TD_ASSEMBLER = (function () {
     // its variation chunks — it never draws a blank rectangle. The spine (winding teeth + a thin
     // trunk) is circulation ONLY; the rooms' character (pillars, irregular walls, loot, secret
     // caches) comes entirely from the authored vaults.
-    if (typeof TD_VAULTLIB === "undefined" || typeof TD_VAULTFMT === "undefined") return null;
+    if (typeof TD_VAULTFMT === "undefined" || typeof TD_VAULTLIB === "undefined")
+      throw new Error("TD_ASSEMBLER needs TD_VAULTFMT (vaultfmt.js) + TD_VAULTLIB (vaultlib.js) loaded BEFORE assembler.js. Load order: rng.js, vaultfmt.js, vaultlib.js, lawsuite.js, assembler.js.");
     var POOL = TD_VAULTLIB.all(), trunkW = B.trunkW || 2, TIERS = B.tiers || [5, 6, 7];
 
     // vault tag -> the assembler/law vocabulary. Walkable: room/door/stair/feature; else wall
