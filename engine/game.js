@@ -244,9 +244,15 @@ var TD_GAME = (function () {
     function buildPlaces() {
       places = {};
       var tseed = (world.meta && world.meta.seed) || 1;
-      // LIVE town: the procedural figure/ground town (TD_TOWNGEN) when it is loaded (play-map);
-      // legacy TD_TOWN remains the fallback (e.g. unit tests that don't load towngen2).
-      if (typeof TD_TOWNGEN !== "undefined" && TD_TOWNGEN.generateGated) {
+      // LIVE town: the FIXED authored map with seed-dealt tenants (TD_TOWNMAP) when loaded
+      // (play-map). It emits the same shape TD_TOWNGEN does (+ a `fronts` overlay), so it
+      // reuses adaptTownGen wholesale. The procedural TD_TOWNGEN, then legacy TD_TOWN, remain
+      // fallbacks (e.g. unit tests that don't load townmap.js).
+      if (typeof TD_TOWNMAP !== "undefined" && TD_TOWNMAP.generate) {
+        var tmap = TD_TOWNMAP.generate(tseed);
+        if (tmap) places.TOWN = adaptTownGen(tmap);
+      }
+      if (!places.TOWN && typeof TD_TOWNGEN !== "undefined" && TD_TOWNGEN.generateGated) {
         var tg = TD_TOWNGEN.generateGated(tseed, 250);
         if (tg && tg.map) { places.TOWN = adaptTownGen(tg.map); }
       }
@@ -326,6 +332,13 @@ var TD_GAME = (function () {
         doors[key(mouth.x, mouth.y)] = { to: "DUNGEON", glyph: "Ω", label: "the dungeon mouth. Press Enter to descend.", gate: function () { if (!character.ticket) return { block: "The gate does not open for the unticketed. Admission is sold at the Kiosk (K) on the plaza." }; return null; } };
         dungeonEntrance = { rect: [mouth.x, mouth.y, mouth.x, mouth.y] };
       }
+      // TENANT FRONTS (TD_TOWNMAP only): a seed-dealt business sign on a building face.
+      // Sits on the building wall cell (bump-to-read; the wall stays solid), coloured by
+      // its kind via TD_UI.buildingColor. Fronts-as-flavor: interiors are a later layer.
+      (m.fronts || []).forEach(function (fr) {
+        features[key(fr.x, fr.y)] = { type: "front", glyph: fr.glyph, col: fr.col, business: fr.business,
+          label: fr.label, text: fr.text, act: "look" };
+      });
       // meta: district rects (for districtAt's flavour) + the dungeon entrance overlay
       var dmeta = { redlight: null, waterfront: null, market: null };
       (m.meta.districts || []).forEach(function (D) {

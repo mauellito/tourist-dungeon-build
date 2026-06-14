@@ -215,6 +215,7 @@
 <script src="towngen.js"></script>
 <script src="townlaws.js"></script>
 <script src="towngen2.js"></script>
+<script src="townmap.js"></script>
 <script src="game.js"></script>
 <script src="ui.js"></script>
 <script>
@@ -752,7 +753,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v5 — vault dungeon + procedural town LIVE", BUILD = "2ca65c3";
+  var VERSION = "play-map v6 — fixed authored town + randomized tenants LIVE", BUILD = "4afb188";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

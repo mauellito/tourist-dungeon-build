@@ -28,7 +28,7 @@ TMPDIR = os.path.join(ROOT, "tests", ".tmp")
 ENGINE_FILES = [
     "rng.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js", "assembler.js",
     "checker.js", "vaults.js", "generator.js", "interpreter.js", "mapmode.js",
-    "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "game.js", "ui.js",
+    "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js", "game.js", "ui.js",
 ]
 CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -49,14 +49,14 @@ function WALK_PROOF(seed) {
   var sim = TD_GAME.create(world, { session: session });
   step("create", !!sim, "sim created for seed " + seed);
 
-  // ---- (1) LIVE town is TD_TOWNGEN ----
+  // ---- (1) LIVE town is the FIXED AUTHORED MAP (TD_TOWNMAP) ----
   var town = sim._town();
   var phase0 = sim._phase();
   var ground = town && town.ground;
   var hasGround = !!ground && Object.keys(ground).length > 0;
   step("town-phase", phase0 === "town", "phase=" + phase0);
-  step("town-is-towngen", town && town.W === 80 && town.H === 56,
-       "town " + (town ? town.W + "x" + town.H : "MISSING") + " (TD_TOWNGEN is 80x56; old TD_TOWN was 72x44)");
+  step("town-is-authored-map", town && town.W === TD_TOWNMAP.MAP.w && town.H === TD_TOWNMAP.MAP.h,
+       "town " + (town ? town.W + "x" + town.H : "MISSING") + " (authored map is " + TD_TOWNMAP.MAP.w + "x" + TD_TOWNMAP.MAP.h + ")");
   step("town-ground-layer", hasGround, "ground cells=" + (hasGround ? Object.keys(ground).length : 0));
   var de = town && town.meta && town.meta.dungeonEntrance;
   step("town-has-dungeon-entrance", !!de, de ? ("mouth rect @ " + JSON.stringify(de)) : "no dungeonEntrance in meta");
@@ -64,6 +64,9 @@ function WALK_PROOF(seed) {
   // ---- grant admission (test hook for the gate; mechanics firewalled) ----
   sim._character().ticket = "standard";
   step("ticket-granted", sim._character().ticket === "standard", "ticket=standard");
+  // clear wandering townsfolk so the spine walk is deterministic (we're proving the
+  // fixed map routes spawn->mouth, not testing crowd-dodging — run_keys covers NPCs).
+  if (sim._clearActors) sim._clearActors();
 
   // ---- locate the dungeon mouth (door to DUNGEON) ----
   var mouth = null;
@@ -138,6 +141,21 @@ function WALK_PROOF(seed) {
       r.steps.forEach(function (s) { lines.push((s.ok ? "PASS " : "FAIL ") + s.name + "  ::  " + s.detail); if (!s.ok) fails++; });
       all.push(r);
     });
+
+    // ---- FIXED MAP, RANDOMIZED TENANTS: the defining property, on the LIVE adapted town ----
+    lines.push("--- fixed bones, turning tenants (live town) ---");
+    function liveTown(sd) { return TD_GAME.create(TD_GEN.generate(sd), { session: { knowledge: new Set(), lives: 0 } })._town(); }
+    function bones(t) { return t.grid.join("\n"); }                         // the walls/water/streets glyph map
+    function tenants(t) { return Object.keys(t.features).filter(function (k) { return t.features[k].business; }).map(function (k) { return k + ":" + t.features[k].business; }).sort().join("|"); }
+    var A = liveTown(101), B = liveTown(202);
+    function chk(n, c, d) { lines.push((c ? "PASS " : "FAIL ") + n + "  ::  " + d); if (!c) fails++; }
+    chk("bones IDENTICAL across seeds (fixed authored map)", bones(A) === bones(B), "seed101.grid === seed202.grid");
+    var ta = tenants(A), tb = tenants(B), na = ta.split("|").length, nb = tb.split("|").length;
+    chk("tenants present on building fronts", na > 10 && nb > 10, "seed101=" + na + " fronts, seed202=" + nb + " fronts");
+    chk("tenants TURN OVER across seeds (randomized assignment)", ta !== tb, "front assignments differ between seeds");
+    chk("dungeon entrance fixed in place", JSON.stringify(A.meta.dungeonEntrance) === JSON.stringify(B.meta.dungeonEntrance),
+        "entrance " + JSON.stringify(A.meta.dungeonEntrance && A.meta.dungeonEntrance.rect));
+
     lines.push("SUMMARY fails=" + fails);
     out.textContent = lines.join("\n");
     document.title = "WALK fails=" + fails;
