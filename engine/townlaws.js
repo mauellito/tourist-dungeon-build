@@ -17,7 +17,7 @@
 
 var TD_TOWNLAWS = (function () {
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-  var WALK = { street: 1, plaza: 1, park: 1, graveyard: 1, pier: 1, bridge: 1, gate: 1, church: 1, dungeon: 1, alley: 1 };
+  var WALK = { street: 1, plaza: 1, park: 1, graveyard: 1, pier: 1, bridge: 1, gate: 1, church: 1, dungeon: 1, alley: 1, landmark: 1, notice: 1, vendor: 1, npc: 1, kiosk: 1 };
 
   function tg(m, x, y) { return (m.tag[y] && m.tag[y][x]) || "void"; }
   function walk(m, x, y) { return x >= 0 && y >= 0 && x < m.w && y < m.h && WALK[tg(m, x, y)]; }
@@ -121,6 +121,11 @@ var TD_TOWNLAWS = (function () {
       rlVal = (100 * bld / ring.length).toFixed(0) + "% ring, " + openRuns + " entrance, " + hidden + " hidden alley";
     }
     law("T_redlight", rlOk, rlVal);
+
+    // T_INTEREST — the town is BUSY: every quarter has a REASON (landmark) and a SECRET, the kiosk
+    // is placed, and there is a density of small static interactions (notices/vendors/NPCs).
+    var lm = count(m, "landmark"), sec = count(m, "townsecret"), dens = count(m, "notice") + count(m, "vendor") + count(m, "npc"), kiosk = count(m, "kiosk");
+    law("T_interest", lm >= 5 && sec >= 4 && dens >= 8 && kiosk >= 1, lm + " landmarks, " + sec + " secrets, " + dens + " street-life, " + kiosk + " kiosk");
 
     var pass = Object.keys(laws).every(function (k) { return laws[k].pass; });
     return { pass: pass, laws: laws };

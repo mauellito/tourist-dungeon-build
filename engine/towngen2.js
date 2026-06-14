@@ -10,7 +10,7 @@
 
 var TD_TOWNGEN = (function () {
   var D4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-  var GLYPH = { water: "~", pier: "=", bridge: "b", street: ".", plaza: ",", park: '"', graveyard: "+", fence: "f", building: "#", gate: "G", church: "C", dungeon: ">", wall: "#", alley: ":" };
+  var GLYPH = { water: "~", pier: "=", bridge: "b", street: ".", plaza: ",", park: '"', graveyard: "+", fence: "f", building: "#", gate: "G", church: "C", dungeon: ">", wall: "#", alley: ":", landmark: "L", townsecret: "s", notice: "n", vendor: "v", npc: "p", kiosk: "k" };
 
   function generate(seed) {
     var W = 80, H = 56, rng = TD_RNG.make(((seed >>> 0) ^ 0x70774e21) || 1);
@@ -159,6 +159,20 @@ var TD_TOWNGEN = (function () {
     set(gx, 0, "gate");
     // a cross street to the harbour so warehouse/piers connect, bridging water
     for (var x = 1; x < W - 1; x++) { var ry = landBot; if (inRL(x, ry)) continue; if (t(x, ry) === "water") set(x, ry, "bridge"); else if (t(x, ry) === "building") set(x, ry, "street"); }
+
+    // ---- INTEREST: every quarter a REASON (landmark) + a SECRET (hidden content behind a marked
+    // building), plus a density of small STATIC interactions (notices, vendors, NPCs, the kiosk).
+    // Placement + flavour only — the economy/quest/gambling MECHANICS stay firewalled.
+    var pois = { landmark: 0, secret: 0, density: 0, kiosk: 0 };
+    function nearWalk(cx, cy) { for (var r = 0; r <= 7; r++) for (var dy = -r; dy <= r; dy++) for (var dx = -r; dx <= r; dx++) { var x = cx + dx, y = cy + dy; if (inb(x, y) && (tag[y][x] === "street" || tag[y][x] === "plaza" || tag[y][x] === "alley")) return [x, y]; } return null; }
+    function edgeBuilding(L) { for (var y = L.y0; y <= L.y1; y++) for (var x = L.x0; x <= L.x1; x++) { if (t(x, y) !== "building") continue; for (var i = 0; i < 4; i++) { var t2 = t(x + D4[i][0], y + D4[i][1]); if (t2 === "street" || t2 === "alley" || t2 === "plaza") return [x, y]; } } return null; }
+    dist.forEach(function (L) {
+      var lm = nearWalk(L.cx, L.cy); if (lm) { set(lm[0], lm[1], "landmark"); pois.landmark++; }            // the reason to head there
+      var sc = edgeBuilding(L); if (sc) { set(sc[0], sc[1], "townsecret"); pois.secret++; }                  // the secret to find (reward behind a marked front)
+      for (var k = 0; k < 2; k++) { var w = nearWalk(L.cx + rng.int(-5, 5), L.cy + rng.int(-5, 5)); if (w) { set(w[0], w[1], ["notice", "vendor", "npc"][rng.int(0, 2)]); pois.density++; } }   // busy with small things
+    });
+    var kk = nearWalk(px + 2, py + 1) || nearWalk(px, py + 2); if (kk) { set(kk[0], kk[1], "kiosk"); pois.kiosk++; }   // the kiosk on the dungeon plaza
+    meta.pois = pois;
 
     // ---- render grid
     var grid = []; for (var y = 0; y < H; y++) { var r = ""; for (var x = 0; x < W; x++) r += (GLYPH[tag[y][x]] || "?"); grid.push(r); }
