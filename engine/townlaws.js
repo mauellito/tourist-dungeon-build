@@ -45,6 +45,22 @@ var TD_TOWNLAWS = (function () {
     return { seen: seen, n: n };
   }
 
+  // longest straight building-front run within a district rect (a building cell with street/plaza
+  // directly on one perpendicular side) — the anti-grid / order metric, scoped to one quarter.
+  function frontRunIn(m, D) {
+    function bld(x, y) { return tg(m, x, y) === "building"; }
+    function op(x, y) { var t = tg(m, x, y); return t === "street" || t === "plaza"; }
+    var mx = 0, x, y;
+    for (y = D.y0; y <= D.y1; y++) { var rn = 0, rs = 0; for (x = D.x0; x <= D.x1; x++) { rn = (bld(x, y) && op(x, y - 1)) ? rn + 1 : 0; rs = (bld(x, y) && op(x, y + 1)) ? rs + 1 : 0; if (rn > mx) mx = rn; if (rs > mx) mx = rs; } }
+    for (x = D.x0; x <= D.x1; x++) { var rw = 0, re = 0; for (y = D.y0; y <= D.y1; y++) { rw = (bld(x, y) && op(x - 1, y)) ? rw + 1 : 0; re = (bld(x, y) && op(x + 1, y)) ? re + 1 : 0; if (rw > mx) mx = rw; if (re > mx) mx = re; } }
+    return mx;
+  }
+  // dead-end street cells within a rect (a walkable cell with exactly ONE walkable neighbour) —
+  // the crookedness signal of a grown quarter.
+  function deadEndsIn(m, D) {
+    var n = 0; for (var y = D.y0; y <= D.y1; y++) for (var x = D.x0; x <= D.x1; x++) { if (!walk(m, x, y)) continue; var c = 0; for (var i = 0; i < 4; i++) if (walk(m, x + D4[i][0], y + D4[i][1])) c++; if (c === 1) n++; } return n;
+  }
+
   function check(m) {
     var laws = {};
     function law(id, ok, val) { laws[id] = { pass: !!ok, value: val }; }
@@ -88,16 +104,28 @@ var TD_TOWNLAWS = (function () {
     // T11 REACH — (almost) all walkable reached from the gate (island/boat-only excepted)
     var totalWalk = 0; for (var y2 = 0; y2 < m.h; y2++) for (var x2 = 0; x2 < m.w; x2++) if (walk(m, x2, y2)) totalWalk++;
     law("T11_reach", totalWalk > 0 && reach.n >= totalWalk - (m.islandCells || 0), reach.n + "/" + totalWalk + " walkable reached");
-    // T16 ANTI-GRID on buildings — break the REGULAR ROWS (long flat terrace fronts). Measure the
-    // longest CONTIGUOUS straight run of building-front (a building cell with street/plaza directly
-    // on one perpendicular side). A regular terrace presents one long continuous front; BSP-packed
-    // buildings present short fronts broken by the staggered street margins. Cap the run at 13.
-    function isBld(x, y) { return tg(m, x, y) === "building"; }
-    function open(x, y) { var t = tg(m, x, y); return t === "street" || t === "plaza"; }
-    var maxFront = 0;
-    for (var y = 0; y < m.h; y++) { var rn = 0, rs = 0; for (var x = 0; x < m.w; x++) { rn = (isBld(x, y) && open(x, y - 1)) ? rn + 1 : 0; rs = (isBld(x, y) && open(x, y + 1)) ? rs + 1 : 0; if (rn > maxFront) maxFront = rn; if (rs > maxFront) maxFront = rs; } }
-    for (var x = 0; x < m.w; x++) { var rw = 0, re = 0; for (var y = 0; y < m.h; y++) { rw = (isBld(x, y) && open(x - 1, y)) ? rw + 1 : 0; re = (isBld(x, y) && open(x + 1, y)) ? re + 1 : 0; if (rw > maxFront) maxFront = rw; if (re > maxFront) maxFront = re; } }
-    law("T16_antigrid", maxFront <= 10, maxFront + "-cell straight building front (max 10)");
+    // PER-DISTRICT STREET-LOGIC — the city-ness contrast. Each quarter is checked by its own
+    // streetLogic instead of one global rule: GROWN quarters (market/housing) must read as a
+    // tangle (anti-grid + a dead-end); PLANNED quarters (civic/institutional) must read ORDERED
+    // (a long aligned terrace front). Warehouse/red-light have their own laws and are exempt.
+    var districts = (m.meta && m.meta.districts) || [];
+    var GROWN_CONTRAST = { market: 1, housing: 1 };
+    var grownDs = districts.filter(function (D) { return D.streetLogic === "grown" && GROWN_CONTRAST[D.role]; });
+    var plannedDs = districts.filter(function (D) { return D.streetLogic === "planned"; });
+
+    // T16 (rescoped) — GROWN quarters enforce anti-grid HARD (<=3 in alignment). Planned is
+    // deliberately relaxed here (order is its character; checked by T_planned_order instead).
+    var maxGrownFront = 0; grownDs.forEach(function (D) { var f = frontRunIn(m, D); if (f > maxGrownFront) maxGrownFront = f; });
+    law("T16_antigrid", grownDs.length === 0 || maxGrownFront <= 3, maxGrownFront + "-cell grown front (max 3), " + grownDs.length + " grown quarters");
+
+    // T_PLANNED_ORDER — every planned quarter presents a long aligned terrace front (>3, clearly
+    // above the grown cap) so the seam to a grown quarter is visibly order-vs-tangle.
+    var plannedVals = [], minPlanned = 99; plannedDs.forEach(function (D) { var f = frontRunIn(m, D); plannedVals.push(f); if (f < minPlanned) minPlanned = f; });
+    law("T_planned_order", plannedDs.length === 0 || minPlanned >= 5, (plannedDs.length ? plannedVals.join("/") : "no planned") + " planned fronts (min 5)");
+
+    // T_GROWN_CROOKED — every grown quarter big enough to fit one carries a dead-end (organic nook).
+    var crookOk = true, crookVals = []; grownDs.forEach(function (D) { var area = (D.x1 - D.x0 + 1) * (D.y1 - D.y0 + 1), de = deadEndsIn(m, D); crookVals.push(de); if (area >= 16 && de < 1) crookOk = false; });
+    law("T_grown_crooked", crookOk, grownDs.length + " grown quarters, dead-ends [" + crookVals.join(",") + "]");
 
     // T_REDLIGHT SELF-CONCEALMENT — the red-light district reads as a place apart: a solid
     // outward-facing building RING with exactly ONE entrance (no through-route), a hidden

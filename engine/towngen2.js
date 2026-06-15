@@ -71,7 +71,12 @@ var TD_TOWNGEN = (function () {
     if (rest.length) { rest[0].role = "park"; }
     if (rest.length > 1) { rest[1].role = "graveyard"; }
     for (var i = 2; i < rest.length; i++) rest[i].role = (i % 2 ? "market" : "housing");
-    meta.districts = dist.map(function (L) { return { role: L.role, x0: L.x0, y0: L.y0, x1: L.x1, y1: L.y1 }; });
+    // STREET-LOGIC by role: PLANNED = the orderly quarter someone imposed order on (civic /
+    // institutional / posh); GROWN = the bits that grew on their own (old quarter by the church,
+    // the market, the red-light warren, and — by operator ruling — the house-quarter, so the
+    // uniform block-rows don't read as barracks). Park/graveyard aren't block-packed (moot).
+    dist.forEach(function (L) { L.streetLogic = (L.role === "civic") ? "planned" : "grown"; });
+    meta.districts = dist.map(function (L) { return { role: L.role, streetLogic: L.streetLogic, x0: L.x0, y0: L.y0, x1: L.x1, y1: L.y1 }; });
 
     // ---- pack a district with BUILDINGS (figure): BSP the leaf into random sub-cells, drop one
     // building per cell (filling it minus a 1-cell margin = the street), jittered within the cell.
@@ -104,6 +109,40 @@ var TD_TOWNGEN = (function () {
       })(L.x0 + 1, L.y0 + 1, L.x1 - 1, L.y1 - 1, 0);
     }
 
+    // PLANNED street-logic (civic / institutional): regular TERRACES separated by straight,
+    // aligned streets. Long continuous fronts = visible order. The gate relaxes anti-grid here
+    // and instead REQUIRES this regularity, so the seam to a grown quarter reads as a contrast.
+    function packPlanned(R, opts) {
+      opts = opts || {};
+      var X0 = R.x0 + 1, Y0 = R.y0 + 1, X1 = R.x1 - 1, Y1 = R.y1 - 1, depth = opts.tall ? 3 : 2;
+      for (var by = Y0; by + depth - 1 <= Y1; by += depth + 1) {                 // terrace rows, 1-cell street between
+        var cut = (X1 - X0 > 12) ? (X0 + ((X1 - X0) >> 1) + rng.int(-1, 1)) : -1; // at most one cross-street
+        for (var x = X0; x <= X1; x++) { if (x === cut) continue; for (var yy = by; yy < by + depth; yy++) if (t(x, yy) === "street") set(x, yy, opts.tag || "building"); }
+      }
+    }
+    // GROWN street-logic (old quarter / market / housing): small cottages (<=3) placed by
+    // STEPPING with a guaranteed >=1-cell street gap and a JITTERED row start, so columns
+    // stagger and no front runs past 3. Then carve DEAD-END stubs. The tangle that grew itself.
+    // The gate enforces anti-grid (<=3) + a dead-end (crookedness) here.
+    function packGrown(R) {
+      var X0 = R.x0 + 1, Y0 = R.y0 + 1, X1 = R.x1 - 1, Y1 = R.y1 - 1, y = Y0;
+      while (y <= Y1) {
+        var rowH = 2 + rng.int(0, 1), bh = Math.min(rowH, Y1 - y + 1), x = X0 + rng.int(0, 1);   // stagger columns per row
+        if (bh >= 2) while (x <= X1) {
+          var bw = 2 + rng.int(0, 1), ex = Math.min(x + bw - 1, X1);                              // 2-3 wide cottage
+          if (ex - x + 1 >= 2) for (var yy = y; yy < y + bh; yy++) for (var xx = x; xx <= ex; xx++) if (t(xx, yy) === "street") set(xx, yy, "building");
+          x = ex + 2 + rng.int(0, 1);                                                             // >=1 street gap + jitter
+        }
+        y += rowH + 1 + rng.int(0, 1);                                                            // >=1 street row + jitter
+      }
+      for (var pass = 0, stubs = 0; pass < 100 && stubs < 2; pass++) {                            // carve dead-end stubs
+        var sx = X0 + rng.int(0, Math.max(0, X1 - X0)), sy = Y0 + rng.int(0, Math.max(0, Y1 - Y0));
+        if (t(sx, sy) !== "building") continue;
+        var st = 0, bd = 0; for (var i = 0; i < 4; i++) { var tt = t(sx + D4[i][0], sy + D4[i][1]); if (tt === "street") st++; else if (tt === "building") bd++; }
+        if (st === 1 && bd >= 2) { set(sx, sy, "street"); stubs++; }
+      }
+    }
+
     // ---- RED-LIGHT: a SELF-CONCEALING district — a solid outward-facing building RING, exactly
     // ONE entrance, a hidden alley-warren inside, and NO through-route (you enter and leave by the
     // same gap). It must read as "a place apart" on the map.
@@ -133,8 +172,9 @@ var TD_TOWNGEN = (function () {
     // church: a building block just north of the plaza, with a "church" marker cell
     for (var yy = py - 5; yy <= py - 3; yy++) for (var xx = px - 2; xx <= px + 2; xx++) if (t(xx, yy) === "street") set(xx, yy, "building");
     set(px, py - 3, "church");
-    packBuildings({ x0: civic.x0, y0: py + 3, x1: civic.x1, y1: civic.y1 }, { wide: true, tall: true });
-    packBuildings({ x0: civic.x0, y0: civic.y0, x1: civic.x1, y1: py - 6 }, { wide: true, tall: true });
+    // CIVIC is PLANNED: regular full-width terraces over the whole quarter (packPlanned only
+    // fills 'street', so the plaza/church/dungeon are left intact) — the imposed institutional order.
+    packPlanned({ x0: civic.x0, y0: civic.y0, x1: civic.x1, y1: civic.y1 }, { tall: true });
 
     // ---- other districts
     dist.forEach(function (L) {
@@ -147,8 +187,9 @@ var TD_TOWNGEN = (function () {
         set(L.cx, L.y1, "graveyard");
         return;
       }
-      if (L.role === "redlight") { buildRedlight(L); return; }
-      packBuildings(L, L.role === "warehouse" ? { wide: true } : {});
+      if (L.role === "redlight") { buildRedlight(L); return; }            // its own concealment warren
+      if (L.role === "warehouse") { packBuildings(L, { wide: true }); return; }   // working sheds (utility, gate-exempt)
+      packGrown(L);                                                        // market + housing: the GROWN tangle
     });
 
     // ---- SPINE + GATE: a wide main street from a top-border GATE straight down to the plaza,
