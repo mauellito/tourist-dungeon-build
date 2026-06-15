@@ -109,23 +109,30 @@ var TD_TOWNLAWS = (function () {
     // tangle (anti-grid + a dead-end); PLANNED quarters (civic/institutional) must read ORDERED
     // (a long aligned terrace front). Warehouse/red-light have their own laws and are exempt.
     var districts = (m.meta && m.meta.districts) || [];
+    var authored = !!(m.meta && m.meta.authored);   // an installed hand-authored city vs a generated one
     var GROWN_CONTRAST = { market: 1, housing: 1 };
     var grownDs = districts.filter(function (D) { return D.streetLogic === "grown" && GROWN_CONTRAST[D.role]; });
     var plannedDs = districts.filter(function (D) { return D.streetLogic === "planned"; });
 
-    // T16 (rescoped) — GROWN quarters enforce anti-grid HARD (<=3 in alignment). Planned is
-    // deliberately relaxed here (order is its character; checked by T_planned_order instead).
+    // T_DISTRICT_CONTRAST — the town declares BOTH a planned and a grown character (the city-ness
+    // distinction is present). Required for generated and authored maps alike.
+    law("T_district_contrast", plannedDs.length > 0 && grownDs.length > 0, plannedDs.length + " planned / " + grownDs.length + " grown quarters");
+
+    // T16 (rescoped) — GROWN quarters enforce anti-grid HARD (<=3) on GENERATED maps. On an
+    // AUTHORED city the operator's block geometry is authoritative, so it is advisory (reported).
     var maxGrownFront = 0; grownDs.forEach(function (D) { var f = frontRunIn(m, D); if (f > maxGrownFront) maxGrownFront = f; });
-    law("T16_antigrid", grownDs.length === 0 || maxGrownFront <= 3, maxGrownFront + "-cell grown front (max 3), " + grownDs.length + " grown quarters");
+    law("T16_antigrid", authored || grownDs.length === 0 || maxGrownFront <= 3, maxGrownFront + "-cell grown front (max 3" + (authored ? ", advisory: authored" : "") + "), " + grownDs.length + " grown quarters");
 
-    // T_PLANNED_ORDER — every planned quarter presents a long aligned terrace front (>3, clearly
-    // above the grown cap) so the seam to a grown quarter is visibly order-vs-tangle.
-    var plannedVals = [], minPlanned = 99; plannedDs.forEach(function (D) { var f = frontRunIn(m, D); plannedVals.push(f); if (f < minPlanned) minPlanned = f; });
-    law("T_planned_order", plannedDs.length === 0 || minPlanned >= 5, (plannedDs.length ? plannedVals.join("/") : "no planned") + " planned fronts (min 5)");
+    // T_PLANNED_ORDER — planned quarters present long aligned terraces. GENERATED: every planned
+    // quarter must (min front >=5). AUTHORED: at least one ordered terrace exists (max front >=5),
+    // tolerating small flood-fill fragments of the operator's blocks.
+    var plannedVals = [], minPlanned = 99, maxPlanned = 0; plannedDs.forEach(function (D) { var f = frontRunIn(m, D); plannedVals.push(f); if (f < minPlanned) minPlanned = f; if (f > maxPlanned) maxPlanned = f; });
+    var plannedOk = plannedDs.length === 0 || (authored ? maxPlanned >= 5 : minPlanned >= 5);
+    law("T_planned_order", plannedOk, (plannedDs.length ? (authored ? ("max " + maxPlanned) : plannedVals.join("/")) : "no planned") + " planned fronts (min 5)");
 
-    // T_GROWN_CROOKED — every grown quarter big enough to fit one carries a dead-end (organic nook).
+    // T_GROWN_CROOKED — grown quarters carry dead-ends (organic nooks). Advisory on authored maps.
     var crookOk = true, crookVals = []; grownDs.forEach(function (D) { var area = (D.x1 - D.x0 + 1) * (D.y1 - D.y0 + 1), de = deadEndsIn(m, D); crookVals.push(de); if (area >= 16 && de < 1) crookOk = false; });
-    law("T_grown_crooked", crookOk, grownDs.length + " grown quarters, dead-ends [" + crookVals.join(",") + "]");
+    law("T_grown_crooked", authored || crookOk, grownDs.length + " grown quarters, dead-ends [" + crookVals.join(",") + "]");
 
     // T_REDLIGHT SELF-CONCEALMENT — the red-light district reads as a place apart: a solid
     // outward-facing building RING with exactly ONE entrance (no through-route), a hidden

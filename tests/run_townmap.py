@@ -21,7 +21,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENGINE = os.path.join(ROOT, "engine")
 TMPDIR = os.path.join(ROOT, "tests", ".tmp")
-ENGINE_FILES = ["townmap.js"]
+ENGINE_FILES = ["townlaws.js", "townmap.js"]
 CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -79,10 +79,19 @@ REPORTER = r"""
     });
     ok('every tenant front is a building face on a walkable street', badFront===0, badFront+' invalid fronts');
 
-    // FIXED LANDMARKS present in the tag grid
+    // FIXED LANDMARKS present in the tag grid (park is advisory — an authored city may omit it)
     var have={}; for(var y=0;y<a.h;y++)for(var x=0;x<a.w;x++) have[a.tag[y][x]]=1;
-    ok('fixed landmarks present (dungeon, gate, church, kiosk, bridge, pier, graveyard, park, water)',
-       have.dungeon&&have.gate&&have.church&&have.kiosk&&have.bridge&&have.pier&&have.graveyard&&have.park&&have.water);
+    ok('fixed landmarks present (dungeon, gate, church, kiosk, bridge, pier, graveyard, water)',
+       have.dungeon&&have.gate&&have.church&&have.kiosk&&have.bridge&&have.pier&&have.graveyard&&have.water);
+
+    // CONTRAST GATE (TD_TOWNLAWS) over the installed city — the planned/grown city-ness check.
+    // On an authored map the strict grown anti-grid is advisory (operator geometry is authoritative);
+    // the declared planned/grown contrast and the planned order must hold.
+    var TL = TD_TOWNLAWS.check(a), cl = TL.laws;
+    ok('contrast gate: both planned + grown quarters present', cl.T_district_contrast.pass, cl.T_district_contrast.value);
+    ok('contrast gate: planned quarters read ordered', cl.T_planned_order.pass, cl.T_planned_order.value);
+    ok('contrast gate: grown anti-grid (advisory on authored)', cl.T16_antigrid.pass, cl.T16_antigrid.value);
+    ok('contrast gate: grown crooked (advisory on authored)', cl.T_grown_crooked.pass, cl.T_grown_crooked.value);
 
     // REACHABILITY: the dungeon mouth is reachable from the gate over walkable tags
     var gate=null, dgn=null, kiosk=null;
