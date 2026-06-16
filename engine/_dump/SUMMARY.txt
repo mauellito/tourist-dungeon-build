@@ -1,0 +1,19 @@
+NODE floor dump — seeds 1..16 (gate attempts + speckle)
+median attempts=28.0  max attempts=122  median speckle=18.0  passed=16/16
+
+seed  1 : PASS attempts=74   speckle=10
+seed  2 : PASS attempts=5    speckle=21
+seed  3 : PASS attempts=51   speckle=18
+seed  4 : PASS attempts=40   speckle=21
+seed  5 : PASS attempts=7    speckle=12
+seed  6 : PASS attempts=33   speckle=14
+seed  7 : PASS attempts=17   speckle=15
+seed  8 : PASS attempts=12   speckle=17
+seed  9 : PASS attempts=66   speckle=21
+seed 10 : PASS attempts=23   speckle=15
+seed 11 : PASS attempts=49   speckle=25
+seed 12 : PASS attempts=122  speckle=30
+seed 13 : PASS attempts=66   speckle=21
+seed 14 : PASS attempts=17   speckle=18
+seed 15 : PASS attempts=15   speckle=13
+seed 16 : PASS attempts=2    speckle=22
