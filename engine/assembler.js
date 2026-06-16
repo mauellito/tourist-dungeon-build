@@ -397,6 +397,32 @@ var TD_ASSEMBLER = (function () {
       }
     }
 
+    // ---- DE-SPECKLE: fill isolated interior wall pillars (a "#" walled-in by FLOOR on >=3 sides)
+    // that are NOT authored vault pillars, taking the floor TYPE of its neighbours. Fills only when
+    // the floor neighbours agree (all room, or all corridor) so it never welds a room to a corridor
+    // (L6), and never touches a cell beside a door/feature/stair (keeps clean thresholds). This
+    // tidies the 1-cell nubs that pepper rooms and corridor junctions — legibility — without
+    // flattening authored vault pillars or the winding-corridor wall lines (which have floor on <=2
+    // sides, so they are never touched). Fixpoint so a freshly-cleared neighbour can expose another.
+    function deSpeckle() {
+      for (var pass = 0; pass < 4; pass++) {
+        var changed = 0;
+        for (var y = 1; y < H - 1; y++) for (var x = 1; x < W - 1; x++) {
+          if (grid[y][x] !== "#" || tag[y][x] === "pillar") continue;
+          var rm = 0, co = 0, fl = 0, bad = 0;
+          for (var d = 0; d < 4; d++) {
+            var ny = y + D4[d][1], nx = x + D4[d][0], g = grid[ny][nx], t = tag[ny][nx];
+            if (g === "." || g === "~") { fl++; if (t === "room" || t === "feature" || t === "loot" || t === "landmark") rm++; else if (t === "corridor") co++; else bad++; }
+          }
+          if (fl < 3 || bad > 0) continue;                       // not isolated, or a door/stair/water neighbour (keep thresholds)
+          if (rm > 0 && co === 0) { setc(x, y, ".", "room"); changed++; }
+          else if (co > 0 && rm === 0) { setc(x, y, ".", "corridor"); changed++; }   // tidy a junction nub
+        }
+        if (!changed) break;
+      }
+    }
+    deSpeckle();
+
     // ---- STAIRS: up + down placed inside two authored vaults. The stair cell is retagged from
     // "room", so it must be a LEAF (fewest room neighbours) — never a bridge whose removal would
     // split a pillared vault into a doorless/tiny sub-region (D1/L11). ----

@@ -28,6 +28,7 @@ SUITES = [
     ("VAULT WIRE-IN (rooms are authored vaults)", "run_vaultwire.py"),
     ("vault assembler, gated (P2/P4)", "run_assembler.py"),
     ("STANDARD drift bands + type params", "run_drift.py"),
+    ("dungeon legibility (clean floors / speckle)", "run_legibility.py"),
     ("LIVE-PLAY WALK (both generators live, spawn->descend)", "walk_liveplay.py"),
 ]
 
