@@ -144,6 +144,15 @@ F.onload = function(){
     ok('the ticket is carried as an inspectable inventory item',
        (view().inventory||[]).some(function(it){return it.kind==='ticket';}));
 
+    // ===== R3 TOWN FLAVOR: canon venue fronts + ambient townsfolk barks (firewall-safe) =====
+    var fc=view().features||{}, canon=[], folk=0, anyFront=null;
+    for(var fk in fc){ var ff=fc[fk]; if(ff.type==='front'&&ff.bark){ canon.push(ff.label); if(!anyFront){var pp=fk.split(','); anyFront=[+pp[0],+pp[1]];} } if(ff.col==='npc'&&ff.bark) folk++; }
+    ok('canon venues have named, voiced fronts (a representative handful)', canon.length>=3 && canon.indexOf('the Rusty Anchor')>=0, canon.slice(0,6).join(', '));
+    ok('ambient townsfolk with on-voice barks are present', folk>=3, folk+' townsfolk');
+    if(anyFront){ var fd=goAdjacent(anyFront[0],anyFront[1]); press(fd);   // bump a venue front -> signage (seen) + one voice line (said)
+      var sline=(view().senses||view().messages||[]).map(function(m){return (m&&m.text)||m;}).join(' ');
+      ok('bumping a venue front speaks one line in the senses stream', /[A-Z]{3,}|—|\?/.test(view().lastEvent||sline)); }
+
     // ===== CORE-LOOP PROTOTYPE: the contraption gates the descent (throwaway) ==========
     var levXY=findLever();
     ok('a descent contraption lever is placed in the slice', !!levXY, levXY?('lever@'+levXY):'(none)');

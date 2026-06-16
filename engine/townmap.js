@@ -994,6 +994,19 @@ var TD_TOWNMAP = (function () {
     { id: "palmreader", label: "a palm-reader",          glyph: "@", cat: "vice",     size: "small",  where: ["redlight"], weight: 3 },
     { id: "bodega",     label: "a bodega",               glyph: "$", cat: "vice",     size: "small",  where: ["redlight", "market"], weight: 3 }
   ];
+  // CANON VENUES (flavor first-pass): a representative handful of businesses get a named front +
+  // signage + ONE voice line, in the venue's register (accent law: word choice + rhythm only, never
+  // phonetic spelling). Firewall-safe — signage + a bark, NO economy/transacting/mechanics.
+  var CANON = {
+    tavern: { name: "the Rusty Anchor", sign: "THE RUSTY ANCHOR — ales, alibis, and no tab", bark: "You drinking, or just dripping on my floor? Sit where I can see you.", accent: "brooklyn" },
+    bank: { name: "the Bank of the Bureau", sign: "DEPOSITS RECEIVED WITH THE GRAVEST COURTESY", bark: "One does not loiter at the marble. One has business, or one has the door.", accent: "posh" },
+    hotel: { name: "the Gilded Kraken", sign: "THE GILDED KRAKEN — rooms, hot water, discretion", bark: "Checking in, or merely admiring? The lobby is not a waiting room, dear.", accent: "posh" },
+    spa: { name: "the Vapour Rooms", sign: "STEAM · SALTS · SILENCE", bark: "You are wearing the road, I see. We can lift it off you, for a consideration.", accent: "posh" },
+    coffee: { name: "the Third Cup", sign: "COFFEE — SERVED HOT AND WITHOUT OPINION", bark: "Sit anywhere you like. The opinions cost extra and we have run out.", accent: "plain" },
+    store: { name: "the Outfitter", sign: "THE OUTFITTER — lanterns, rope, and regret", bark: "Going down, are you? Take a lantern. Take two. Nobody comes back for the refund.", accent: "plain" },
+    bodega: { name: "the Corner", sign: "OPEN ALL HOURS THE BUREAU PERMITS", bark: "Whatever you need, I got it, or I know a guy. Mostly I know a guy.", accent: "brooklyn" },
+    redlit: { name: "the Members' Room", sign: "MEMBERS ONLY — membership upon quiet enquiry", bark: "Private establishment, sweetheart. The privacy is the whole of the product.", accent: "brooklyn" }
+  };
   var CAT_COL = { commerce: "storefront", civic: "civic", lodging: "lodging", faith: "faith", vice: "vice" };
   var SIZE_RANK = { small: 0, medium: 1, large: 2 };
   function slotClass(area) { return area >= 30 ? "large" : (area >= 14 ? "medium" : "small"); }
@@ -1059,9 +1072,11 @@ var TD_TOWNMAP = (function () {
     var fronts = [];
     for (var i = 0; i < slots.length; i++) {
       var pick = assigned[i]; if (!pick) continue; var slot = slots[i];
-      fronts.push({ x: slot.front.x, y: slot.front.y, business: pick.id, label: pick.label, cat: pick.cat,
+      var canon = CANON[pick.id] || null;
+      fronts.push({ x: slot.front.x, y: slot.front.y, business: pick.id, label: canon ? canon.name : pick.label, cat: pick.cat,
         col: CAT_COL[pick.cat] || "storefront", glyph: pick.glyph, role: slot.role,
-        text: "The front of " + pick.label + ". (Going inside arrives with the interiors pass.)" });
+        text: canon ? canon.sign : ("The front of " + pick.label + ". (Going inside arrives with the interiors pass.)"),
+        bark: canon ? canon.bark : null, accent: canon ? canon.accent : null });
     }
     var grid = []; for (var y = 0; y < P.h; y++) { var s = ""; for (var x = 0; x < P.w; x++) s += (GLYPH[P.tag[y][x]] || "?"); grid.push(s); }
     var meta = { districts: MAP.districts, redlight: MAP.redlight, source: "townmap", authored: true, authored: true, authored: true, pois: { tenants: fronts.length } };

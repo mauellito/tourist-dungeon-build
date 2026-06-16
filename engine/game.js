@@ -297,6 +297,20 @@ var TD_GAME = (function () {
       var Wt = m.w, Ht = m.h, grid = [], ground = {}, doors = {}, features = {}, buildings = [], cells = [];
       var gateCell = null, mouth = null;
       var GT = { plaza: "stone", park: "grass", graveyard: "grass", alley: "redlight", pier: "plank", bridge: "plank", street: "cobble", gate: "cobble", dungeon: "stone", landmark: "stone", notice: "cobble", vendor: "cobble", npc: "cobble", kiosk: "stone" };
+      // ambient townsfolk barks, by the quarter they stand in (accent law: word choice + rhythm
+      // only, never phonetic spelling). Bump-to-read flavor; no mechanics.
+      var TOWNSFOLK = {
+        brooklyn: ["Move it along — the Bureau is watching, and so am I.", "You lost? Down there is that way. Good luck; you will want a great deal of it.", "Spare a coin? No? Figures."],
+        posh: ["One does try to keep the quarter respectable. One fails, but one tries.", "You are not from the better streets, are you. No matter.", "Do mind the brass; it is older than your line."],
+        pastoral: ["Peace to you, traveller; the door stays open to the returning.", "Rest if you are weary; the hours below are long ones.", "Go gently. Many went down lightly and came up grave."],
+        plain: ["Another one for the commute, then.", "Keep your wits; the tickets are cheaper than the lessons.", "Mind how you go."]
+      };
+      function npcAccent(x, y) {
+        var ds = m.meta.districts || [];
+        for (var i = 0; i < ds.length; i++) { var D = ds[i]; if (x >= D.x0 && x <= D.x1 && y >= D.y0 && y <= D.y1) { if (D.role === "civic") return "posh"; if (D.role === "redlight") return "brooklyn"; if (D.role === "graveyard") return "pastoral"; break; } }
+        return ((x + y) % 2) ? "brooklyn" : "plain";
+      }
+      function townBark(ac, n) { var p = TOWNSFOLK[ac] || TOWNSFOLK.plain; return p[((n || 0) % p.length + p.length) % p.length]; }
       for (var y = 0; y < Ht; y++) {
         var row = [];
         for (var x = 0; x < Wt; x++) {
@@ -312,7 +326,7 @@ var TD_GAME = (function () {
           else if (t === "landmark") features[key(x, y)] = { type: "view", glyph: "☼", col: "signal", label: "a district landmark", text: "A weenie the quarter gathers around. (Its content arrives with the interiors pass.)", act: "look" };
           else if (t === "notice") features[key(x, y)] = { type: "notice", glyph: "¶", label: "a Bureau notice", text: "A Bureau notice, freshly pasted and already contradicting the one beside it.", act: "read" };
           else if (t === "vendor") features[key(x, y)] = { type: "view", glyph: "₪", col: "signal", label: "a street vendor", text: "A vendor's cart, permits fluttering. The goods are flavour for now; the till is firewalled.", act: "look" };
-          else if (t === "npc") features[key(x, y)] = { type: "view", glyph: "o", col: "npc", label: "a townsperson", text: "A townsperson going about Bureau-sanctioned business.", act: "look" };
+          else if (t === "npc") { var ac = npcAccent(x, y); features[key(x, y)] = { type: "view", glyph: "o", col: "npc", label: "a townsperson", text: "A townsperson going about Bureau-sanctioned business.", bark: townBark(ac, x + y), accent: ac, act: "look" }; }
           else if (t === "kiosk") features[key(x, y)] = { type: "counter", glyph: "K", col: "signal", label: "the Kiosk — admission to the dungeon", text: "The Kiosk. Admission to the commute is sold here (a stub for now).", act: "kiosk" };
         }
         grid.push(row);
@@ -365,7 +379,7 @@ var TD_GAME = (function () {
       // its kind via TD_UI.buildingColor. Fronts-as-flavor: interiors are a later layer.
       (m.fronts || []).forEach(function (fr) {
         features[key(fr.x, fr.y)] = { type: "front", glyph: fr.glyph, col: fr.col, business: fr.business,
-          label: fr.label, text: fr.text, act: "look" };
+          label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null, act: "look" };   // canon venues carry signage (text) + one voice line (bark)
       });
       // meta: district rects (for districtAt's flavour) + the dungeon entrance overlay
       var dmeta = { redlight: null, waterfront: null, market: null };
@@ -377,6 +391,19 @@ var TD_GAME = (function () {
       var rl = m.meta.redlight ? { rect: [m.meta.redlight.x0, m.meta.redlight.y0, m.meta.redlight.x1, m.meta.redlight.y1] } : null;
       var meta = { seed: m.seed, dungeonEntrance: dungeonEntrance, redlight: rl, districts: dmeta };
       for (var y2 = 0; y2 < Ht; y2++) for (var x2 = 0; x2 < Wt; x2++) if (grid[y2][x2] === "." && !features[key(x2, y2)] && !doors[key(x2, y2)]) cells.push({ x: x2, y: y2 });
+      // AMBIENT TOWNSFOLK (flavor first-pass): the authored map carries no NPC glyphs, so seed a
+      // representative handful of static, bump-to-read townsfolk with accented one-liners, spread
+      // across the quarters. Firewall-safe — a line of voice, no mechanics.
+      var step = Math.max(1, Math.floor(cells.length / 10)), folk = 0;
+      for (var ci = 0; ci < cells.length && folk < 8; ci += step) {
+        var cc = cells[ci];
+        if (!cc || features[key(cc.x, cc.y)] || (cc.x === spawn.x && cc.y === spawn.y)) continue;
+        if (mouth && Math.abs(cc.x - mouth.x) + Math.abs(cc.y - mouth.y) < 3) continue;   // keep the mouth approach clear
+        var fac = npcAccent(cc.x, cc.y);
+        features[key(cc.x, cc.y)] = { type: "view", glyph: "o", col: "npc", label: "a townsperson", text: "A townsperson going about Bureau-sanctioned business.", bark: townBark(fac, cc.x + cc.y), accent: fac, act: "look" };
+        folk++;
+      }
+      cells = cells.filter(function (c) { return !features[key(c.x, c.y)]; });   // folk cells are bump-to-read, not walk-through
       return { id: "TOWN", title: "The Harbour", grid: grid, doors: doors, features: features, ground: ground, occupants: [], actors: [], cells: cells, spawn: spawn, exit: null, buildings: buildings, piers: [], meta: meta, H: Ht, W: Wt };
     }
 
@@ -500,7 +527,7 @@ var TD_GAME = (function () {
       var f = P.features[key(nx, ny)];
       if (f && f.act) {   // act-features (counters, lookouts). gate/decor features sit on open road and are walked through; labels sit in walls (the floor check blocks them).
         if (f.act === "lookout") { pendingCounter = null; pendingVendor = false; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
-        if (f.act === "look") { pendingCounter = null; pendingVendor = false; senses(f.text, "seen", "OBJ"); return { moved: false, interacted: "look", event: lastEvent }; }
+        if (f.act === "look") { pendingCounter = null; pendingVendor = false; senses(f.text, "seen", "OBJ"); if (f.bark) senses(f.bark, "said", "SUBJ"); return { moved: false, interacted: "look", event: lastEvent }; }   // signage (seen) + one voice line (said, in register)
         if (f.act === "shrine") { pendingCounter = null; pendingVendor = false; act("shrine"); return { moved: false, interacted: "shrine", event: lastEvent }; }
         if (f.act === "lever") { pendingCounter = null; pendingVendor = false; act("lever"); return { moved: false, interacted: "lever", event: lastEvent }; }   // THROWAWAY prototype: bump the contraption to throw it
         // a counter/desk: begin the conversation in the keeper's own voice
