@@ -226,11 +226,9 @@ var TD_LAWS = (function () {
         if (!walkable(m, ex + DIAG[dci][0], ey) && !walkable(m, ex, ey + DIAG[dci][1])) openCorner++;   // both shared orthogonals are rock -> diagonal bypass
       }
     }
-    // ADVISORY (not gating yet): the vault assembler does not seal diagonal room->corridor leaks
-    // (the old composer does, mapmode.js "SEAL open corners"), and the seal cannot be ported
-    // cleanly (opening a between-wall would create an L6 room<->corridor adjacency without a door).
-    // Hard-gating this is blocked on assembler room/corridor-placement rework — FLAGGED for review.
-    law("EL_enclosure", leakEdge === 0 && openCorner === 0, leakEdge + " unbounded edges, " + openCorner + " open corners (ADVISORY — pending assembler open-corner seal)", true);
+    // HARD: open corners are now prevented BY CONSTRUCTION — the assembler's canCarve bars carving
+    // a corridor orthogonally OR diagonally beside a room, so no diagonal room->corridor leak forms.
+    law("EL_enclosure", leakEdge === 0 && openCorner === 0, leakEdge + " unbounded edges, " + openCorner + " open corners");
 
     // EL_DOOR_VALID — every door is a clean through-passage joining two DISTINCT spaces: passable
     // on its through-axis, walls on its jambs, in-bounds (no door into rock / off-map / onto wall),

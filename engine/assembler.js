@@ -171,7 +171,12 @@ var TD_ASSEMBLER = (function () {
     // then wire the vaults with WINDING tunnels. No bands, no aligned rows (L16): varied rooms
     // scattered off winding corridors with honest rock between (the hand sheet). ----
     function roomAdj(x, y) { for (var i = 0; i < 4; i++) { var rr = tag[y + D4[i][1]]; var t = rr && rr[x + D4[i][0]]; if (t === "room" || t === "feature") return true; } return false; }
-    function canCarve(x, y) { return inb(x, y) && grid[y][x] === "#" && !roomAdj(x, y); }
+    // a corridor carved DIAGONALLY beside a room corner makes an 8-way "open corner" (a diagonal
+    // step room->corridor bypassing the door — the Brogue rule). roomAdj already bars orthogonal
+    // room adjacency, so a diagonal room neighbour always sits behind two walls = a leak: bar it too.
+    var DG = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+    function roomDiag(x, y) { for (var i = 0; i < 4; i++) { var rr = tag[y + DG[i][1]]; var t = rr && rr[x + DG[i][0]]; if (t === "room" || t === "feature") return true; } return false; }
+    function canCarve(x, y) { return inb(x, y) && grid[y][x] === "#" && !roomAdj(x, y) && !roomDiag(x, y); }
     function corrNbrs(x, y) { var c = 0; for (var i = 0; i < 4; i++) { var rr = tag[y + D4[i][1]]; if (rr && rr[x + D4[i][0]] === "corridor") c++; } return c; }
     // straightOK: carving (x,y) must NOT complete a >=4 colinear corridor run (GLOBAL cap, across
     // paths) — this is what holds straightness <=30% no matter how corridors meet.

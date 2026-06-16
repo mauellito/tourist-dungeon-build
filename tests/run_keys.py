@@ -235,9 +235,10 @@ F.onload = function(){
     ok('the contextual cue strip tells you what you can do here',
        ((doc.getElementById('cue')||{}).textContent||'').trim().length>0);
 
-    // contextual cue names an item underfoot when you stand on one
-    var bn=floorNeighbor(); DUN._setItem(bn.x,bn.y,'bandage'); press(bn.dir);
-    var gt=view().player.x===bn.x&&view().player.y===bn.y;
+    // contextual cue names an item underfoot when you stand on one (place it under the avatar and
+    // refresh with a wait — robust regardless of whether this cell has an orthogonal floor neighbour)
+    var pp0=view().player; DUN._setItem(pp0.x,pp0.y,'bandage'); pkc('5','Numpad5');
+    var gt=view().player.x===pp0.x&&view().player.y===pp0.y;
     ok('standing on an item, the cue prompts to pick it up',
        gt && /pick up/.test((doc.getElementById('cue').textContent||'')));
 
