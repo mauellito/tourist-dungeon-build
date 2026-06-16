@@ -218,6 +218,7 @@
 <script src="townmap.js"></script>
 <script src="game.js"></script>
 <script src="ui.js"></script>
+<script src="feel.js"></script>
 <script>
 (function () {
   var TS = 22, FONT = "18px Consolas, monospace", camera = null;
@@ -235,6 +236,41 @@
   var world = null, sim = null, session = { knowledge: new Set(), lives: 0 };
   // presentation-only state
   var stampMap = new WeakMap(), lastCrit = null, ackIndex = 0, labelsOn = false;
+  // ---- game-feel (TD_FEEL) state: smoothed camera, the effect render loop, last hooks fired ----
+  var camXs = null, camYs = null, feelRAF = null, lastFeelHooks = [], spawnedFloats = new WeakSet(), prevPhase = null, prevLevel = -1;
+  function nowMs() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
+  function feelTick() {
+    var now = nowMs(); draw();
+    if (TD_FEEL.hasActive(now)) feelRAF = requestAnimationFrame(feelTick);
+    else { TD_FEEL.prune(now); feelRAF = null; draw(); }   // settle on one STILL frame, then stop (idle = no animation)
+  }
+  function startFeel() { if (!feelRAF) feelRAF = requestAnimationFrame(feelTick); }
+  // spawn the onomatopoeia floats (CSS-driven divs; the canvas loop need not run for these)
+  function spawnFeelFloats(now) {
+    TD_FEEL.active(now).forEach(function (e) {
+      if (e.kind !== "float" || !e.tile || spawnedFloats.has(e)) return;
+      spawnedFloats.add(e);
+      var d = document.createElement("div"); d.className = "dmgfloat"; d.textContent = e.text;
+      d.style.color = P[e.color] || P.signal; d.style.fontSize = "12px"; d.style.letterSpacing = "1px";
+      d.style.left = (e.tile.x * TS + TS / 2 - camXOf() * TS) + "px"; d.style.top = (e.tile.y * TS - 14 - camYOf() * TS) + "px";
+      stageEl.appendChild(d); setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 950);
+    });
+  }
+  function camXOf() { return camXs == null ? 0 : Math.round(camXs); }
+  function camYOf() { return camYs == null ? 0 : Math.round(camYs); }
+  // fire the feel hooks for a completed action, then render
+  function fireFeel(res) {
+    var vw = sim.view(), pl = vw.player || { x: 0, y: 0 }, ev = { self: { x: pl.x, y: pl.y } };
+    if (res) { ev.moved = !!res.moved; ev.attacked = !!res.attacked; ev.killed = !!res.killed; ev.got = !!res.got; }
+    ev.dead = !!vw.dead; ev.crit = !!vw.lastUrgent;
+    (vw.events || []).forEach(function (fx) { if (fx.kind === "taken") ev.tookDamage = true; if (fx.kind === "dealt") { ev.attacked = true; ev.target = { x: fx.x, y: fx.y }; } });
+    if ((prevPhase !== "dungeon" && vw.phase === "dungeon") || (vw.phase === "dungeon" && vw.level > prevLevel)) ev.descended = true;
+    prevPhase = vw.phase; prevLevel = (vw.phase === "dungeon" ? vw.level : -1);
+    lastFeelHooks = TD_FEEL.apply(ev, nowMs(), vw.turn || 0);
+    draw();                                  // render synchronously now (camera/state never lags a frame)
+    spawnFeelFloats(nowMs());
+    if (TD_FEEL.hasActive(nowMs())) startFeel();   // then keep animating until the effects settle (idle)
+  }
   var barker = null, barkPrev = null, lastFx = null;
 
   function creatureColor() { return P.creature; }   // colour = category; glyph = kind
@@ -299,13 +335,21 @@
     var cvW = VPW * TS, cvH = VPH * TS;
     if (cv.width !== cvW || cv.height !== cvH) { cv.width = cvW; cv.height = cvH; }
     camera = { x: camX, y: camY, ts: TS, vpw: VPW, vph: VPH, town: town };   // for screen<->world mapping (clicks)
+    // smooth camera follow (the town scrolls): ease the drawn origin toward the target, snap when
+    // idle so a still screen is exactly aligned. Shake offset is added on top (decays to zero).
+    var nowF = nowMs();
+    if (camXs == null || !town) { camXs = camX; camYs = camY; }
+    else { camXs += (camX - camXs) * 0.35; camYs += (camY - camYs) * 0.35; if (Math.abs(camX - camXs) < 0.02 && Math.abs(camY - camYs) < 0.02 || !TD_FEEL.hasActive(nowF)) { camXs = camX; camYs = camY; } }
+    var shk = TD_FEEL.isEnabled() ? TD_FEEL.shakeOffset(nowF) : { dx: 0, dy: 0 };
     var vis = new Set(vw.visible), exp = new Set(vw.explored);
     ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
-    ctx.save(); ctx.translate(-camX * TS, -camY * TS);
+    ctx.save(); ctx.translate(-camXs * TS + shk.dx, -camYs * TS + shk.dy);
 
-    for (var y = camY; y < camY + VPH; y++) {
-      for (var x = camX; x < camX + VPW; x++) {
+    for (var y = camY - 1; y <= camY + VPH; y++) {                          // +1 ring covers the sub-tile ease
+      if (y < 0 || y >= vw.h) continue;
+      for (var x = camX - 1; x <= camX + VPW; x++) {
+        if (x < 0 || x >= vw.w) continue;
         var k = x + "," + y;
         var seen = exp.has(k), bright = vis.has(k);
         if (!seen) continue;
@@ -385,7 +429,21 @@
       ctx.strokeRect(vw.look.x * TS + 1, vw.look.y * TS + 1, TS - 2, TS - 2);
     }
     if (labelsOn) drawLabels(vw);
+    // TILE-FLASH (bump-attack / pickup): a brief colour pulse on the affected tile (world space)
+    if (TD_FEEL.isEnabled()) TD_FEEL.active(nowF).forEach(function (e) {
+      if (e.kind !== "flash" || !e.tile) return;
+      ctx.globalAlpha = (1 - e.p) * 0.7; ctx.fillStyle = P[e.color] || P.critical;
+      ctx.fillRect(e.tile.x * TS, e.tile.y * TS, TS, TS); ctx.globalAlpha = 1;
+    });
     ctx.restore();                                                     // end camera transform
+    // SCREEN-SPACE feel overlays: damage vignette + descend/death shimmer
+    if (TD_FEEL.isEnabled()) {
+      var act = TD_FEEL.active(nowF);
+      var vg = act.filter(function (e) { return e.kind === "vignette"; })[0];
+      if (vg) { var grd = ctx.createRadialGradient(cv.width / 2, cv.height / 2, Math.min(cv.width, cv.height) * 0.32, cv.width / 2, cv.height / 2, Math.max(cv.width, cv.height) * 0.7); grd.addColorStop(0, "rgba(0,0,0,0)"); grd.addColorStop(1, hexToRgba(P.critical, (1 - vg.p) * 0.45)); ctx.fillStyle = grd; ctx.fillRect(0, 0, cv.width, cv.height); }
+      var sh = act.filter(function (e) { return e.kind === "shimmer"; })[0];
+      if (sh) drawShimmer(sh);
+    }
 
     spawnDamage(vw);
     renderDossier(vw);
@@ -421,6 +479,18 @@
   }
 
   // floating damage numbers (consistent with the colour rules)
+  // a palette hex (#rrggbb) -> rgba() string, so feel overlays read their colour from TD_UI.PALETTE
+  function hexToRgba(hex, a) { var h = (hex || "#000").replace("#", ""); if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; var n = parseInt(h, 16); return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")"; }
+  // DESCEND / DEATH shimmer: centred per-character colour-wave (each hue from the palette)
+  function drawShimmer(e) {
+    var txt = e.mode === "death" ? "C O N C L U D E D" : "D E S C E N D I N G";
+    var cols = [P.player, P.signal, P.item, P.door, P.dmgDealt], chars = txt.split(""), step = 18;
+    ctx.save(); ctx.font = "bold 26px Consolas, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.globalAlpha = Math.sin(e.p * Math.PI);
+    var x0 = cv.width / 2 - (chars.length * step) / 2 + step / 2, y = cv.height / 2;
+    chars.forEach(function (c, i) { ctx.fillStyle = cols[(i + Math.floor(e.p * 12)) % cols.length]; ctx.fillText(c, x0 + i * step, y); });
+    ctx.globalAlpha = 1; ctx.restore();
+  }
   function spawnDamage(vw) {
     if (vw.events === lastFx) return;            // only once per action, not on re-renders
     lastFx = vw.events;
@@ -738,22 +808,22 @@
       if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.invSelect(k.charCodeAt(0) - 97); draw(); return; }
       return;
     }
-    if (k === "x") { e.preventDefault(); var res = TD_UI.autoExplore(sim); if (res && res.say) sim.say(res.say); draw(); return; }
-    if (k === "Enter" || k === "o") { e.preventDefault(); sim.commit(); draw(); return; }
-    if (k === "." || code === "Numpad5") { e.preventDefault(); sim.wait(); draw(); return; }
-    if (k === "g") { e.preventDefault(); sim.get(); draw(); return; }
+    if (k === "x") { e.preventDefault(); var res = TD_UI.autoExplore(sim); if (res && res.say) sim.say(res.say); fireFeel({ moved: true }); return; }
+    if (k === "Enter" || k === "o") { e.preventDefault(); fireFeel(sim.commit()); return; }
+    if (k === "." || code === "Numpad5") { e.preventDefault(); fireFeel(sim.wait()); return; }
+    if (k === "g") { e.preventDefault(); fireFeel(sim.get()); return; }
     if (k === "s") { e.preventDefault(); sim.search(); draw(); return; }
     if (k === "c") { e.preventDefault(); sim.closeDoor(); draw(); return; }
     if (k === "i") { e.preventDefault(); sim.toggleInventory(); draw(); return; }
     if (k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
     var dir = MOVE[k] || NUMPAD[code];
-    if (dir) { e.preventDefault(); sim.move(dir); draw(); return; }
+    if (dir) { e.preventDefault(); fireFeel(sim.move(dir)); return; }
   });
   document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v10 — dungeon gate: door-validity + no-orphans live", BUILD = "ab4c99c";
+  var VERSION = "play-map v11 — game-feel pass (shake / flash / float / shimmer)", BUILD = "f9a89f5";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

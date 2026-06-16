@@ -89,6 +89,7 @@ F.onload = function(){
       if(all) return {x:x,y:y}; } return view().player; }
   try {
     // ============================ SCROLLING CAMERA (Phase B) ==============
+    win.__TD_SIM()._clearActors();   // de-flake: wandering townsfolk must not block the spine walk
     var cam0=win.__TD_CAMERA(); var pc=view().player;
     ok('the town uses a scrolling camera (viewport smaller than the town)', !!cam0 && cam0.town && cam0.vpw < view().w);
     ok('the avatar is inside the camera viewport', pc.x>=cam0.x && pc.x<cam0.x+cam0.vpw && pc.y>=cam0.y && pc.y<cam0.y+cam0.vph);

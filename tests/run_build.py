@@ -17,6 +17,7 @@ SUITES = [
     ("visual map mode", "run_map.py"),
     ("town + forks + signals", "run_game.py"),
     ("UI quality-of-life", "run_ui.py"),
+    ("game-feel layer (TD_FEEL)", "run_feel.py"),
     ("town composition law (TD_TOWN)", "run_towncompose.py"),
     ("procedural TOWN generator + law-suite", "run_towngen.py"),
     ("FIXED authored town map + randomized tenants", "run_townmap.py"),
