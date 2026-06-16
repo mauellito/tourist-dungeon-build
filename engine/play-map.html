@@ -11,7 +11,7 @@
   }
   * { box-sizing:border-box; }
   html,body { margin:0; background:var(--paper); color:var(--ink); font-family:"Georgia","Times New Roman",serif; }
-  #wrap { max-width:1240px; margin:0 auto; padding:16px 16px 56px; }
+  #wrap { max-width:1560px; margin:0 auto; padding:12px 14px 40px; }
   header.brand { border-bottom:3px double var(--ink); padding-bottom:6px; display:flex; align-items:baseline; justify-content:space-between; }
   header.brand h1 { font-size:21px; margin:0; letter-spacing:1px; font-variant:small-caps; }
   header.brand .sub { font-size:12px; color:var(--faint); font-style:italic; }
@@ -26,7 +26,14 @@
   .stage { position:relative; flex:0 0 auto; }
   canvas { background:#07060a; border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); }
 
-  aside#sidebar { flex:0 0 252px; display:flex; flex-direction:column; gap:12px; }
+  aside#sidebar { flex:0 0 200px; display:flex; flex-direction:column; gap:8px; }
+  /* the contraption WICKET countdown in the HUD — prominent, reddens under pressure */
+  .wicket { margin:4px 0 2px; padding:5px 8px; border-radius:4px; border:1px solid var(--rule); font:bold 13px "Consolas",monospace; text-align:center; letter-spacing:.5px; background:#2a241a; color:var(--paper); }
+  .wicket.urgent { animation: wickpulse .7s ease-in-out infinite; }
+  @keyframes wickpulse { 0%,100%{ background:#3a0f0a; } 50%{ background:#6a1b12; } }
+  /* a compact controls footer (moved out of the prime sidebar — not immediately actionable) */
+  .legendfoot { margin-top:10px; }
+  .legendfoot .card-b { padding:6px 10px; }
   .card { border:1px solid var(--rule); background:var(--panel); border-radius:5px; overflow:hidden; }
   .card-h { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--panel);
     background:var(--accent); padding:5px 10px; border-bottom:1px solid var(--rule); }
@@ -65,7 +72,7 @@
   .cue .pre { font-family:"Consolas",monospace; color:var(--accent); }
 
   #msgpanel { margin-top:12px; }
-  .log { height:148px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; font:13px/1.5 "Consolas",monospace; }
+  .log { height:80px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; font:13px/1.5 "Consolas",monospace; }
   .log .line { padding:1px 2px; color:var(--faint); }
   .log .line .tn { display:inline-block; min-width:34px; color:#a99a7c; }
   .log .line.routine { color:#6a6253; }
@@ -171,18 +178,19 @@
         <div class="card-h">What You Sense</div>
         <div class="card-b senses" id="senses"></div>
       </div>
-      <div class="card">
-        <div class="card-h">Controls &amp; Key</div>
-        <div class="card-b legend" id="legend"></div>
-      </div>
     </aside>
   </div>
 
   <div class="cue" id="cue"></div>
 
   <div class="card" id="msgpanel">
-    <div class="card-h">Field Log <span style="float:right;font-weight:normal;text-transform:none;letter-spacing:0">press <b>L</b> for the full review log</span></div>
+    <div class="card-h">Field Log <span style="float:right;font-weight:normal;text-transform:none;letter-spacing:0">last lines — press <b>L</b> for the full reviewable history</span></div>
     <div class="card-b log" id="msglog"></div>
+  </div>
+
+  <div class="card legendfoot">
+    <div class="card-h">Controls &amp; Key</div>
+    <div class="card-b legend" id="legend"></div>
   </div>
 </div>
 
@@ -326,15 +334,20 @@
     // the whole place fits, shrink-to-fit as before. All draw helpers read TS/FONT and
     // draw in WORLD coords; one canvas translate slides the world under the camera.
     var town = vw.phase === "town", camX = 0, camY = 0, VPW = vw.w, VPH = vw.h;
+    // RESPONSIVE: the map fills the available window (minus the slim sidebar + the chrome), so it
+    // DOMINATES the screen at any common size and never overflows. Town scrolls (fixed tile size);
+    // dungeon/interior fit the whole floor to the window at the biggest legible tile.
+    var availW = Math.min(1500, Math.max(640, (window.innerWidth || 1280) - 244));
+    var availH = Math.min(900, Math.max(340, (window.innerHeight || 820) - 264));
     if (town) {
-      TS = 24;                                                         // bigger tiles — legible (was ~13 squeezed-to-fit)
-      VPW = Math.min(vw.w, Math.floor(912 / TS));
-      VPH = Math.min(vw.h, Math.floor(572 / TS));
+      TS = 26;
+      VPW = Math.min(vw.w, Math.max(12, Math.floor(availW / TS)));
+      VPH = Math.min(vw.h, Math.max(8, Math.floor(availH / TS)));
       var pcx = vw.player ? vw.player.x : (vw.w >> 1), pcy = vw.player ? vw.player.y : (vw.h >> 1);
       camX = Math.max(0, Math.min(vw.w - VPW, pcx - (VPW >> 1)));      // follow the avatar, clamped to the map edges
       camY = Math.max(0, Math.min(vw.h - VPH, pcy - (VPH >> 1)));
     } else {
-      TS = Math.max(11, Math.min(22, Math.floor(940 / vw.w)));
+      TS = Math.max(12, Math.min(30, Math.floor(Math.min(availW / vw.w, availH / vw.h))));
     }
     FONT = (TS - 4) + "px Consolas, monospace";
     var cvW = VPW * TS, cvH = VPH * TS;
@@ -525,8 +538,15 @@
     var hpCol = m.hp < 0.25 * m.hpMax ? P.dangerHigh : m.hp < 0.5 * m.hpMax ? P.dangerMed : "#2f6d33";
     var ftCol = m.fatigue > 80 ? P.dangerHigh : m.fatigue > 55 ? P.dangerMed : "#7a5c3a";
     var place = vw.phase === "dungeon" ? ("Level " + vw.level) : (vw.phase === "town" ? (vw.title || "The Harbour") : "Indoors");
+    // the contraption WICKET countdown — surfaced in the HUD, prominent, reddening under pressure
+    var wick = "";
+    if (vw.contraption && vw.contraption.armed) {
+      var rem = vw.contraption.remaining;
+      wick = '<div class="wicket' + (rem <= 6 ? " urgent" : "") + '" id="sb-wicket" style="color:' + (rem <= 6 ? P.critical : P.signal) + '">DESCENT WICKET — ' + rem + ' turn' + (rem === 1 ? "" : "s") + '</div>';
+    }
     dossierEl.innerHTML =
       bar("HP", m.hp, m.hpMax, hpCol, true) +
+      wick +
       bar("Fatigue", m.fatigue, m.fatigueMax, ftCol, false) +
       '<div style="height:5px"></div>' +
       statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
@@ -841,11 +861,12 @@
     var dir = MOVE[k] || NUMPAD[code];
     if (dir) { e.preventDefault(); fireFeel(sim.move(dir)); return; }
   });
+  window.addEventListener("resize", function () { if (sim) draw(); });   // re-fit the responsive map to the window
   document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v18 — no soft-lock + juice verified live", BUILD = "dc3f5cd";
+  var VERSION = "play-map v19 — UI overhaul: map dominates, slim HUD, reviewable log", BUILD = "010b09e";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

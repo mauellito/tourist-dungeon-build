@@ -157,6 +157,9 @@ F.onload = function(){
        !!(view().contraption && view().contraption.armed) && view().contraption.remaining>0,
        view().contraption?('rem='+view().contraption.remaining):'(none)');
     ok('throwing the lever prints a Bureau tell', /CONTRAPTION|DESCENT AUTHORISED|clang/i.test((view().messages||[]).map(function(m){return (m&&m.text)||m;}).join(' ')));
+    // R1 HUD: the wicket countdown surfaces in the Dossier column while armed
+    ok('HUD surfaces the wicket countdown (remaining turns) while armed',
+       /DESCENT WICKET/.test(doc.getElementById('dossier').textContent||'') && /\d+\s*turn/.test(doc.getElementById('dossier').textContent||''));
     // race to the mouth (short) and descend within the window
     var gateXY3=findDoor('DUNGEON'); var gd3=goAdjacent(gateXY3[0],gateXY3[1]); press(gd3); pk('Enter');
     ok('with the contraption thrown, Enter at the gate descends', view().phase==='dungeon');
@@ -236,6 +239,14 @@ F.onload = function(){
     var sbH=doc.getElementById('sb-hunger');
     ok('the sidebar dossier shows the hunger STAGE as a word',
        sbH && LADDER.indexOf((sbH.textContent||'').trim())>=0);
+    // R1 HUD: HP is surfaced as an at-a-glance bar; the map dominates (canvas wider than sidebar)
+    ok('HUD surfaces HP at a glance (a HP meter bar)',
+       /HP/.test(doc.getElementById('dossier').textContent||'') && !!doc.querySelector('#dossier .meter-fill'));
+    ok('the map viewport dominates the layout (canvas wider than the sidebar column)',
+       doc.getElementById('cv').width > doc.getElementById('sidebar').offsetWidth);
+    // R1 LOG: small inline log, but the full history is reviewable via L
+    ok('the field log is reviewable as scrollable history (overflow auto, capped height)',
+       (function(){ var ml=doc.getElementById('msglog'); var cs=win.getComputedStyle(ml); return cs.overflowY==='auto' && ml.clientHeight < 140; })());
     ok('the dossier shows turn count and required-sights progress',
        !!doc.getElementById('sb-turn') && /\d+\s*\/\s*\d+/.test((doc.getElementById('sb-sights')||{}).textContent||''));
     var lines=doc.querySelectorAll('#msglog .line');
