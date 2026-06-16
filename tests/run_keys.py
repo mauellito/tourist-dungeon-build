@@ -294,6 +294,29 @@ F.onload = function(){
     pk('a'); pk('L');
     ok('L closes the review log', !doc.getElementById('review').classList.contains('show'));
 
+    // ===================== R3: FEEL TELEMETRY OVERLAY + JUICE TOGGLE =======
+    pk('~');   // open the debug overlay
+    var dbg=doc.getElementById('debugBody').textContent||'';
+    ok('debug overlay reports input->render latency + frame time + last hooks',
+       /inputLatencyMs/.test(dbg) && /frameMs/.test(dbg) && /lastHooks/.test(dbg) && /juice/.test(dbg));
+    var dbgObj=JSON.parse(dbg);
+    ok('telemetry reads REAL values (latency + frame time are numbers >= 0)',
+       typeof dbgObj.feel.inputLatencyMs==='number' && dbgObj.feel.inputLatencyMs>=0 && typeof dbgObj.feel.frameMs==='number' && dbgObj.feel.frameMs>=0);
+    // an action records the feel hooks that fired — bump an adjacent creature (8-way, robust on
+    // any cell) so a guaranteed shake/flash/float hook set is logged.
+    var pcF=view().player, adjF=null, D8=[['right',1,0],['left',-1,0],['up',0,-1],['down',0,1],['ul',-1,-1],['ur',1,-1],['dl',-1,1],['dr',1,1]];
+    for(var ai=0;ai<8;ai++){ var nx=pcF.x+D8[ai][1],ny=pcF.y+D8[ai][2],kk=nx+','+ny; if(view().grid[ny]&&view().grid[ny][nx]==='.'&&!(view().doors&&view().doors[kk])){ adjF={dir:D8[ai][0],x:nx,y:ny}; break; } }
+    if(adjF){ DUN._meters().hp=100; DUN._setCreatures([{x:adjF.x,y:adjF.y,kind:'lurker',hp:40,maxHp:40,dmg:4,name:'a clerk',glyph:'L'}]); press(adjF.dir); }
+    var dbg2=JSON.parse(doc.getElementById('debugBody').textContent||'{}');
+    ok('the overlay shows which feel-hooks fired on the last action', (dbg2.feel.lastHooks||[]).length>0, (dbg2.feel.lastHooks||[]).join(','));
+    // JUICE OFF: toggle disables animation cleanly
+    pk('j');
+    ok('"juice off" toggle disables the feel layer', win.TD_FEEL.isEnabled()===false);
+    var pn=floorNeighbor(); if(pn){ press(pn.dir); }   // act with juice off
+    ok('with juice off, no animation is scheduled (still screen)', !win.TD_FEEL.hasActive(performance.now()));
+    pk('j');
+    ok('"juice on" toggle re-enables the feel layer', win.TD_FEEL.isEnabled()===true);
+
   } catch(e){ R.push('HARNESS_ERROR '+(e&&e.stack?e.stack:e)); }
   var fails=R.filter(function(x){return x.indexOf('FAIL')===0||x.indexOf('HARNESS')===0;}).length;
   document.getElementById('out').textContent=R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length;

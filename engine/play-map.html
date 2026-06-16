@@ -238,6 +238,7 @@
   var stampMap = new WeakMap(), lastCrit = null, ackIndex = 0, labelsOn = false;
   // ---- game-feel (TD_FEEL) state: smoothed camera, the effect render loop, last hooks fired ----
   var camXs = null, camYs = null, feelRAF = null, lastFeelHooks = [], spawnedFloats = new WeakSet(), prevPhase = null, prevLevel = -1;
+  var inputT = 0, lastFrameMs = 0, lastLatencyMs = 0;   // R3 feel telemetry: input->render latency + frame time
   function nowMs() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
   function feelTick() {
     var now = nowMs(); draw();
@@ -313,7 +314,10 @@
   }
 
   // =========================================================== DRAW =========
-  function draw() {
+  // draw wrapper: measures frame time and input->render latency (cleared after the first render
+  // following an input, so feel-loop frames don't inflate the latency reading) — R3 telemetry.
+  function draw() { var t0 = nowMs(); _draw(); lastFrameMs = nowMs() - t0; if (inputT) { lastLatencyMs = nowMs() - inputT; inputT = 0; } }
+  function _draw() {
     var vw = sim.view();
     checkBarks(vw);   // the Bureau may add a line before we render the log
     // TOWN: a bigger fixed tile size + a SCROLLING CAMERA that follows the avatar — the
@@ -748,6 +752,13 @@
     if (debugPanel.style.display !== "block") return;
     var v = sim.view();
     debugBody.textContent = JSON.stringify({
+      feel: {
+        inputLatencyMs: Math.round(lastLatencyMs * 10) / 10,   // input -> first render after it
+        frameMs: Math.round(lastFrameMs * 10) / 10,            // last draw() duration
+        lastHooks: lastFeelHooks,                              // feel-hooks fired on the last action
+        active: TD_FEEL.active(nowMs()).length,                // effects animating right now (0 = still)
+        juice: TD_FEEL.isEnabled() ? "ON" : "OFF (press j)"
+      },
       seed: world.meta.seed, phase: v.phase, level: v.level, turn: v.turn,
       player: v.player, ticket: v.ticket, meters: v.meters, hunger: v.hunger,
       threats: TD_UI.threats(v).length, labelsOn: labelsOn, ackIndex: ackIndex,
@@ -767,7 +778,9 @@
   document.addEventListener("keydown", function (e) {
     var raw = e.key, code = e.code;
     var k = (raw && raw.length === 1) ? raw.toLowerCase() : raw;
+    inputT = nowMs();   // R3: stamp input arrival for the input->render latency readout
     if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
+    if (k === "j") { TD_FEEL.setEnabled(!TD_FEEL.isEnabled()); if (feelRAF) { cancelAnimationFrame(feelRAF); feelRAF = null; } draw(); return; }   // "juice off" toggle (comparison / perf / accessibility)
 
     // the REVIEW LOG (L) — your searchable memory of both streams
     if (raw === "L") { e.preventDefault(); if (reviewOpen) closeReview(); else openReview(); return; }
@@ -823,7 +836,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v12 — dungeon enclosure enforced (open corners gone)", BUILD = "9d9cf77";
+  var VERSION = "play-map v13 — feel telemetry overlay + juice toggle", BUILD = "f426637";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();
