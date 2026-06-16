@@ -216,6 +216,7 @@
 <script src="townlaws.js"></script>
 <script src="towngen2.js"></script>
 <script src="townmap.js"></script>
+<script src="contraption.js"></script>
 <script src="game.js"></script>
 <script src="ui.js"></script>
 <script src="feel.js"></script>
@@ -447,6 +448,14 @@
       if (vg) { var grd = ctx.createRadialGradient(cv.width / 2, cv.height / 2, Math.min(cv.width, cv.height) * 0.32, cv.width / 2, cv.height / 2, Math.max(cv.width, cv.height) * 0.7); grd.addColorStop(0, "rgba(0,0,0,0)"); grd.addColorStop(1, hexToRgba(P.critical, (1 - vg.p) * 0.45)); ctx.fillStyle = grd; ctx.fillRect(0, 0, cv.width, cv.height); }
       var sh = act.filter(function (e) { return e.kind === "shimmer"; })[0];
       if (sh) drawShimmer(sh);
+    }
+    // THROWAWAY core-loop prototype: the descent-window countdown, top-centre, urgent as it runs out
+    if (vw.contraption && vw.contraption.armed) {
+      var rem = vw.contraption.remaining, urgent = rem <= 6;
+      ctx.save(); ctx.font = "bold 18px Consolas, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+      ctx.fillStyle = urgent ? P.critical : P.signal;
+      ctx.fillText("DESCENT WICKET OPEN — " + rem + " turn" + (rem === 1 ? "" : "s") + " — REACH THE Ω", cv.width / 2, 8);
+      ctx.restore();
     }
 
     spawnDamage(vw);
@@ -836,7 +845,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v16 — deepened Bureau voice bank (contextual floats)", BUILD = "4fa178e";
+  var VERSION = "play-map v17 — core-loop prototype: descent contraption", BUILD = "0b21351";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

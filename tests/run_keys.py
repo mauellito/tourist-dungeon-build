@@ -82,6 +82,7 @@ F.onload = function(){
   function findDoor(to){ var d=view().doors||{}; for(var k in d){ if(d[k].to===to){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   function findCounter(){ var f=view().features||{}; for(var k in f){ if(f[k].act && f[k].act!=='lookout'){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   function findKiosk(){ var f=view().features||{}; for(var k in f){ if(f[k].act==='kiosk'){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
+  function findLever(){ var f=view().features||{}; for(var k in f){ if(f[k].act==='lever'){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
   // a cell whose whole 3x3 is walkable — lets diagonal/numpad key bindings be
   // tested without the procedural town geography refusing the step under test.
   function openSpot(){ var v=view(); for(var y=2;y<v.grid.length-2;y++) for(var x=2;x<v.grid[0].length-2;x++){
@@ -143,11 +144,22 @@ F.onload = function(){
     ok('the ticket is carried as an inspectable inventory item',
        (view().inventory||[]).some(function(it){return it.kind==='ticket';}));
 
-    // ============== DESCEND (ticket in hand) ==============================
-    var gateXY2=findDoor('DUNGEON'); var gd2=goAdjacent(gateXY2[0],gateXY2[1]); press(gd2);
-    ok('bumping the dungeon gate does not descend on contact', view().phase==='town');
-    pk('Enter');
-    ok('Enter at the gate (ticket in hand) descends into the dungeon', view().phase==='dungeon');
+    // ===== CORE-LOOP PROTOTYPE: the contraption gates the descent (throwaway) ==========
+    var levXY=findLever();
+    ok('a descent contraption lever is placed in the slice', !!levXY, levXY?('lever@'+levXY):'(none)');
+    // ticketed but lever NOT yet thrown -> the descent is still sealed
+    var gateXY2=findDoor('DUNGEON'); var gd2=goAdjacent(gateXY2[0],gateXY2[1]); press(gd2); pk('Enter');
+    ok('descent is SEALED until the contraption is thrown (gates progress)',
+       view().phase==='town' && /sealed|lever|contraption/i.test(view().lastEvent||''));
+    // throw the lever -> opens the descent window (the visible consequence arms)
+    var lvd=goAdjacent(levXY[0],levXY[1]); press(lvd);
+    ok('throwing the lever ARMS the descent window (a turn-timer consequence)',
+       !!(view().contraption && view().contraption.armed) && view().contraption.remaining>0,
+       view().contraption?('rem='+view().contraption.remaining):'(none)');
+    ok('throwing the lever prints a Bureau tell', /CONTRAPTION|DESCENT AUTHORISED|clang/i.test((view().messages||[]).map(function(m){return (m&&m.text)||m;}).join(' ')));
+    // race to the mouth (short) and descend within the window
+    var gateXY3=findDoor('DUNGEON'); var gd3=goAdjacent(gateXY3[0],gateXY3[1]); press(gd3); pk('Enter');
+    ok('with the contraption thrown, Enter at the gate descends', view().phase==='dungeon');
 
     // ============================ STAIRS: bump vs commit (dungeon) ========
     // the gate drops you at the Mouth (level 0); take one stair DOWN to level 1,
