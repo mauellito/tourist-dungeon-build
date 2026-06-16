@@ -18,16 +18,22 @@ var TD_FEEL = (function () {
   };
   function ease(kind, t) { t = t < 0 ? 0 : t > 1 ? 1 : t; return (EASE[kind] || EASE.linear)(t); }
 
-  // onomatopoeia in the municipal / death-verb register (flavour; EVENT channel — what happened)
+  // onomatopoeia in the municipal / death-verb register (flavour; EVENT channel — what happened),
+  // keyed by the same severity CATEGORIES as TD_VOICES.IMPACT. This is the standalone FALLBACK; at
+  // runtime apply() prefers the richer TD_VOICES bank so the float matches the event's severity.
   var ONO = {
-    hit: ["NOTED.", "FILED.", "STAMPED.", "PROCESSED.", "LOGGED.", "ASSESSED."],
-    kill: ["VOIDED.", "STRUCK OFF.", "DISCONTINUED.", "CONCLUDED.", "EXPUNGED."],
-    crit: ["SUMMARILY VOIDED.", "STRUCK FROM THE REGISTER.", "FINALISED."],
-    hurt: ["DOCKED.", "DEMERIT.", "PENALISED."],
-    item: ["ACQUIRED.", "REQUISITIONED.", "LOGGED IN."],
-    death: ["DECEASED — PERMITTED.", "FILED UNDER FINAL.", "STAMPED: CONCLUDED."]
+    "glancing-hit": ["NOTED.", "FILED.", "LOGGED."],
+    "solid-hit": ["PROCESSED.", "ASSESSED.", "STAMPED."],
+    "crit": ["SUMMARILY VOIDED.", "STRUCK FROM THE ROLL.", "FINALISED."],
+    "kill": ["VOIDED.", "DISCONTINUED.", "STRUCK OFF."],
+    "player-hit": ["DOCKED.", "A DEMERIT.", "PENALISED."],
+    "player-death": ["DECEASED — PERMITTED.", "FILED UNDER FINAL.", "STAMPED: CONCLUDED."],
+    "pickup": ["ACQUIRED.", "REQUISITIONED.", "LOGGED IN."],
+    "descend": ["DESCENT AUTHORISED.", "MIND THE STEP.", "DOWN ONE LEVEL."]
   };
-  function ono(kind, n) { var p = ONO[kind] || ONO.hit; return p[((n || 0) % p.length + p.length) % p.length]; }
+  function ono(kind, n) { var p = ONO[kind] || ONO["solid-hit"]; return p[((n || 0) % p.length + p.length) % p.length]; }
+  // pull a float word for a severity category — the TD_VOICES bank if present, else the fallback.
+  function impactWord(cat, n) { return (typeof TD_VOICES !== "undefined" && TD_VOICES.impact) ? TD_VOICES.impact(cat, n) : ono(cat, n); }
 
   // tuning: durations (ms) and shake magnitudes (px) per intensity — all feedback resolves < 200ms
   var DUR = { flash: 140, float: 950, pop: 160, shake: 180, vignette: 220, step: 90, shimmer: 700 };
@@ -36,15 +42,17 @@ var TD_FEEL = (function () {
   // ---- the TESTABLE CORE: which hooks fire for an action event ----
   // ev fields (all optional, booleans unless noted): moved, attacked, killed, got, descended,
   // tookDamage, dead, crit. Returns an ordered list of hook ids (e.g. "shake:med","float:kill").
+  // float hooks carry a SEVERITY CATEGORY (matching TD_VOICES.IMPACT): glancing-hit / solid-hit /
+  // crit / kill / player-hit / player-death / pickup / descend — so the word matches the event.
   function feelFor(ev) {
     ev = ev || {};
     var hooks = [];
-    if (ev.dead) { return ["shake:hard", "vignette", "shimmer:death", "float:death"]; }
+    if (ev.dead) { return ["shake:hard", "vignette", "shimmer:death", "float:player-death"]; }
     if (ev.killed) hooks.push(ev.crit ? "shake:hard" : "shake:med", "flash:target", ev.crit ? "float:crit" : "float:kill");
-    else if (ev.attacked) hooks.push("shake:soft", "flash:target", "float:hit");
-    if (ev.tookDamage) hooks.push("shake:soft", "vignette", "float:hurt");
-    if (ev.got) hooks.push("pop", "flash:self", "float:item");
-    if (ev.descended) hooks.push("shimmer:descend");
+    else if (ev.attacked) hooks.push("shake:soft", "flash:target", ev.glancing ? "float:glancing-hit" : "float:solid-hit");
+    if (ev.tookDamage) hooks.push("shake:soft", "vignette", "float:player-hit");
+    if (ev.got) hooks.push("pop", "flash:self", "float:pickup");
+    if (ev.descended) hooks.push("shimmer:descend", "float:descend");
     if (ev.moved && !ev.attacked && !ev.tookDamage && !ev.got) hooks.push("step");
     return hooks;
   }
@@ -75,8 +83,9 @@ var TD_FEEL = (function () {
       else if (kind === "step") push("step", now, DUR.step, {});
       else if (kind === "shimmer") push("shimmer", now, DUR.shimmer, { mode: arg });
       else if (kind === "float") {
-        var fk = arg, str = ono(fk, n), col = (fk === "hurt" || fk === "death") ? "dmgTaken" : (fk === "item" ? "item" : "dmgDealt");
-        push("float", now, DUR.float, { tile: tgt || self, text: str, color: col, fkind: fk });
+        var fk = arg, str = impactWord(fk, n);   // contextual word from the voice bank (severity-matched)
+        var col = (fk === "player-hit" || fk === "player-death") ? "dmgTaken" : (fk === "pickup" ? "item" : (fk === "descend" ? "signal" : "dmgDealt"));
+        push("float", now, DUR.float, { tile: (fk === "player-hit" || fk === "player-death" || fk === "pickup" || fk === "descend") ? self : (tgt || self), text: str, color: col, fkind: fk });
       }
     });
     return hooks;

@@ -10,7 +10,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENGINE = os.path.join(ROOT, "engine")
 TMPDIR = os.path.join(ROOT, "tests", ".tmp")
-ENGINE_FILES = ["feel.js"]
+ENGINE_FILES = ["voices.js", "feel.js"]   # voices first: TD_FEEL pulls floats from the TD_VOICES bank
 CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -27,21 +27,38 @@ REPORTER = r"""
     var F=TD_FEEL;
     // ---- feelFor: each action -> its hooks ----
     var atk=F.feelFor({attacked:true});
-    ok('BUMP-ATTACK fires shake+flash+float', has(atk,'shake:soft')&&has(atk,'flash:target')&&has(atk,'float:hit'), atk.join(','));
+    ok('SOLID HIT fires shake+flash+float:solid-hit', has(atk,'shake:soft')&&has(atk,'flash:target')&&has(atk,'float:solid-hit'), atk.join(','));
+    var graze=F.feelFor({attacked:true,glancing:true});
+    ok('GLANCING HIT picks the lighter category (float:glancing-hit)', has(graze,'float:glancing-hit')&&!has(graze,'float:solid-hit'), graze.join(','));
     var kill=F.feelFor({killed:true});
     ok('KILL fires shake+flash+float:kill', has(kill,'flash:target')&&has(kill,'float:kill'), kill.join(','));
     var crit=F.feelFor({killed:true,crit:true});
     ok('CRIT kill escalates to hard shake + float:crit', has(crit,'shake:hard')&&has(crit,'float:crit'), crit.join(','));
     var got=F.feelFor({got:true});
-    ok('PICK-UP fires pop+flash:self+float:item', has(got,'pop')&&has(got,'flash:self')&&has(got,'float:item'), got.join(','));
+    ok('PICK-UP fires pop+flash:self+float:pickup', has(got,'pop')&&has(got,'flash:self')&&has(got,'float:pickup'), got.join(','));
     var desc=F.feelFor({descended:true});
-    ok('DESCEND fires shimmer:descend', has(desc,'shimmer:descend'), desc.join(','));
+    ok('DESCEND fires shimmer + float:descend', has(desc,'shimmer:descend')&&has(desc,'float:descend'), desc.join(','));
     var hurt=F.feelFor({tookDamage:true});
-    ok('TAKE-DAMAGE fires vignette+shake+float:hurt', has(hurt,'vignette')&&has(hurt,'shake:soft')&&has(hurt,'float:hurt'), hurt.join(','));
+    ok('TAKE-DAMAGE fires vignette+shake+float:player-hit', has(hurt,'vignette')&&has(hurt,'shake:soft')&&has(hurt,'float:player-hit'), hurt.join(','));
     var dead=F.feelFor({dead:true});
-    ok('DEATH fires shimmer:death+vignette+shake+float:death', has(dead,'shimmer:death')&&has(dead,'vignette')&&has(dead,'float:death')&&has(dead,'shake:hard'), dead.join(','));
+    ok('DEATH fires shimmer:death+vignette+shake+float:player-death', has(dead,'shimmer:death')&&has(dead,'vignette')&&has(dead,'float:player-death')&&has(dead,'shake:hard'), dead.join(','));
     var mv=F.feelFor({moved:true});
     ok('MOVE fires a subtle step ease', has(mv,'step'), mv.join(','));
+
+    // ---- R3 voice bank: every category has >=3 entries; floats pull CONTEXTUALLY from the bank ----
+    var CATS=["glancing-hit","solid-hit","crit","kill","player-hit","player-death","pickup","descend"];
+    var short=CATS.filter(function(c){ return !TD_VOICES.IMPACT[c] || TD_VOICES.IMPACT[c].length<3; });
+    ok('every impact category has >=3 entries', short.length===0, short.join(',')||'all >=3');
+    F.clear(); F.setEnabled(true);
+    F.apply({killed:true,target:{x:1,y:1}}, 9000, 0);
+    var killFloat=F.active(9000).filter(function(e){return e.kind==='float';})[0];
+    ok('a KILL float is pulled from the bank "kill" category', killFloat && TD_VOICES.IMPACT.kill.indexOf(killFloat.text)>=0, killFloat?killFloat.text:'(none)');
+    F.clear(); F.apply({attacked:true,glancing:true,target:{x:1,y:1}}, 9100, 0);
+    var grazeFloat=F.active(9100).filter(function(e){return e.kind==='float';})[0];
+    ok('a GLANCING float is pulled from the bank "glancing-hit" category', grazeFloat && TD_VOICES.IMPACT["glancing-hit"].indexOf(grazeFloat.text)>=0, grazeFloat?grazeFloat.text:'(none)');
+    F.clear(); F.apply({dead:true,self:{x:1,y:1}}, 9200, 0);
+    var deathFloat=F.active(9200).filter(function(e){return e.kind==='float';})[0];
+    ok('a DEATH float is pulled from the bank "player-death" category', deathFloat && TD_VOICES.IMPACT["player-death"].indexOf(deathFloat.text)>=0, deathFloat?deathFloat.text:'(none)');
     // ---- IDLE STILLNESS: no action -> no hooks -> nothing active -> no animation ----
     var idle=F.feelFor({});
     ok('IDLE fires NO hooks (motion = signal)', idle.length===0, '['+idle.join(',')+']');

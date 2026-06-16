@@ -14,6 +14,21 @@
 "use strict";
 
 var TD_VOICES = (function () {
+  // ---- IMPACT / death-verb BANK (the combat onomatopoeia, in the municipal register). Categorized
+  // by event severity so a kill reads heavier than a graze; data-driven + easy to extend. TD_FEEL
+  // pulls a float CONTEXTUALLY from the category matching the event. EVENT channel (what happened).
+  var IMPACT = {
+    "glancing-hit": ["NOTED.", "FILED.", "LOGGED.", "INITIALLED.", "RECEIVED."],
+    "solid-hit": ["PROCESSED.", "ASSESSED.", "STAMPED.", "DULY RECORDED.", "ENTERED INTO THE RECORD."],
+    "crit": ["SUMMARILY VOIDED.", "STRUCK FROM THE ROLL.", "FINALISED WITHOUT APPEAL.", "EXPUNGED."],
+    "kill": ["VOIDED.", "DISCONTINUED.", "RETURNED TO SENDER.", "STRUCK OFF.", "CASE CLOSED."],
+    "player-hit": ["DOCKED.", "A DEMERIT.", "PENALISED.", "DEDUCTED."],
+    "player-death": ["DECEASED — PERMITTED.", "FILED UNDER FINAL.", "STAMPED: CONCLUDED.", "CLOSED, WITH REGRET."],
+    "pickup": ["ACQUIRED.", "REQUISITIONED.", "LOGGED IN.", "ADDED TO THE MANIFEST."],
+    "descend": ["DESCENT AUTHORISED.", "PROCEED TO THE NEXT WICKET.", "MIND THE STEP.", "DOWN ONE LEVEL, PER ITINERARY."]
+  };
+  function impact(category, n) { var p = IMPACT[category] || IMPACT["solid-hit"]; return p[((n || 0) % p.length + p.length) % p.length]; }
+
   // trigger -> default channel/obj for lines that don't override
   var TRIG = {
     greeting:  { ch: "senses", kind: "said", obj: "SUBJ" },
@@ -387,7 +402,7 @@ var TD_VOICES = (function () {
   }
 
   function byId(id) { return SPECS[id] || null; }
-  return { SPECS: SPECS, DUNGEON_CAST: DUNGEON_CAST, box: box, byId: byId, dialogue: dialogue, _trig: TRIG, _expand: expand };
+  return { SPECS: SPECS, DUNGEON_CAST: DUNGEON_CAST, box: box, byId: byId, dialogue: dialogue, IMPACT: IMPACT, impact: impact, _trig: TRIG, _expand: expand };
 })();
 
 if (typeof module !== "undefined" && module.exports) { module.exports = TD_VOICES; }

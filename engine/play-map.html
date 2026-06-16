@@ -264,7 +264,7 @@
     var vw = sim.view(), pl = vw.player || { x: 0, y: 0 }, ev = { self: { x: pl.x, y: pl.y } };
     if (res) { ev.moved = !!res.moved; ev.attacked = !!res.attacked; ev.killed = !!res.killed; ev.got = !!res.got; }
     ev.dead = !!vw.dead; ev.crit = !!vw.lastUrgent;
-    (vw.events || []).forEach(function (fx) { if (fx.kind === "taken") ev.tookDamage = true; if (fx.kind === "dealt") { ev.attacked = true; ev.target = { x: fx.x, y: fx.y }; } });
+    (vw.events || []).forEach(function (fx) { if (fx.kind === "taken") ev.tookDamage = true; if (fx.kind === "dealt") { ev.attacked = true; ev.target = { x: fx.x, y: fx.y }; ev.amount = fx.amount; ev.glancing = (typeof fx.amount === "number" && fx.amount <= 2); } });
     if ((prevPhase !== "dungeon" && vw.phase === "dungeon") || (vw.phase === "dungeon" && vw.level > prevLevel)) ev.descended = true;
     prevPhase = vw.phase; prevLevel = (vw.phase === "dungeon" ? vw.level : -1);
     lastFeelHooks = TD_FEEL.apply(ev, nowMs(), vw.turn || 0);
@@ -836,7 +836,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v15 — dungeon legibility (de-speckled floors)", BUILD = "036d188";
+  var VERSION = "play-map v16 — deepened Bureau voice bank (contextual floats)", BUILD = "4fa178e";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();
