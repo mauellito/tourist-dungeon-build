@@ -337,21 +337,27 @@ var TD_GAME = (function () {
       if (mouth) {
         doors[key(mouth.x, mouth.y)] = { to: "DUNGEON", glyph: "Ω", label: "the dungeon mouth. Press Enter to descend.", gate: function () {
           if (!character.ticket) return { block: "The gate does not open for the unticketed. Admission is sold at the Kiosk (K) on the plaza." };
-          // THROWAWAY core-loop prototype: the descent is also sealed until the contraption lever is thrown.
-          if (typeof TD_CONTRAPTION !== "undefined" && !TD_CONTRAPTION.open(shared.turn)) return { block: "The descent is sealed. Throw the contraption lever (L) near the mouth — then come quickly, before the wicket re-seals." };
+          // THROWAWAY core-loop prototype: seal the descent ONLY when a lever actually spawned this
+          // run (TD_CONTRAPTION.placed) — never fail-closed, or the player would be soft-locked out.
+          if (typeof TD_CONTRAPTION !== "undefined" && TD_CONTRAPTION.placed() && !TD_CONTRAPTION.open(shared.turn)) return { block: "The descent is sealed. Throw the contraption lever (L) near the mouth — then come quickly, before the wicket re-seals." };
           return null; } };
         dungeonEntrance = { rect: [mouth.x, mouth.y, mouth.x, mouth.y] };
-        // THROWAWAY core-loop prototype lever: a short race from the mouth. Scan outward for a
-        // reachable street cell ~6-10 away so trip->race->descend has real distance.
+        // THROWAWAY core-loop prototype lever: BFS out from the mouth over WALKABLE cells and place
+        // the lever on the NEAREST reachable free floor at path-distance >= 3 (keeps a real race).
+        // If NO eligible reachable cell exists, place no lever and DO NOT seal (fail-open).
         if (typeof TD_CONTRAPTION !== "undefined") {
-          var lev = null;
-          for (var rad = 7; rad >= 3 && !lev; rad--) {
-            for (var aa = 0; aa < 16 && !lev; aa++) {
-              var lx = mouth.x + Math.round(rad * Math.cos(aa * Math.PI / 8)), ly = mouth.y + Math.round(rad * Math.sin(aa * Math.PI / 8));
-              if (ly > 0 && ly < Ht && lx > 0 && lx < Wt && grid[ly][lx] === "." && !features[key(lx, ly)] && !doors[key(lx, ly)] && !(lx === spawn.x && ly === spawn.y)) lev = { x: lx, y: ly };
-            }
+          TD_CONTRAPTION.setPlaced(false);
+          var lev = null, D8c = [[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+          var lq = [{ x: mouth.x, y: mouth.y, d: 0 }], lseen = {}; lseen[mouth.x + "," + mouth.y] = 1;
+          while (lq.length && !lev) {
+            var lc = lq.shift();
+            if (lc.d >= 3 && grid[lc.y][lc.x] === "." && !features[key(lc.x, lc.y)] && !doors[key(lc.x, lc.y)] && !(lc.x === spawn.x && lc.y === spawn.y)) { lev = { x: lc.x, y: lc.y }; break; }
+            for (var li = 0; li < 8; li++) { var nx = lc.x + D8c[li][0], ny = lc.y + D8c[li][1], lk = nx + "," + ny; if (ny > 0 && ny < Ht && nx > 0 && nx < Wt && !lseen[lk] && grid[ny][nx] === ".") { lseen[lk] = 1; lq.push({ x: nx, y: ny, d: lc.d + 1 }); } }
           }
-          if (lev) features[key(lev.x, lev.y)] = { type: "contraption", glyph: "L", col: "signal", label: "the descent contraption", text: "A municipal lever beside a freshly-pasted notice: THROW TO AUTHORISE DESCENT. (Wicket holds " + TD_CONTRAPTION.ARM_TURNS + " turns.)", act: "lever" };
+          if (lev) {
+            features[key(lev.x, lev.y)] = { type: "contraption", glyph: "L", col: "signal", label: "the descent contraption", text: "A municipal lever beside a freshly-pasted notice: THROW TO AUTHORISE DESCENT. (Wicket holds " + TD_CONTRAPTION.ARM_TURNS + " turns.)", act: "lever" };
+            TD_CONTRAPTION.setPlaced(true);                 // a reachable lever exists -> the seal is safe to enforce
+          }
         }
       }
       // TENANT FRONTS (TD_TOWNMAP only): a seed-dealt business sign on a building face.
