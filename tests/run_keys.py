@@ -349,17 +349,19 @@ F.onload = function(){
     pk('j');
     ok('"juice on" toggle re-enables the feel layer', win.TD_FEEL.isEnabled()===true);
 
-    // ===================== §24 SMASH-AND-GRAB prototype [v3] (throwaway) ========
+    // ===================== §24 SMASH-AND-GRAB prototype [v4] (throwaway) ========
     var prompt0=doc.getElementById('sgprompt');
     ok('a persistent "Press V" prompt is shown in the normal view', !!prompt0 && /V/.test(prompt0.textContent||'') && prompt0.style.display!=='none');
     pk('v');
     ok('V enters the §24 rigged-vault prototype', !!(win.TD_SMASHGRAB && win.TD_SMASHGRAB.active()));
+    ok('the SFX stub is wired into the page', typeof win.TD_SFX!=='undefined' && typeof win.TD_SFX.cue==='function');
     var sgdbg=doc.getElementById('debugBody').textContent||'';
-    ok('R4 telemetry overlay measures the squeeze (door + load + tunables)',
-       /smashgrab/.test(sgdbg) && /escapeTurns/.test(sgdbg) && /load/.test(sgdbg) && /TUNE/.test(sgdbg));
-    var px0=win.TD_SMASHGRAB.view().player.x; press('left');
-    ok('vault input is routed to the prototype (movement)', win.TD_SMASHGRAB.view().player.x < px0);
-    // loot a treasure by routing to it (adds LOAD, no trip) — proves get() wiring + weight readout
+    ok('R4 telemetry overlay measures the squeeze (door + slab + load + sfx + tunables)',
+       /smashgrab/.test(sgdbg) && /escapeTurns/.test(sgdbg) && /slab/.test(sgdbg) && /load/.test(sgdbg) && /sfx/.test(sgdbg) && /TUNE/.test(sgdbg));
+    var px0=win.TD_SMASHGRAB.view().player.x; press('right');   // entry is at the left edge; the approach runs right
+    ok('vault input is routed to the prototype (movement)', win.TD_SMASHGRAB.view().player.x > px0);
+    ok('moving emits a footstep SFX cue (juice wired)', (win.TD_SFX.lastCues()||[]).indexOf('step')>=0, (win.TD_SFX.lastCues()||[]).join(','));
+    // loot a treasure by routing to it (adds LOAD + a loot cue, no trip)
     var sgv=win.TD_SMASHGRAB.view(), t0=sgv.treas[0];
     var D8={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]};
     function sgbfs(sx,sy,tx,ty){var v=win.TD_SMASHGRAB.view(),q=[[sx,sy]],seen={},prev={};seen[sx+','+sy]=1;
@@ -367,7 +369,9 @@ F.onload = function(){
         for(var d in D8){var nx=c[0]+D8[d][0],ny=c[1]+D8[d][1],kk=nx+','+ny,ch=v.base(nx,ny);if(!seen[kk]&&ch!=='#'&&ch!=='~'){seen[kk]=1;prev[kk]={f:c[0]+','+c[1],d:d};q.push([nx,ny]);}}}return null;}
     var p0=win.TD_SMASHGRAB.view().player, path=sgbfs(p0.x,p0.y,t0.x,t0.y)||[];
     path.forEach(press); pk('g');
-    ok('looting treasure in-mode adds LOAD (weight model live)', win.TD_SMASHGRAB.view().load>0 && !win.TD_SMASHGRAB.view().tripped, "load="+win.TD_SMASHGRAB.view().load);
+    ok('looting treasure in-mode adds LOAD + loot cue (weight model live)', win.TD_SMASHGRAB.view().load>0 && !win.TD_SMASHGRAB.view().tripped && (win.TD_SFX.lastCues()||[]).indexOf('loot')>=0, "load="+win.TD_SMASHGRAB.view().load);
+    var sndOn=win.TD_SFX.isEnabled(); pk('k');
+    ok('k toggles sound on/off', win.TD_SFX.isEnabled()===!sndOn); pk('k');
     pk('Escape');
     ok('Escape leaves the prototype back to the live game', !win.TD_SMASHGRAB.active());
     ok('the prompt returns in the normal view after leaving', doc.getElementById('sgprompt').style.display!=='none');

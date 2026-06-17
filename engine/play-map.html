@@ -229,6 +229,7 @@
 <script src="townmap.js"></script>
 <script src="contraption.js"></script>
 <script src="smashgrab.js"></script>
+<script src="sfx.js"></script>
 <script src="game.js"></script>
 <script src="ui.js"></script>
 <script src="feel.js"></script>
@@ -341,15 +342,18 @@
     d.style.left = (tile.x * TS + TS / 2) + "px"; d.style.top = (tile.y * TS - 12) + "px";
     stageEl.appendChild(d); setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 950);
   }
-  function sgEnter() { var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — loot the treasure ($), grab ONE artifact across the chasm, then SPRINT back to the exit (>) before the slab seals. Stay light enough to sprint."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
+  function sgSfx(name) { if (typeof TD_SFX !== "undefined" && name) TD_SFX.cue(name); }
+  function sgEnter() { if (typeof TD_SFX !== "undefined") TD_SFX.unlock(); var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — down the approach passage into the chamber: loot the treasure ($), grab ONE artifact across the chasm, then SPRINT the escape corridor and slip UNDER the slab before it grinds shut. Stay light enough to run."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
   function sgApply(res) {
     var now = nowMs(), sg = TD_SMASHGRAB.view();
+    sgSfx(res.sfx);                                   // step / loot / grab / chime / slam — the module names the cue
+    if (res.grind) sgSfx("grind");                    // repeating stone-grind while the slab descends
     if (res.treasure) { TD_FEEL.shake("soft", now); sgFloat(sg.player, "LOOT +" + TD_SMASHGRAB.TUNE.WEIGHT_PER_TREASURE + (sg.sprintable ? "" : " — TOO HEAVY TO SPRINT"), sg.sprintable ? "item" : "dmgTaken"); }
     var t = res.ev;   // the artifact-grab trip
-    if (t && t.tremor) { TD_FEEL.shake(t.severity, now); TD_FEEL.flash(t.tile, "critical", now); if (t.float) sgFloat(t.tile, t.float, "dmgDealt"); if (t.fell) sgFloat({ x: t.fell.x, y: t.fell.y }, t.fell.name + " — TUMBLES INTO THE CHASM", "dmgTaken"); (t.lines || []).forEach(sgPush); }
+    if (t && t.tremor) { sgSfx(t.sfx); sgSfx("rumble"); TD_FEEL.shake(t.severity, now); TD_FEEL.flash(t.tile, "critical", now); if (t.float) sgFloat(t.tile, t.float, "dmgDealt"); if (t.fell) sgFloat({ x: t.fell.x, y: t.fell.y }, t.fell.name + " — TUMBLES INTO THE CHASM", "dmgTaken"); (t.lines || []).forEach(sgPush); }
     if (res.reason) sgPush(res.reason);
     if (res.escaped) { sgFloat(sg.player, res.float || "EGRESS STAMPED.", "item"); (res.lines || []).forEach(sgPush); }
-    else if (res.dead) { TD_FEEL.shake("hard", now); TD_FEEL.flash(sg.player, "critical", now); sgFloat(sg.player, res.float || "SUMMARILY VOIDED.", "dmgTaken"); (res.lines || []).forEach(sgPush); }
+    else if (res.dead) { TD_FEEL.shake("hard", now); TD_FEEL.flash(sg.slab || sg.player, "critical", now); sgFloat(sg.player, res.float || "SUMMARILY VOIDED.", "dmgTaken"); (res.lines || []).forEach(sgPush); }
     draw(); if (TD_FEEL.hasActive(nowMs())) startFeel();
   }
   function drawSmashGrab() {
@@ -371,6 +375,7 @@
       if (c === "~") { ctx.fillStyle = P.water; ctx.fillRect(px, py, TS, TS); ctx.fillStyle = P.waterGlyph; ctx.globalAlpha = 0.5; ctx.fillText("≈", px + TS / 2, py + TS / 2 + 1); ctx.globalAlpha = 1; continue; }
       ctx.fillStyle = P.floorBgDim; ctx.fillRect(px, py, TS, TS);
       if (c === ">") { ctx.fillStyle = P.door; ctx.fillText(">", px + TS / 2, py + TS / 2 + 1); }
+      else if (c === "=" && !sg.tripped) { ctx.strokeStyle = P.rampart; ctx.lineWidth = 1; ctx.strokeRect(px + 2, py + 1, TS - 4, 3); }   // the dormant slab, hanging in the corridor ceiling
     }
     sg.treas.forEach(function (tr) { if (tr.taken) return; ctx.fillStyle = P.item; ctx.fillText("$", tr.x * TS + TS / 2, tr.y * TS + TS / 2 + 1); });
     sg.arts.forEach(function (a) {
@@ -378,8 +383,8 @@
       if (a.fallen) { ctx.globalAlpha = 0.4; ctx.fillStyle = P.item; ctx.fillText(a.id === "A" ? "♦" : "✦", a.x * TS + TS / 2, a.y * TS + TS / 2 + 1); ctx.globalAlpha = 1; return; }   // tumbled into the chasm
       ctx.fillStyle = P.item; ctx.fillText(a.id === "A" ? "♦" : "✦", a.x * TS + TS / 2, a.y * TS + TS / 2 + 1);
     });
-    // THE SLAB DOOR descending over the exit (telegraphed; you watch it seal)
-    if (sg.tripped) { var ex = sg.exit, sh = Math.min(1, sg.doorProgress) * TS; ctx.fillStyle = P.rampart; ctx.fillRect(ex.x * TS, ex.y * TS, TS, sh); ctx.strokeStyle = P.critical; ctx.lineWidth = 2; ctx.strokeRect(ex.x * TS + 1, ex.y * TS + 1, TS - 2, Math.max(2, sh - 2)); }
+    // THE STONE SLAB grinding DOWN across the escape corridor (telegraphed, staged; a true funnel)
+    if (sg.tripped && sg.slab) { var sx = sg.slab, sh = Math.max(2, Math.min(1, sg.doorProgress) * TS); ctx.fillStyle = P.rampart; ctx.fillRect(sx.x * TS, sx.y * TS, TS, sh); ctx.strokeStyle = sg.sealed ? P.critical : P.signal; ctx.lineWidth = 2; ctx.strokeRect(sx.x * TS + 1, sx.y * TS + 1, TS - 2, Math.max(2, sh - 2)); }
     if (TD_FEEL.isEnabled()) TD_FEEL.active(now).forEach(function (e) { if (e.kind !== "flash" || !e.tile) return; ctx.globalAlpha = (1 - e.p) * 0.7; ctx.fillStyle = P[e.color] || P.critical; ctx.fillRect(e.tile.x * TS, e.tile.y * TS, TS, TS); ctx.globalAlpha = 1; });
     ctx.fillStyle = P.player; ctx.fillText("@", sg.player.x * TS + TS / 2, sg.player.y * TS + TS / 2 + 1);
     ctx.restore();
@@ -390,16 +395,22 @@
     if (sg.escaped) { ctx.fillStyle = P.item; ctx.fillText("ESCAPED — clear of the §24, " + sg.load + " of loot. Press V to re-run.", cv.width / 2, 6); }
     else if (sg.dead) { ctx.fillStyle = P.critical; ctx.fillText("SUMMARILY VOIDED — too heavy, too slow. Press V to re-run.", cv.width / 2, 6); }
     else if (sg.tripped) { ctx.fillStyle = sg.doorRemaining <= 5 ? P.critical : P.signal; ctx.fillText("SLAB SEALS IN " + sg.doorRemaining + " — RUN FOR > · carrying " + (sg.carried ? sg.carried.name : "nothing") + " + " + sg.treasCarried + " loot", cv.width / 2, 6); }
-    else { ctx.fillStyle = P.signal; ctx.fillText("§24 — loot $ then grab an artifact (g on ♦/✦); the slab drops when you grab it", cv.width / 2, 6); }
+    else { ctx.fillStyle = P.signal; ctx.fillText("§24 — loot $ then grab an artifact (g on ♦/✦); the slab grinds down across the escape corridor when you grab it", cv.width / 2, 6); }
     ctx.font = "13px Consolas, monospace";
     ctx.fillStyle = sg.sprintable ? P.signal : P.critical; ctx.fillText(loadStr + "   (threshold " + TD_SMASHGRAB.TUNE.SPRINT_THRESHOLD + ")", cv.width / 2, 28);
-    ctx.fillStyle = P.faint || "#8a7c66"; ctx.fillText("arrows / W A S D move · g grab · Esc leave · V re-run", cv.width / 2, 46);
+    var snd = (typeof TD_SFX !== "undefined") ? ("sound " + (TD_SFX.isEnabled() ? "on" : "off") + " (k) · vol " + Math.round(TD_SFX.volume() * 100) + "% ([ ])") : "";
+    ctx.fillStyle = P.faint || "#8a7c66"; ctx.fillText("arrows / W A S D move · g grab · Esc leave · V re-run · " + snd, cv.width / 2, 46);
   }
   function renderSgLog() {
     msglogEl.innerHTML = sgLog.map(function (l) { return '<div class="line note">' + escapeHTML(l) + "</div>"; }).join("");
     msglogEl.scrollTop = msglogEl.scrollHeight;
   }
   function handleSmashGrab(k, code) {
+    if (typeof TD_SFX !== "undefined") {
+      if (k === "k") { TD_SFX.setEnabled(!TD_SFX.isEnabled()); draw(); return; }                 // sound on/off
+      if (k === "[") { TD_SFX.setVolume(TD_SFX.volume() - 0.1); draw(); return; }                 // volume down
+      if (k === "]") { TD_SFX.setVolume(TD_SFX.volume() + 0.1); draw(); return; }                 // volume up
+    }
     if (TD_SMASHGRAB.over()) { if (k === "v" || k === "Escape") { if (k === "v") sgEnter(); else { TD_SMASHGRAB.leave(); draw(); } } return; }
     if (k === "Escape") { TD_SMASHGRAB.leave(); draw(); return; }
     if (k === "g") { sgApply(TD_SMASHGRAB.get()); return; }
@@ -866,10 +877,12 @@
     if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) {
       var sgv = TD_SMASHGRAB.view();
       debugBody.textContent = JSON.stringify({
-        smashgrab: { tripped: sgv.tripped, doorRemaining: sgv.doorRemaining, doorProgress: Math.round(sgv.doorProgress * 100) / 100, escapeTurns: sgv.escapeTurns,
+        smashgrab: { tripped: sgv.tripped, sealed: sgv.sealed, doorRemaining: sgv.doorRemaining, doorProgress: Math.round(sgv.doorProgress * 100) / 100, escapeTurns: sgv.escapeTurns,
+          slab: sgv.slab, passedSlab: sgv.passedSlab, escapeLen: sgv.escapeLen,
           load: sgv.load, sprintable: sgv.sprintable, carried: sgv.carried ? sgv.carried.name : null, treasCarried: sgv.treasCarried,
           fallenPending: sgv.fallenPending, runs: sgv.runs, dead: sgv.dead, escaped: sgv.escaped },
         TUNE: TD_SMASHGRAB.TUNE,
+        sfx: (typeof TD_SFX !== "undefined") ? { on: TD_SFX.isEnabled(), volume: Math.round(TD_SFX.volume() * 100) / 100, audio: TD_SFX._hasAudio(), lastCues: TD_SFX.lastCues() } : "n/a",
         feel: { frameMs: Math.round(lastFrameMs * 10) / 10, lastHooks: lastFeelHooks, active: TD_FEEL.active(nowMs()).length, juice: TD_FEEL.isEnabled() ? "ON" : "OFF (press j)" }
       }, null, 2);
       return;
@@ -964,9 +977,10 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v22 — Smash-and-Grab v3: greed/weight + chasm + chase-door (V)", BUILD = "b4b00d2";
+  var VERSION = "play-map v23 — Smash-and-Grab v4: corridors + slab-in-corridor + SFX (V)", BUILD = "3934a30";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
+  if (location.hash === "#sg" && typeof TD_SMASHGRAB !== "undefined") sgEnter();   // dev hook: auto-enter the §24 fun-test for render checks
 })();
 </script>
 </body>
