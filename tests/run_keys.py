@@ -356,8 +356,8 @@ F.onload = function(){
     ok('V enters the §24 rigged-vault prototype', !!(win.TD_SMASHGRAB && win.TD_SMASHGRAB.active()));
     ok('the SFX stub is wired into the page', typeof win.TD_SFX!=='undefined' && typeof win.TD_SFX.cue==='function');
     var sgdbg=doc.getElementById('debugBody').textContent||'';
-    ok('R4 telemetry overlay measures the squeeze (door + slab + load + sfx + tunables)',
-       /smashgrab/.test(sgdbg) && /escapeTurns/.test(sgdbg) && /slab/.test(sgdbg) && /load/.test(sgdbg) && /sfx/.test(sgdbg) && /TUNE/.test(sgdbg));
+    ok('R4 telemetry overlay measures the squeeze (door + slab + collapse + score + load + sfx + tunables)',
+       /smashgrab/.test(sgdbg) && /escapeTurns/.test(sgdbg) && /slab/.test(sgdbg) && /collapse/.test(sgdbg) && /score/.test(sgdbg) && /load/.test(sgdbg) && /sfx/.test(sgdbg) && /TUNE/.test(sgdbg));
     var px0=win.TD_SMASHGRAB.view().player.x; press('right');   // entry is at the left edge; the approach runs right
     ok('vault input is routed to the prototype (movement)', win.TD_SMASHGRAB.view().player.x > px0);
     ok('moving emits a footstep SFX cue (juice wired)', (win.TD_SFX.lastCues()||[]).indexOf('step')>=0, (win.TD_SFX.lastCues()||[]).join(','));
@@ -369,7 +369,7 @@ F.onload = function(){
         for(var d in D8){var nx=c[0]+D8[d][0],ny=c[1]+D8[d][1],kk=nx+','+ny,ch=v.base(nx,ny);if(!seen[kk]&&ch!=='#'&&ch!=='~'){seen[kk]=1;prev[kk]={f:c[0]+','+c[1],d:d};q.push([nx,ny]);}}}return null;}
     var p0=win.TD_SMASHGRAB.view().player, path=sgbfs(p0.x,p0.y,t0.x,t0.y)||[];
     path.forEach(press); pk('g');
-    ok('looting treasure in-mode adds LOAD + loot cue (weight model live)', win.TD_SMASHGRAB.view().load>0 && !win.TD_SMASHGRAB.view().tripped && (win.TD_SFX.lastCues()||[]).indexOf('loot')>=0, "load="+win.TD_SMASHGRAB.view().load);
+    ok('looting treasure in-mode adds LOAD + SCORE + loot cue (loot that bites)', win.TD_SMASHGRAB.view().load>0 && win.TD_SMASHGRAB.view().score>0 && !win.TD_SMASHGRAB.view().tripped && (win.TD_SFX.lastCues()||[]).indexOf('loot')>=0, "load="+win.TD_SMASHGRAB.view().load+" score="+win.TD_SMASHGRAB.view().score);
     var sndOn=win.TD_SFX.isEnabled(); pk('k');
     ok('k toggles sound on/off', win.TD_SFX.isEnabled()===!sndOn); pk('k');
     pk('Escape');

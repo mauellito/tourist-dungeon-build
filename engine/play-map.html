@@ -346,14 +346,20 @@
   function sgEnter() { if (typeof TD_SFX !== "undefined") TD_SFX.unlock(); var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — down the approach passage into the chamber: loot the treasure ($), grab ONE artifact across the chasm, then SPRINT the escape corridor and slip UNDER the slab before it grinds shut. Stay light enough to run."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
   function sgApply(res) {
     var now = nowMs(), sg = TD_SMASHGRAB.view();
-    sgSfx(res.sfx);                                   // step / loot / grab / chime / slam — the module names the cue
+    sgSfx(res.sfx);                                   // step / loot / grab / chime / slam / crash — the module names the cue
     if (res.grind) sgSfx("grind");                    // repeating stone-grind while the slab descends
-    if (res.treasure) { TD_FEEL.shake("soft", now); sgFloat(sg.player, "LOOT +" + TD_SMASHGRAB.TUNE.WEIGHT_PER_TREASURE + (sg.sprintable ? "" : " — TOO HEAVY TO SPRINT"), sg.sprintable ? "item" : "dmgTaken"); }
+    if (res.crash) sgSfx("crash");                    // a band of floor just dropped behind you
+    // the collapse GAINS: rising rumble + shake that scales with how close the death-edge is
+    if (sg.collapse && sg.collapse.active && !res.escaped && !res.dead) {
+      var prox = (typeof res.proximity === "number") ? res.proximity : sg.collapse.proximity;
+      if (prox > 0.15) { TD_FEEL.shake(prox > 0.66 ? "hard" : prox > 0.33 ? "med" : "soft", now); if (prox > 0.45) sgSfx("rumble"); }
+    }
+    if (res.treasure) { TD_FEEL.shake("soft", now); sgFloat(sg.player, "LOOT +$" + res.value + "  ($" + res.score + (sg.sprintable ? ")" : " — TOO HEAVY TO SPRINT)"), sg.sprintable ? "item" : "dmgTaken"); }
     var t = res.ev;   // the artifact-grab trip
     if (t && t.tremor) { sgSfx(t.sfx); sgSfx("rumble"); TD_FEEL.shake(t.severity, now); TD_FEEL.flash(t.tile, "critical", now); if (t.float) sgFloat(t.tile, t.float, "dmgDealt"); if (t.fell) sgFloat({ x: t.fell.x, y: t.fell.y }, t.fell.name + " — TUMBLES INTO THE CHASM", "dmgTaken"); (t.lines || []).forEach(sgPush); }
     if (res.reason) sgPush(res.reason);
-    if (res.escaped) { sgFloat(sg.player, res.float || "EGRESS STAMPED.", "item"); (res.lines || []).forEach(sgPush); }
-    else if (res.dead) { TD_FEEL.shake("hard", now); TD_FEEL.flash(sg.slab || sg.player, "critical", now); sgFloat(sg.player, res.float || "SUMMARILY VOIDED.", "dmgTaken"); (res.lines || []).forEach(sgPush); }
+    if (res.escaped) { sgFloat(sg.player, "ESCAPED — $" + (res.score || 0), "item"); (res.lines || []).forEach(sgPush); }
+    else if (res.dead) { TD_FEEL.shake("hard", now); TD_FEEL.flash(sg.swallowed ? sg.player : (sg.slab || sg.player), "critical", now); sgFloat(sg.player, sg.swallowed ? "SWALLOWED." : "SUMMARILY VOIDED.", "dmgTaken"); (res.lines || []).forEach(sgPush); }
     draw(); if (TD_FEEL.hasActive(nowMs())) startFeel();
   }
   function drawSmashGrab() {
@@ -373,6 +379,11 @@
       var c = sg.base(x, y), px = x * TS, py = y * TS;
       if (c === "#") { ctx.fillStyle = P.wall; ctx.fillRect(px, py, TS, TS); continue; }
       if (c === "~") { ctx.fillStyle = P.water; ctx.fillRect(px, py, TS, TS); ctx.fillStyle = P.waterGlyph; ctx.globalAlpha = 0.5; ctx.fillText("≈", px + TS / 2, py + TS / 2 + 1); ctx.globalAlpha = 1; continue; }
+      if (sg.tripped && sg.rubble(x, y)) {   // collapsed floor — impassable rubble creeping up behind you
+        ctx.fillStyle = P.rampart; ctx.fillRect(px, py, TS, TS);
+        ctx.fillStyle = P.critical; ctx.globalAlpha = 0.45; ctx.fillText("▒", px + TS / 2, py + TS / 2 + 1); ctx.globalAlpha = 1;
+        continue;
+      }
       ctx.fillStyle = P.floorBgDim; ctx.fillRect(px, py, TS, TS);
       if (c === ">") { ctx.fillStyle = P.door; ctx.fillText(">", px + TS / 2, py + TS / 2 + 1); }
       else if (c === "=" && !sg.tripped) { ctx.strokeStyle = P.rampart; ctx.lineWidth = 1; ctx.strokeRect(px + 2, py + 1, TS - 4, 3); }   // the dormant slab, hanging in the corridor ceiling
@@ -391,11 +402,11 @@
     // readout (top): a status line + a LOAD/SPRINT line + controls
     ctx.textAlign = "center"; ctx.textBaseline = "top";
     ctx.font = "bold 17px Consolas, monospace";
-    var loadStr = "LOAD: " + sg.load + " — SPRINT: " + (sg.sprintable ? "yes" : "NO");
-    if (sg.escaped) { ctx.fillStyle = P.item; ctx.fillText("ESCAPED — clear of the §24, " + sg.load + " of loot. Press V to re-run.", cv.width / 2, 6); }
-    else if (sg.dead) { ctx.fillStyle = P.critical; ctx.fillText("SUMMARILY VOIDED — too heavy, too slow. Press V to re-run.", cv.width / 2, 6); }
-    else if (sg.tripped) { ctx.fillStyle = sg.doorRemaining <= 5 ? P.critical : P.signal; ctx.fillText("SLAB SEALS IN " + sg.doorRemaining + " — RUN FOR > · carrying " + (sg.carried ? sg.carried.name : "nothing") + " + " + sg.treasCarried + " loot", cv.width / 2, 6); }
-    else { ctx.fillStyle = P.signal; ctx.fillText("§24 — loot $ then grab an artifact (g on ♦/✦); the slab grinds down across the escape corridor when you grab it", cv.width / 2, 6); }
+    var loadStr = "LOAD: " + sg.load + " — SPRINT: " + (sg.sprintable ? "yes" : "NO") + "   ·   SCORE: $" + sg.score;
+    if (sg.escaped) { ctx.fillStyle = P.item; ctx.fillText("ESCAPED with $" + sg.score + " — clear of the §24. Press V to re-run.", cv.width / 2, 6); }
+    else if (sg.dead) { ctx.fillStyle = P.critical; ctx.fillText((sg.swallowed ? "SWALLOWED by the collapse" : "SUMMARILY VOIDED — sealed in") + " — $" + sg.score + " lost. Press V to re-run.", cv.width / 2, 6); }
+    else if (sg.tripped) { var lead = sg.collapse.lead; ctx.fillStyle = (sg.doorRemaining <= 5 || lead <= 3) ? P.critical : P.signal; ctx.fillText("RUN — collapse " + (lead <= 0 ? "AT YOUR HEELS" : lead + " behind") + " · slab seals in " + sg.doorRemaining + " · $" + sg.score, cv.width / 2, 6); }
+    else { ctx.fillStyle = P.signal; ctx.fillText("§24 — loot $ (richer the DEEPER) then grab an artifact (g); the floor falls behind + the slab seals ahead", cv.width / 2, 6); }
     ctx.font = "13px Consolas, monospace";
     ctx.fillStyle = sg.sprintable ? P.signal : P.critical; ctx.fillText(loadStr + "   (threshold " + TD_SMASHGRAB.TUNE.SPRINT_THRESHOLD + ")", cv.width / 2, 28);
     var snd = (typeof TD_SFX !== "undefined") ? ("sound " + (TD_SFX.isEnabled() ? "on" : "off") + " (k) · vol " + Math.round(TD_SFX.volume() * 100) + "% ([ ])") : "";
@@ -879,6 +890,7 @@
       debugBody.textContent = JSON.stringify({
         smashgrab: { tripped: sgv.tripped, sealed: sgv.sealed, doorRemaining: sgv.doorRemaining, doorProgress: Math.round(sgv.doorProgress * 100) / 100, escapeTurns: sgv.escapeTurns,
           slab: sgv.slab, passedSlab: sgv.passedSlab, escapeLen: sgv.escapeLen,
+          collapse: sgv.collapse, score: sgv.score, swallowed: sgv.swallowed,
           load: sgv.load, sprintable: sgv.sprintable, carried: sgv.carried ? sgv.carried.name : null, treasCarried: sgv.treasCarried,
           fallenPending: sgv.fallenPending, runs: sgv.runs, dead: sgv.dead, escaped: sgv.escaped },
         TUNE: TD_SMASHGRAB.TUNE,
@@ -977,10 +989,20 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v23 — Smash-and-Grab v4: corridors + slab-in-corridor + SFX (V)", BUILD = "3934a30";
+  var VERSION = "play-map v24 — Smash-and-Grab v5: collapse-chase + loot-scores (V)", BUILD = "f8ec358";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
-  if (location.hash === "#sg" && typeof TD_SMASHGRAB !== "undefined") sgEnter();   // dev hook: auto-enter the §24 fun-test for render checks
+  if (location.hash.indexOf("#sg") === 0 && typeof TD_SMASHGRAB !== "undefined") {   // dev hook: auto-enter the §24 fun-test for render checks
+    sgEnter();
+    if (location.hash === "#sgrun") {   // #sgrun: script a mid-chase (grab + a few flee steps) so the collapse renders
+      var sgvD = TD_SMASHGRAB.view(), DD = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+      var bfsD = function (sx, sy, tx, ty) { var v = TD_SMASHGRAB.view(), q = [[sx, sy]], seen = {}, prev = {}; seen[sx + "," + sy] = 1; while (q.length) { var c = q.shift(); if (c[0] === tx && c[1] === ty) { var p = [], k = tx + "," + ty; while (k !== sx + "," + sy) { var pp = prev[k]; p.unshift(pp.d); k = pp.f; } return p; } for (var d in DD) { var nx = c[0] + DD[d][0], ny = c[1] + DD[d][1], kk = nx + "," + ny, ch = v.base(nx, ny); if (seen[kk] || ch === "#" || ch === "~" || v.rubble(nx, ny)) continue; seen[kk] = 1; prev[kk] = { f: c[0] + "," + c[1], d: d }; q.push([nx, ny]); } } return []; };
+      var goD = function (tx, ty) { var p = TD_SMASHGRAB.view().player, path = bfsD(p.x, p.y, tx, ty); for (var i = 0; i < path.length && !TD_SMASHGRAB.over(); i++) sgApply(TD_SMASHGRAB.move(path[i])); };
+      var aD = sgvD.arts[0]; goD(aD.x, aD.y); sgApply(TD_SMASHGRAB.get());
+      var ex = TD_SMASHGRAB.view().exit, pth = bfsD(TD_SMASHGRAB.view().player.x, TD_SMASHGRAB.view().player.y, ex.x, ex.y);
+      for (var i = 0; i < 6 && i < pth.length && !TD_SMASHGRAB.over(); i++) sgApply(TD_SMASHGRAB.move(pth[i]));
+    }
+  }
 })();
 </script>
 </body>

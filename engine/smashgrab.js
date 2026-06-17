@@ -12,13 +12,18 @@
 var TD_SMASHGRAB = (function () {
   // ====================== TUNABLES (tweak here to iterate the feel) ======================
   var TUNE = {
-    ESCAPE_TURNS: 20,        // slab-door budget: door-steps to fully seal (lower = faster descent)
+    ESCAPE_TURNS: 20,        // slab-door budget: ticks to fully seal the slab ahead (lower = faster)
     WEIGHT_PER_TREASURE: 2,  // each grabbed treasure adds this much LOAD
-    SPRINT_THRESHOLD: 4,     // LOAD strictly above this => SPRINT disabled (the slab gains 2x on you)
-    HEAVY_PACE: 2,           // door-steps per move when over-loaded (vs 1 when sprinting)
-    TREMOR: "hard"           // collapse shake severity: soft | med | hard
+    SPRINT_THRESHOLD: 4,     // LOAD strictly above this => SPRINT disabled (both threats gain 2x on you)
+    HEAVY_PACE: 2,           // ticks per move when over-loaded (vs 1 when sprinting)
+    COLLAPSE_DELAY: 4,       // a head-start: ticks before the collapse-edge starts advancing (telegraph)
+    COLLAPSE_RATE: 0.7,      // cells the death-edge advances per tick (< 1 so a LIGHT run outruns it)
+    TREMOR: "hard"           // grab/seal shake severity: soft | med | hard
   };
   var RECOVERY_DEPTH = 3;    // the fallen artifact is flagged to reappear this many levels deeper (stub)
+  // each $ scores; the richest sit DEEP (right half, by the chasm / the grab point) so the greediest
+  // loot is the most dangerous to fetch and the most expensive minute to spend carrying it out.
+  var TREASVAL = { "6,5": 15, "6,10": 25, "15,5": 30, "15,10": 50 };
 
   // Authored vault (no generation). # wall, . floor, ~ impassable chasm, @ entry, > exit,
   // A/B artifacts, $ treasure, = the slab cell (a normal corridor floor that the slab grinds down
@@ -67,19 +72,41 @@ var TD_SMASHGRAB = (function () {
     return {
       active: false, player: { x: ENTRY.x, y: ENTRY.y },
       arts: ARTS.map(function (a) { return { id: a.id, name: ARTNAMES[a.id], x: a.x, y: a.y, taken: false, fallen: false }; }),
-      treas: TREAS.map(function (t) { return { x: t.x, y: t.y, taken: false }; }),
-      load: 0, tripped: false, doorClosed: 0, carried: null, treasCarried: 0,
-      passedSlab: false, dead: false, escaped: false, fallenPending: null, runs: 0
+      treas: TREAS.map(function (t) { return { x: t.x, y: t.y, taken: false, value: TREASVAL[t.x + "," + t.y] || 5 }; }),
+      load: 0, score: 0, tripped: false, doorClosed: 0, carried: null, treasCarried: 0,
+      passedSlab: false, dead: false, escaped: false, swallowed: false, fallenPending: null, runs: 0,
+      origin: null, dist: null   // collapse: BFS distance-from-grab-point, computed at trip
     };
   }
   function reset() { var runs = S ? S.runs : 0; S = fresh(); S.runs = runs; }
 
   function sealed() { return S.tripped && S.doorClosed >= TUNE.ESCAPE_TURNS; }
+  // the collapse death-edge: a frontier measured in BFS distance-from-the-grab-point. After a short
+  // head-start it advances COLLAPSE_RATE cells per tick; every floor cell it has passed is rubble.
+  function frontier() { return S.tripped ? Math.max(0, (S.doorClosed - TUNE.COLLAPSE_DELAY)) * TUNE.COLLAPSE_RATE : -1; }
+  function distAt(x, y) { return S.dist ? S.dist[x + "," + y] : undefined; }
+  function rubble(x, y) { if (!S.tripped || !S.dist) return false; var d = S.dist[x + "," + y]; return (d !== undefined) && d <= frontier(); }
+  function playerLead() { var d = distAt(S.player.x, S.player.y); return (d === undefined) ? 99 : (d - frontier()); }   // cells of clear floor behind you
+
   function walkBase(x, y) {
     var c = baseTile(x, y);
     if (c === "#" || c === "~") return false;            // walls + chasm block; you SEE across the chasm but cannot cross
     if (SLAB && x === SLAB.x && y === SLAB.y && sealed()) return false;   // the slab, once fully down, is a wall
+    if (rubble(x, y)) return false;                       // collapsed floor is impassable rubble — no going back
     return true;
+  }
+  // BFS distance over the floor graph from the grab point (slab passable, chasm/walls blocked)
+  function computeDist(ox, oy) {
+    var D = [[0, -1], [0, 1], [-1, 0], [1, 0]], dist = {}, q = [[ox, oy]]; dist[ox + "," + oy] = 0;
+    while (q.length) {
+      var c = q.shift(), cd = dist[c[0] + "," + c[1]];
+      for (var i = 0; i < 4; i++) {
+        var nx = c[0] + D[i][0], ny = c[1] + D[i][1], k = nx + "," + ny, t = baseTile(nx, ny);
+        if (dist[k] !== undefined || t === "#" || t === "~") continue;
+        dist[k] = cd + 1; q.push([nx, ny]);
+      }
+    }
+    return dist;
   }
   function artAt(x, y) { for (var i = 0; i < S.arts.length; i++) { var a = S.arts[i]; if (!a.taken && !a.fallen && a.x === x && a.y === y) return a; } return null; }
   function treasAt(x, y) { for (var i = 0; i < S.treas.length; i++) { var t = S.treas[i]; if (!t.taken && t.x === x && t.y === y) return t; } return null; }
@@ -95,6 +122,7 @@ var TD_SMASHGRAB = (function () {
   function trip() {
     if (S.tripped) return null;
     S.tripped = true; S.doorClosed = 0;
+    S.origin = { x: S.player.x, y: S.player.y }; S.dist = computeDist(S.player.x, S.player.y);   // the collapse spreads from the grab point
     var fell = null;
     S.arts.forEach(function (a) { if (!a.taken && !a.fallen) { a.fallen = true; fell = a; } });
     if (fell) {
@@ -107,7 +135,7 @@ var TD_SMASHGRAB = (function () {
       tremor: true, severity: TUNE.TREMOR, tile: { x: S.player.x, y: S.player.y }, sfx: "grab",
       float: "EXPEDITED EGRESS, per ordinance.",
       fell: fell ? { id: fell.id, name: fell.name, x: fell.x, y: fell.y } : null,
-      lines: ["A SLAB grinds loose over the escape passage — RUN."].concat(
+      lines: ["The far wall buckles — the floor is COMING DOWN behind you, and a slab grinds loose ahead. RUN."].concat(
         fell ? [fell.name + " tumbles into the chasm, into the dark you could not cross. (You will find it again, deeper — level " + RECOVERY_DEPTH + ".)"] : [])
     };
   }
@@ -115,7 +143,7 @@ var TD_SMASHGRAB = (function () {
   function get() {
     if (!S.active || over()) return { got: false };
     var t = treasAt(S.player.x, S.player.y);
-    if (t) { t.taken = true; S.treasCarried += 1; S.load += TUNE.WEIGHT_PER_TREASURE; return { got: true, treasure: true, sfx: "loot", load: S.load, sprintable: sprintable() }; }
+    if (t) { t.taken = true; S.treasCarried += 1; S.load += TUNE.WEIGHT_PER_TREASURE; S.score += t.value; return { got: true, treasure: true, value: t.value, score: S.score, sfx: "loot", load: S.load, sprintable: sprintable() }; }
     var a = artAt(S.player.x, S.player.y);
     if (!a) return { got: false };
     if (S.carried) return { got: false, reason: "You can carry only one artifact through a collapse." };
@@ -132,14 +160,22 @@ var TD_SMASHGRAB = (function () {
     S.player.x = nx; S.player.y = ny;
     var res = { moved: true, sfx: "step" };
     if (S.tripped && !over()) {
-      S.doorClosed += sprintable() ? 1 : TUNE.HEAVY_PACE;
-      res.grind = true;                                   // host repeats the stone-grind cue while it descends
-      if (SLAB && nx >= SLAB.x && ny === SLAB.y) S.passedSlab = true;   // crossed under the slab in time
-      if (nx === EXIT.x && ny === EXIT.y) {
-        S.escaped = true; res.escaped = true; res.sfx = "chime"; res.carried = S.carried;
-        res.lines = ["You roll clear of the passage" + (S.carried ? ", " + S.carried.name + " still in hand." : ", empty-handed but breathing.") + (S.treasCarried ? " (" + S.treasCarried + " trinket" + (S.treasCarried === 1 ? "" : "s") + " too.)" : "")];
-      } else if (sealed() && !S.passedSlab) {
-        S.dead = true; res.dead = true; res.sfx = "slam"; res.lines = ["The slab slams home across the passage. The Bureau records the cause as 'avarice, in excess of egress.'"];
+      var f0 = Math.floor(frontier());
+      S.doorClosed += sprintable() ? 1 : TUNE.HEAVY_PACE;   // one clock drives BOTH threats; over-loaded => 2x
+      res.grind = true;
+      res.crash = Math.floor(frontier()) > f0;              // a band of floor just fell -> tile-crash cue
+      res.lead = playerLead();                               // cells of clear floor still behind you
+      res.proximity = Math.max(0, Math.min(1, 1 - res.lead / 8));   // 0 far .. 1 right behind you (juice scale)
+      if (SLAB && nx >= SLAB.x && ny === SLAB.y) S.passedSlab = true;
+      if (nx === EXIT.x && ny === EXIT.y) {                  // reaching the exit wins, whatever is at your heels
+        S.escaped = true; res.escaped = true; res.sfx = "chime"; res.carried = S.carried; res.score = S.score;
+        res.lines = ["You roll clear of the passage as it folds shut behind you" + (S.carried ? ", " + S.carried.name + " still in hand." : ", empty-handed but breathing.") + (S.score ? " ESCAPED with $" + S.score + " in loot." : "")];
+      } else if (playerLead() <= 0) {                        // the death-edge reached your tile -> SWALLOWED (distinct from the slab)
+        S.dead = true; S.swallowed = true; res.dead = true; res.sfx = "crash"; res.scoreLost = S.score;
+        res.lines = ["The floor drops out from under you and the dark takes everything — the Bureau files it under 'reabsorbed, with effects.'" + (S.score ? " ($" + S.score + " lost.)" : "")];
+      } else if (sealed() && !S.passedSlab) {                // sealed off ahead by the slab -> SUMMARILY VOIDED
+        S.dead = true; res.dead = true; res.sfx = "slam"; res.scoreLost = S.score;
+        res.lines = ["The slab slams home across the passage. The Bureau records the cause as 'avarice, in excess of egress.'" + (S.score ? " ($" + S.score + " lost.)" : "")];
       }
     }
     res.doorRemaining = doorRemaining();
@@ -151,12 +187,14 @@ var TD_SMASHGRAB = (function () {
       w: W, h: H, base: baseTile,
       player: { x: S.player.x, y: S.player.y },
       arts: S.arts.map(function (a) { return { id: a.id, name: a.name, x: a.x, y: a.y, taken: a.taken, fallen: a.fallen }; }),
-      treas: S.treas.map(function (t) { return { x: t.x, y: t.y, taken: t.taken }; }),
+      treas: S.treas.map(function (t) { return { x: t.x, y: t.y, taken: t.taken, value: t.value }; }),
       crevasse: CREV.slice(), exit: { x: EXIT.x, y: EXIT.y }, entry: { x: ENTRY.x, y: ENTRY.y }, slab: SLAB ? { x: SLAB.x, y: SLAB.y } : null,
       tripped: S.tripped, sealed: sealed(), doorClosed: S.doorClosed, doorProgress: TUNE.ESCAPE_TURNS ? Math.min(1, S.doorClosed / TUNE.ESCAPE_TURNS) : 0,
       doorRemaining: doorRemaining(), escapeTurns: TUNE.ESCAPE_TURNS, escapeLen: escapeLen(),
-      load: S.load, treasCarried: S.treasCarried, sprintable: sprintable(), passedSlab: S.passedSlab, carried: S.carried,
-      dead: S.dead, escaped: S.escaped, fallenPending: S.fallenPending, runs: S.runs
+      collapse: { active: S.tripped, frontier: Math.round(frontier() * 100) / 100, origin: S.origin, lead: S.tripped ? playerLead() : null, proximity: S.tripped ? Math.max(0, Math.min(1, 1 - playerLead() / 8)) : 0 },
+      rubble: rubble, dist: distAt,
+      load: S.load, score: S.score, treasCarried: S.treasCarried, sprintable: sprintable(), passedSlab: S.passedSlab, carried: S.carried,
+      dead: S.dead, escaped: S.escaped, swallowed: S.swallowed, fallenPending: S.fallenPending, runs: S.runs
     };
   }
 
