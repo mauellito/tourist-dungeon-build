@@ -142,6 +142,8 @@
   #debug { position:fixed; right:0; top:0; bottom:0; width:330px; overflow:auto; background:#15130f; color:#cfe3b0; font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:60; }
   #debug pre { white-space:pre-wrap; word-break:break-word; margin:0; }
   .vstamp { position:fixed; right:8px; bottom:6px; font:11px "Consolas",monospace; color:#8a7c66; background:rgba(239,231,214,.9); padding:2px 6px; border:1px solid var(--rule); border-radius:3px; }
+  .sgprompt { position:fixed; left:8px; bottom:6px; font:bold 12px "Consolas",monospace; color:#7a4f26; background:rgba(244,227,160,.95); padding:3px 9px; border:1px solid var(--accent); border-radius:3px; z-index:30; }
+  .sgprompt b { color:#9a2f23; }
 </style>
 </head>
 <body>
@@ -208,6 +210,7 @@
 </div>
 <aside id="debug"><pre id="debugBody"></pre></aside>
 <div class="vstamp" id="vstamp"></div>
+<div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <script src="rng.js"></script>
 <script src="vaultfmt.js"></script>
@@ -338,11 +341,12 @@
     d.style.left = (tile.x * TS + TS / 2) + "px"; d.style.top = (tile.y * TS - 12) + "px";
     stageEl.appendChild(d); setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 950);
   }
-  function sgEnter() { var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — a test floor. Take one artifact and run for the exit (>)."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
+  function sgEnter() { var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — loot the treasure ($), grab ONE artifact across the chasm, then SPRINT back to the exit (>) before the slab seals. Stay light enough to sprint."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
   function sgApply(res) {
     var now = nowMs(), sg = TD_SMASHGRAB.view();
-    var t = res.ev;   // a trip (from get)
-    if (t && t.tremor) { TD_FEEL.shake(t.severity, now); TD_FEEL.flash(t.tile, "critical", now); if (t.float) sgFloat(t.tile, t.float, "dmgDealt"); if (t.fell) sgFloat({ x: t.fell.x, y: t.fell.y }, t.fell.name + " — TUMBLES INTO THE DARK", "dmgTaken"); (t.lines || []).forEach(sgPush); }
+    if (res.treasure) { TD_FEEL.shake("soft", now); sgFloat(sg.player, "LOOT +" + TD_SMASHGRAB.TUNE.WEIGHT_PER_TREASURE + (sg.sprintable ? "" : " — TOO HEAVY TO SPRINT"), sg.sprintable ? "item" : "dmgTaken"); }
+    var t = res.ev;   // the artifact-grab trip
+    if (t && t.tremor) { TD_FEEL.shake(t.severity, now); TD_FEEL.flash(t.tile, "critical", now); if (t.float) sgFloat(t.tile, t.float, "dmgDealt"); if (t.fell) sgFloat({ x: t.fell.x, y: t.fell.y }, t.fell.name + " — TUMBLES INTO THE CHASM", "dmgTaken"); (t.lines || []).forEach(sgPush); }
     if (res.reason) sgPush(res.reason);
     if (res.escaped) { sgFloat(sg.player, res.float || "EGRESS STAMPED.", "item"); (res.lines || []).forEach(sgPush); }
     else if (res.dead) { TD_FEEL.shake("hard", now); TD_FEEL.flash(sg.player, "critical", now); sgFloat(sg.player, res.float || "SUMMARILY VOIDED.", "dmgTaken"); (res.lines || []).forEach(sgPush); }
@@ -351,33 +355,45 @@
   function drawSmashGrab() {
     var sg = TD_SMASHGRAB.view(), now = nowMs();
     var availW = Math.min(1500, Math.max(640, (window.innerWidth || 1280) - 244));
-    var availH = Math.min(900, Math.max(340, (window.innerHeight || 820) - 264));
+    var availH = Math.min(900, Math.max(340, (window.innerHeight || 820) - 300));
+    var HEADER = 56;   // reserved top strip for the readout (so it never overlaps the grid)
     TS = Math.max(16, Math.min(40, Math.floor(Math.min(availW / sg.w, availH / sg.h))));
     FONT = (TS - 4) + "px Consolas, monospace";
-    var cvW = sg.w * TS, cvH = sg.h * TS;
+    var cvW = sg.w * TS, cvH = sg.h * TS + HEADER;
     if (cv.width !== cvW || cv.height !== cvH) { cv.width = cvW; cv.height = cvH; }
     var shk = TD_FEEL.isEnabled() ? TD_FEEL.shakeOffset(now) : { dx: 0, dy: 0 };
     ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
-    ctx.save(); ctx.translate(shk.dx, shk.dy);
+    ctx.save(); ctx.translate(shk.dx, HEADER + shk.dy);
     for (var y = 0; y < sg.h; y++) for (var x = 0; x < sg.w; x++) {
-      var c = sg.base(x, y), px = x * TS, py = y * TS, gl = "", col = P.floorDim;
+      var c = sg.base(x, y), px = x * TS, py = y * TS;
       if (c === "#") { ctx.fillStyle = P.wall; ctx.fillRect(px, py, TS, TS); continue; }
-      if (c === "~") { ctx.fillStyle = P.water; ctx.fillRect(px, py, TS, TS); ctx.fillStyle = P.waterGlyph; ctx.fillText("≈", px + TS / 2, py + TS / 2 + 1); continue; }
+      if (c === "~") { ctx.fillStyle = P.water; ctx.fillRect(px, py, TS, TS); ctx.fillStyle = P.waterGlyph; ctx.globalAlpha = 0.5; ctx.fillText("≈", px + TS / 2, py + TS / 2 + 1); ctx.globalAlpha = 1; continue; }
       ctx.fillStyle = P.floorBgDim; ctx.fillRect(px, py, TS, TS);
-      if (c === ">") { gl = ">"; col = P.door; }
-      ctx.fillStyle = col; if (gl) ctx.fillText(gl, px + TS / 2, py + TS / 2 + 1);
+      if (c === ">") { ctx.fillStyle = P.door; ctx.fillText(">", px + TS / 2, py + TS / 2 + 1); }
     }
-    sg.arts.forEach(function (a) { if (a.taken || a.fallen) return; ctx.fillStyle = P.item; ctx.fillText(a.id === "A" ? "♦" : "✦", a.x * TS + TS / 2, a.y * TS + TS / 2 + 1); });
+    sg.treas.forEach(function (tr) { if (tr.taken) return; ctx.fillStyle = P.item; ctx.fillText("$", tr.x * TS + TS / 2, tr.y * TS + TS / 2 + 1); });
+    sg.arts.forEach(function (a) {
+      if (a.taken) return;
+      if (a.fallen) { ctx.globalAlpha = 0.4; ctx.fillStyle = P.item; ctx.fillText(a.id === "A" ? "♦" : "✦", a.x * TS + TS / 2, a.y * TS + TS / 2 + 1); ctx.globalAlpha = 1; return; }   // tumbled into the chasm
+      ctx.fillStyle = P.item; ctx.fillText(a.id === "A" ? "♦" : "✦", a.x * TS + TS / 2, a.y * TS + TS / 2 + 1);
+    });
+    // THE SLAB DOOR descending over the exit (telegraphed; you watch it seal)
+    if (sg.tripped) { var ex = sg.exit, sh = Math.min(1, sg.doorProgress) * TS; ctx.fillStyle = P.rampart; ctx.fillRect(ex.x * TS, ex.y * TS, TS, sh); ctx.strokeStyle = P.critical; ctx.lineWidth = 2; ctx.strokeRect(ex.x * TS + 1, ex.y * TS + 1, TS - 2, Math.max(2, sh - 2)); }
     if (TD_FEEL.isEnabled()) TD_FEEL.active(now).forEach(function (e) { if (e.kind !== "flash" || !e.tile) return; ctx.globalAlpha = (1 - e.p) * 0.7; ctx.fillStyle = P[e.color] || P.critical; ctx.fillRect(e.tile.x * TS, e.tile.y * TS, TS, TS); ctx.globalAlpha = 1; });
     ctx.fillStyle = P.player; ctx.fillText("@", sg.player.x * TS + TS / 2, sg.player.y * TS + TS / 2 + 1);
     ctx.restore();
-    // clock banner / outcome, top-centre
-    ctx.font = "bold 18px Consolas, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "top";
-    if (sg.escaped) { ctx.fillStyle = P.item; ctx.fillText("ESCAPED — clear of the §24. Press V to re-run.", cv.width / 2, 8); }
-    else if (sg.dead) { ctx.fillStyle = P.critical; ctx.fillText("SUMMARILY VOIDED. Press V to re-run.", cv.width / 2, 8); }
-    else if (sg.tripped) { ctx.fillStyle = sg.clock <= 6 ? P.critical : P.signal; ctx.fillText("ESCAPE: " + sg.clock + " turn" + (sg.clock === 1 ? "" : "s") + " — REACH THE > (carrying " + (sg.carried ? sg.carried.name : "nothing") + ")", cv.width / 2, 8); }
-    else { ctx.fillStyle = P.signal; ctx.fillText("§24 RIGGED VAULT — grab one (g on ♦/✦), then run for >", cv.width / 2, 8); }
+    // readout (top): a status line + a LOAD/SPRINT line + controls
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.font = "bold 17px Consolas, monospace";
+    var loadStr = "LOAD: " + sg.load + " — SPRINT: " + (sg.sprintable ? "yes" : "NO");
+    if (sg.escaped) { ctx.fillStyle = P.item; ctx.fillText("ESCAPED — clear of the §24, " + sg.load + " of loot. Press V to re-run.", cv.width / 2, 6); }
+    else if (sg.dead) { ctx.fillStyle = P.critical; ctx.fillText("SUMMARILY VOIDED — too heavy, too slow. Press V to re-run.", cv.width / 2, 6); }
+    else if (sg.tripped) { ctx.fillStyle = sg.doorRemaining <= 5 ? P.critical : P.signal; ctx.fillText("SLAB SEALS IN " + sg.doorRemaining + " — RUN FOR > · carrying " + (sg.carried ? sg.carried.name : "nothing") + " + " + sg.treasCarried + " loot", cv.width / 2, 6); }
+    else { ctx.fillStyle = P.signal; ctx.fillText("§24 — loot $ then grab an artifact (g on ♦/✦); the slab drops when you grab it", cv.width / 2, 6); }
+    ctx.font = "13px Consolas, monospace";
+    ctx.fillStyle = sg.sprintable ? P.signal : P.critical; ctx.fillText(loadStr + "   (threshold " + TD_SMASHGRAB.TUNE.SPRINT_THRESHOLD + ")", cv.width / 2, 28);
+    ctx.fillStyle = P.faint || "#8a7c66"; ctx.fillText("arrows / W A S D move · g grab · Esc leave · V re-run", cv.width / 2, 46);
   }
   function renderSgLog() {
     msglogEl.innerHTML = sgLog.map(function (l) { return '<div class="line note">' + escapeHTML(l) + "</div>"; }).join("");
@@ -391,7 +407,9 @@
   }
 
   function _draw() {
-    if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) { drawSmashGrab(); renderSgLog(); renderDebug(); return; }   // throwaway §24 mode owns the screen while active
+    var sgp = document.getElementById("sgprompt");
+    if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) { if (sgp) sgp.style.display = "none"; drawSmashGrab(); renderSgLog(); renderDebug(); return; }   // throwaway §24 mode owns the screen while active
+    if (sgp) sgp.style.display = "";
     var vw = sim.view();
     checkBarks(vw);   // the Bureau may add a line before we render the log
     // TOWN: a bigger fixed tile size + a SCROLLING CAMERA that follows the avatar — the
@@ -848,7 +866,8 @@
     if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) {
       var sgv = TD_SMASHGRAB.view();
       debugBody.textContent = JSON.stringify({
-        smashgrab: { tripped: sgv.tripped, clock: sgv.clock, escapeTurns: sgv.escapeTurns, carried: sgv.carried ? sgv.carried.name : null,
+        smashgrab: { tripped: sgv.tripped, doorRemaining: sgv.doorRemaining, doorProgress: Math.round(sgv.doorProgress * 100) / 100, escapeTurns: sgv.escapeTurns,
+          load: sgv.load, sprintable: sgv.sprintable, carried: sgv.carried ? sgv.carried.name : null, treasCarried: sgv.treasCarried,
           fallenPending: sgv.fallenPending, runs: sgv.runs, dead: sgv.dead, escaped: sgv.escaped },
         TUNE: TD_SMASHGRAB.TUNE,
         feel: { frameMs: Math.round(lastFrameMs * 10) / 10, lastHooks: lastFeelHooks, active: TD_FEEL.active(nowMs()).length, juice: TD_FEEL.isEnabled() ? "ON" : "OFF (press j)" }
@@ -945,7 +964,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v21 — §24 Smash-and-Grab fun-test (press V)", BUILD = "36018ee";
+  var VERSION = "play-map v22 — Smash-and-Grab v3: greed/weight + chasm + chase-door (V)", BUILD = "b4b00d2";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

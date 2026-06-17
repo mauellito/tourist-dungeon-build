@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""TD_SMASHGRAB — the throwaway §24 fun-test prototype. Drives the self-contained module through
-the whole loop: enter (rigged TELL) -> grab ONE artifact (trip the collapse + Tremor) -> the
-un-taken artifact FALLS (recovery stub) -> race the escape clock -> ESCAPE or be VOIDED.
+"""TD_SMASHGRAB [v3] — the throwaway §24 fun-test: loot (weight) -> grab an artifact across an
+IMPASSABLE chasm (route around) -> SPRINT out ahead of a closing SLAB DOOR. Drives the
+self-contained module: chasm blocks + forces a detour + is where the un-taken artifact falls;
+treasure adds weight and gates SPRINT; a light run escapes, a greedy/heavy run is VOIDED.
 
 Run:  python tests/run_smashgrab.py
 """
@@ -14,52 +15,59 @@ CH = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Fil
 REP = r"""
 <script>(function(){var o=document.getElementById('out');var R=[],fails=0;
 function ok(n,c,d){R.push((c?'PASS ':'FAIL ')+n+(d?('  ::  '+d):''));if(!c)fails++;}
-function go(dir){return TD_SMASHGRAB.move(dir);}
-function path(seq){ for(var i=0;i<seq.length;i++){ var r=go(seq[i]); } }
+var SG=TD_SMASHGRAB;
+function bfs(sx,sy,tx,ty){ var v=SG.view(),D={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]};
+  var q=[[sx,sy]],seen={},prev={}; seen[sx+','+sy]=1;
+  while(q.length){var c=q.shift(); if(c[0]===tx&&c[1]===ty){var p=[],k=tx+','+ty; while(k!==sx+','+sy){var pp=prev[k];p.unshift(pp.d);k=pp.f;} return p;}
+    for(var dd in D){var nx=c[0]+D[dd][0],ny=c[1]+D[dd][1],kk=nx+','+ny,ch=v.base(nx,ny); if(!seen[kk]&&ch!=='#'&&ch!=='~'){seen[kk]=1;prev[kk]={f:c[0]+','+c[1],d:dd};q.push([nx,ny]);}}}
+  return null; }
+function goTo(tx,ty){ var p=SG.view().player,path=bfs(p.x,p.y,tx,ty); if(!path)return false; for(var i=0;i<path.length&&!SG.over();i++)SG.move(path[i]); return true; }
+function man(ax,ay,bx,by){return Math.abs(ax-bx)+Math.abs(ay-by);}
 try{
-  var SG=TD_SMASHGRAB;
-  // ---- R1: enter shows a rigged TELL; two artifacts + an exit present; not yet tripped ----
-  var e=SG.enter(1); var v=SG.view();
-  ok('entering the vault telegraphs a rigged TELL (voice channel, not a popup)', !!(e && e.tell) && /draft|rhyme|hollow/i.test(e.tell), e?e.tell:'(none)');
-  ok('two placeholder artifacts + an exit are present', v.arts.length===2 && !!v.exit && !v.tripped, v.arts.length+" arts");
-  // walk to artifact A (left col), grab it -> trips the collapse (Tremor)
-  var A=v.arts.filter(function(a){return a.id==='A';})[0];
-  // route: left to A's column, up to A's row (avoid the centre crevasse)
-  var p=v.player;
-  while(SG.view().player.x>A.x) go('left');
-  while(SG.view().player.y>A.y) go('up');
-  ok('reached artifact A by walking (grid movement works, walls block)', SG.view().player.x===A.x && SG.view().player.y===A.y, JSON.stringify(SG.view().player));
-  var g=SG.get();
-  ok('R1 grabbing an artifact LIGHTS THE COLLAPSE (trip + Tremor)', g.got && g.ev && g.ev.tremor && /EXPEDITED EGRESS|VOIDED/i.test(g.ev.float||''), g.ev?g.ev.float:'(no ev)');
-  ok('the Tremor carries a shake severity for the juice', g.ev && (g.ev.severity==='hard'||g.ev.severity==='med'||g.ev.severity==='soft'), g.ev?g.ev.severity:'-');
-  var v2=SG.view();
-  ok('R2 the escape clock starts on the trip (N turns)', v2.tripped && v2.clock>0 && v2.clock<=SG.TUNE.ESCAPE_TURNS, "clock="+v2.clock);
-  // ---- R3: only ONE carried; the un-taken artifact FELL; recovery flag stubbed ----
-  ok('R3 exactly one artifact is carried', !!v2.carried && (v2.carried.id==='A'), v2.carried?v2.carried.id:'none');
-  var fellB=v2.arts.filter(function(a){return a.id==='B';})[0];
-  ok('R3 the un-taken artifact visibly FELL (not destroyed)', fellB && fellB.fallen===true, fellB?('B fallen='+fellB.fallen):'?');
-  ok('R3 the fall is reported as an in-world event', g.ev && (g.ev.lines||[]).join(' ').toLowerCase().indexOf('crevasse')>=0, (g.ev.lines||[]).join(' | '));
-  ok('R3 a recovery flag is stubbed (fallen artifact pending at depth)', !!v2.fallenPending && v2.fallenPending.depth>=1, JSON.stringify(v2.fallenPending));
-  ok('R3 cannot grab a second artifact through the collapse', (function(){ var r=SG.get(); return !r.got; })(), 'one-carry enforced');
+  // ---- R1: enter + TELL; chasm splits the vault; the artifact is far-side (routed, not straight) ----
+  var e=SG.enter(0), v=SG.view();
+  ok('R1 enter telegraphs a rigged TELL (voice channel)', !!(e&&e.tell)&&/draft|rhyme|hollow/i.test(e.tell), e?e.tell:'(none)');
+  ok('R1 two artifacts on the FAR side + an impassable chasm present', v.arts.length===2 && v.crevasse.length>=8, v.arts.length+' arts, '+v.crevasse.length+' chasm');
+  var A=v.arts[0], pth=bfs(v.entry.x,v.entry.y,A.x,A.y);
+  ok('R1 the chasm forces a DETOUR to the artifact (path >> straight line)', pth && pth.length > man(v.entry.x,v.entry.y,A.x,A.y)+3, pth?('path='+pth.length+' vs straight='+man(v.entry.x,v.entry.y,A.x,A.y)):'no route');
+  // chasm blocks movement directly: walk up the entry column until a chasm cell, then it refuses
+  var blocked=false; for(var s=0;s<12;s++){ var pp=SG.view().player; var r=SG.move('up'); if(!r.moved){ if(SG.view().base(pp.x,pp.y-1)==='~') blocked=true; break; } }
+  ok('R1 the chasm BLOCKS movement (cannot cross, only see across)', blocked);
 
-  // ---- R2 WIN PATH: reach the exit before the clock expires -> ESCAPE (relief) ----
-  var ex=SG.view().exit;
-  while(SG.view().player.y>ex.y && !SG.over()) go('up');
-  while(SG.view().player.x<ex.x && !SG.over()) go('right');
-  while(SG.view().player.x>ex.x && !SG.over()) go('left');
-  var vw=SG.view();
-  ok('R2 WIN: reaching the exit in time ESCAPES (peril ends, relief beat)', vw.escaped===true && !vw.dead, "escaped="+vw.escaped+" clock="+vw.clock);
+  // ---- R2: treasure = weight; looting does NOT trip; over threshold disables SPRINT ----
+  SG.enter(1); v=SG.view();
+  ok('R2 3-4 treasure pickups are scattered', v.treas.length>=3, v.treas.length+' treasure');
+  goTo(v.treas[0].x, v.treas[0].y); var g1=SG.get();
+  ok('R2 looting treasure adds LOAD and does NOT trip the collapse', g1.got && g1.treasure && SG.view().load>0 && !SG.view().tripped, "load="+SG.view().load+" tripped="+SG.view().tripped);
+  // grab enough treasure to exceed the sprint threshold
+  var tv=SG.view(); for(var i=1;i<tv.treas.length;i++){ goTo(tv.treas[i].x,tv.treas[i].y); SG.get(); }
+  ok('R2 over the weight threshold, SPRINT is disabled (readout yes/no)', SG.view().load>SG.TUNE.SPRINT_THRESHOLD && SG.view().sprintable===false, "load="+SG.view().load+" sprint="+SG.view().sprintable);
 
-  // ---- R2 LOSE PATH: trip again, run out the clock -> SUMMARILY VOIDED ----
-  SG.enter(2);
-  var a2=SG.view().arts.filter(function(a){return a.id==='A';})[0];
-  while(SG.view().player.x>a2.x) go('left');
-  while(SG.view().player.y>a2.y) go('up');
-  var gd=SG.get(); var lastFloat="";
-  for(var t=0;t<SG.TUNE.ESCAPE_TURNS+3 && !SG.over();t++){ var r=(t%2)?go('left'):go('right'); if(r&&r.float)lastFloat=r.float; }
+  // ---- R3 + WIN: a LIGHT run — route to an artifact, grab (trip), sprint back, ESCAPE ----
+  SG.enter(2); v=SG.view();
+  goTo(v.arts[0].x, v.arts[0].y);
+  var ga=SG.get();
+  ok('R3 grabbing an artifact TRIPS the slab door (chase, not bare clock)', ga.got && ga.artifact && ga.ev && ga.ev.tremor && SG.view().tripped && SG.view().doorRemaining>0, "doorRem="+SG.view().doorRemaining);
+  var other=SG.view().arts.filter(function(a){return a.id!==ga.carried.id;})[0];
+  var inChasm = SG.view().crevasse.some(function(c){return c.x===other.x&&c.y===other.y;});
+  ok('R3 the un-taken artifact FELL INTO THE CHASM (visible, recoverable)', other.fallen===true && inChasm, "fallen="+other.fallen+" inChasm="+inChasm);
+  ok('R3 recovery is stubbed (pending at depth)', !!SG.view().fallenPending && SG.view().fallenPending.depth>=1, JSON.stringify(SG.view().fallenPending));
+  ok('R3 one-carry: cannot grab a second artifact', (function(){var r=SG.get();return !r.got;})());
+  goTo(SG.view().exit.x, SG.view().exit.y);
+  ok('R3 WIN: a light, unburdened sprint reaches > before the slab seals (ESCAPE)', SG.view().escaped===true && !SG.view().dead, "escaped="+SG.view().escaped+" doorRem="+SG.view().doorRemaining);
+
+  // ---- R3 + LOSE: a GREEDY run — grab all treasure (no sprint), grab artifact, get crushed ----
+  SG.enter(3); v=SG.view();
+  v.treas.forEach(function(t){ goTo(t.x,t.y); SG.get(); });
+  ok('LOSE setup: over-loaded, SPRINT disabled', SG.view().sprintable===false, "load="+SG.view().load);
+  goTo(SG.view().arts[0].x, SG.view().arts[0].y); SG.get();
+  goTo(SG.view().exit.x, SG.view().exit.y);
   var vd=SG.view();
-  ok('R2 LOSE: the clock expiring CRUSHES you (SUMMARILY VOIDED)', vd.dead===true && /VOIDED/i.test(lastFloat), "dead="+vd.dead+" float="+lastFloat);
-  ok('tunables (N, severity) are surfaced on the module', typeof SG.TUNE.ESCAPE_TURNS==='number' && !!SG.TUNE.TREMOR, "N="+SG.TUNE.ESCAPE_TURNS+" tremor="+SG.TUNE.TREMOR);
+  ok('R3 LOSE: greed/weight gets you SUMMARILY VOIDED (slab seals first)', vd.dead===true && !vd.escaped, "dead="+vd.dead+" escaped="+vd.escaped+" doorRem="+vd.doorRemaining);
+
+  // ---- R4: tunables surfaced ----
+  ok('R4 tunables surfaced (escape/weight/threshold/tremor)', typeof SG.TUNE.ESCAPE_TURNS==='number' && typeof SG.TUNE.WEIGHT_PER_TREASURE==='number' && typeof SG.TUNE.SPRINT_THRESHOLD==='number' && !!SG.TUNE.TREMOR,
+     "N="+SG.TUNE.ESCAPE_TURNS+" wpt="+SG.TUNE.WEIGHT_PER_TREASURE+" thr="+SG.TUNE.SPRINT_THRESHOLD);
 
   o.textContent=R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SG fail="+fails;
 }catch(e){o.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e);document.title="SG harness_error";}})();</script>
