@@ -103,6 +103,12 @@ var TD_FEEL = (function () {
   function hasActive(now) { for (var i = 0; i < effects.length; i++) { var e = effects[i]; if (e.kind !== "float" && (now - e.t0) < e.dur) return true; } return false; }
   function prune(now) { effects = effects.filter(function (e) { return (now - e.t0) < e.dur; }); }
 
+  // exposed primitives so other modules (e.g. TD_SMASHGRAB) can fire feel directly:
+  // a custom float-text, a shake, and a tile-flash — all honour the juice-off toggle.
+  function floatText(tile, text, color, now) { if (enabled) push("float", now, DUR.float, { tile: tile, text: text, color: color || "dmgDealt", fkind: "custom" }); return text; }
+  function shake(intensity, now) { if (enabled) push("shake", now, DUR.shake, { mag: SHAKE[intensity] || SHAKE.soft }); }
+  function flash(tile, color, now) { if (enabled) push("flash", now, DUR.flash, { tile: tile, color: color || "critical" }); }
+
   // aggregate screen-shake offset {dx,dy} at time now (decays with each shake's progress)
   function shakeOffset(now) {
     var dx = 0, dy = 0;
@@ -119,6 +125,7 @@ var TD_FEEL = (function () {
     ease: ease, EASE: EASE, ono: ono, ONO: ONO, feelFor: feelFor, apply: apply,
     active: active, hasActive: hasActive, prune: prune, clear: clear, shakeOffset: shakeOffset,
     onSound: onSound, setEnabled: setEnabled, isEnabled: isEnabled,
+    floatText: floatText, shake: shake, flash: flash,
     lastHooks: function () { return lastHooks; }, _effects: function () { return effects; }, DUR: DUR, SHAKE: SHAKE
   };
 })();

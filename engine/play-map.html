@@ -225,6 +225,7 @@
 <script src="towngen2.js"></script>
 <script src="townmap.js"></script>
 <script src="contraption.js"></script>
+<script src="smashgrab.js"></script>
 <script src="game.js"></script>
 <script src="ui.js"></script>
 <script src="feel.js"></script>
@@ -326,7 +327,71 @@
   // draw wrapper: measures frame time and input->render latency (cleared after the first render
   // following an input, so feel-loop frames don't inflate the latency reading) — R3 telemetry.
   function draw() { var t0 = nowMs(); _draw(); lastFrameMs = nowMs() - t0; if (inputT) { lastLatencyMs = nowMs() - inputT; inputT = 0; } }
+
+  // ===================== TD_SMASHGRAB — throwaway §24 fun-test mode (self-contained) ==========
+  var sgLog = [];
+  function sgPush(line) { sgLog.push(line); if (sgLog.length > 8) sgLog.shift(); }
+  function sgFloat(tile, text, col) {   // a float in vault-grid coords (no camera; the vault draws at origin)
+    if (!TD_FEEL.isEnabled()) return;
+    var d = document.createElement("div"); d.className = "dmgfloat"; d.textContent = text;
+    d.style.color = P[col] || P.signal; d.style.fontSize = "12px"; d.style.letterSpacing = "1px";
+    d.style.left = (tile.x * TS + TS / 2) + "px"; d.style.top = (tile.y * TS - 12) + "px";
+    stageEl.appendChild(d); setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 950);
+  }
+  function sgEnter() { var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — a test floor. Take one artifact and run for the exit (>)."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
+  function sgApply(res) {
+    var now = nowMs(), sg = TD_SMASHGRAB.view();
+    var t = res.ev;   // a trip (from get)
+    if (t && t.tremor) { TD_FEEL.shake(t.severity, now); TD_FEEL.flash(t.tile, "critical", now); if (t.float) sgFloat(t.tile, t.float, "dmgDealt"); if (t.fell) sgFloat({ x: t.fell.x, y: t.fell.y }, t.fell.name + " — TUMBLES INTO THE DARK", "dmgTaken"); (t.lines || []).forEach(sgPush); }
+    if (res.reason) sgPush(res.reason);
+    if (res.escaped) { sgFloat(sg.player, res.float || "EGRESS STAMPED.", "item"); (res.lines || []).forEach(sgPush); }
+    else if (res.dead) { TD_FEEL.shake("hard", now); TD_FEEL.flash(sg.player, "critical", now); sgFloat(sg.player, res.float || "SUMMARILY VOIDED.", "dmgTaken"); (res.lines || []).forEach(sgPush); }
+    draw(); if (TD_FEEL.hasActive(nowMs())) startFeel();
+  }
+  function drawSmashGrab() {
+    var sg = TD_SMASHGRAB.view(), now = nowMs();
+    var availW = Math.min(1500, Math.max(640, (window.innerWidth || 1280) - 244));
+    var availH = Math.min(900, Math.max(340, (window.innerHeight || 820) - 264));
+    TS = Math.max(16, Math.min(40, Math.floor(Math.min(availW / sg.w, availH / sg.h))));
+    FONT = (TS - 4) + "px Consolas, monospace";
+    var cvW = sg.w * TS, cvH = sg.h * TS;
+    if (cv.width !== cvW || cv.height !== cvH) { cv.width = cvW; cv.height = cvH; }
+    var shk = TD_FEEL.isEnabled() ? TD_FEEL.shakeOffset(now) : { dx: 0, dy: 0 };
+    ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    ctx.save(); ctx.translate(shk.dx, shk.dy);
+    for (var y = 0; y < sg.h; y++) for (var x = 0; x < sg.w; x++) {
+      var c = sg.base(x, y), px = x * TS, py = y * TS, gl = "", col = P.floorDim;
+      if (c === "#") { ctx.fillStyle = P.wall; ctx.fillRect(px, py, TS, TS); continue; }
+      if (c === "~") { ctx.fillStyle = P.water; ctx.fillRect(px, py, TS, TS); ctx.fillStyle = P.waterGlyph; ctx.fillText("≈", px + TS / 2, py + TS / 2 + 1); continue; }
+      ctx.fillStyle = P.floorBgDim; ctx.fillRect(px, py, TS, TS);
+      if (c === ">") { gl = ">"; col = P.door; }
+      ctx.fillStyle = col; if (gl) ctx.fillText(gl, px + TS / 2, py + TS / 2 + 1);
+    }
+    sg.arts.forEach(function (a) { if (a.taken || a.fallen) return; ctx.fillStyle = P.item; ctx.fillText(a.id === "A" ? "♦" : "✦", a.x * TS + TS / 2, a.y * TS + TS / 2 + 1); });
+    if (TD_FEEL.isEnabled()) TD_FEEL.active(now).forEach(function (e) { if (e.kind !== "flash" || !e.tile) return; ctx.globalAlpha = (1 - e.p) * 0.7; ctx.fillStyle = P[e.color] || P.critical; ctx.fillRect(e.tile.x * TS, e.tile.y * TS, TS, TS); ctx.globalAlpha = 1; });
+    ctx.fillStyle = P.player; ctx.fillText("@", sg.player.x * TS + TS / 2, sg.player.y * TS + TS / 2 + 1);
+    ctx.restore();
+    // clock banner / outcome, top-centre
+    ctx.font = "bold 18px Consolas, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    if (sg.escaped) { ctx.fillStyle = P.item; ctx.fillText("ESCAPED — clear of the §24. Press V to re-run.", cv.width / 2, 8); }
+    else if (sg.dead) { ctx.fillStyle = P.critical; ctx.fillText("SUMMARILY VOIDED. Press V to re-run.", cv.width / 2, 8); }
+    else if (sg.tripped) { ctx.fillStyle = sg.clock <= 6 ? P.critical : P.signal; ctx.fillText("ESCAPE: " + sg.clock + " turn" + (sg.clock === 1 ? "" : "s") + " — REACH THE > (carrying " + (sg.carried ? sg.carried.name : "nothing") + ")", cv.width / 2, 8); }
+    else { ctx.fillStyle = P.signal; ctx.fillText("§24 RIGGED VAULT — grab one (g on ♦/✦), then run for >", cv.width / 2, 8); }
+  }
+  function renderSgLog() {
+    msglogEl.innerHTML = sgLog.map(function (l) { return '<div class="line note">' + escapeHTML(l) + "</div>"; }).join("");
+    msglogEl.scrollTop = msglogEl.scrollHeight;
+  }
+  function handleSmashGrab(k, code) {
+    if (TD_SMASHGRAB.over()) { if (k === "v" || k === "Escape") { if (k === "v") sgEnter(); else { TD_SMASHGRAB.leave(); draw(); } } return; }
+    if (k === "Escape") { TD_SMASHGRAB.leave(); draw(); return; }
+    if (k === "g") { sgApply(TD_SMASHGRAB.get()); return; }
+    var dir = MOVE[k] || NUMPAD[code]; if (dir) { sgApply(TD_SMASHGRAB.move(dir)); return; }
+  }
+
   function _draw() {
+    if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) { drawSmashGrab(); renderSgLog(); renderDebug(); return; }   // throwaway §24 mode owns the screen while active
     var vw = sim.view();
     checkBarks(vw);   // the Bureau may add a line before we render the log
     // TOWN: a bigger fixed tile size + a SCROLLING CAMERA that follows the avatar — the
@@ -779,6 +844,17 @@
 
   function renderDebug() {
     if (debugPanel.style.display !== "block") return;
+    // THROWAWAY §24: when the rigged vault is active, the overlay measures the squeeze instead.
+    if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) {
+      var sgv = TD_SMASHGRAB.view();
+      debugBody.textContent = JSON.stringify({
+        smashgrab: { tripped: sgv.tripped, clock: sgv.clock, escapeTurns: sgv.escapeTurns, carried: sgv.carried ? sgv.carried.name : null,
+          fallenPending: sgv.fallenPending, runs: sgv.runs, dead: sgv.dead, escaped: sgv.escaped },
+        TUNE: TD_SMASHGRAB.TUNE,
+        feel: { frameMs: Math.round(lastFrameMs * 10) / 10, lastHooks: lastFeelHooks, active: TD_FEEL.active(nowMs()).length, juice: TD_FEEL.isEnabled() ? "ON" : "OFF (press j)" }
+      }, null, 2);
+      return;
+    }
     var v = sim.view();
     debugBody.textContent = JSON.stringify({
       feel: {
@@ -810,6 +886,9 @@
     inputT = nowMs();   // R3: stamp input arrival for the input->render latency readout
     if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
     if (k === "j") { TD_FEEL.setEnabled(!TD_FEEL.isEnabled()); if (feelRAF) { cancelAnimationFrame(feelRAF); feelRAF = null; } draw(); return; }   // "juice off" toggle (comparison / perf / accessibility)
+    // THROWAWAY §24 fun-test: V enters/re-runs the rigged vault; while active it owns input.
+    if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) { e.preventDefault(); handleSmashGrab(k, code); return; }
+    if (k === "v" && typeof TD_SMASHGRAB !== "undefined") { e.preventDefault(); sgEnter(); return; }
 
     // the REVIEW LOG (L) — your searchable memory of both streams
     if (raw === "L") { e.preventDefault(); if (reviewOpen) closeReview(); else openReview(); return; }
@@ -866,7 +945,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v20 — town flavor: canon venues + ambient townsfolk", BUILD = "1cdeafe";
+  var VERSION = "play-map v21 — §24 Smash-and-Grab fun-test (press V)", BUILD = "36018ee";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
 })();

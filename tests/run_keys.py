@@ -349,6 +349,22 @@ F.onload = function(){
     pk('j');
     ok('"juice on" toggle re-enables the feel layer', win.TD_FEEL.isEnabled()===true);
 
+    // ===================== §24 SMASH-AND-GRAB prototype (throwaway) ========
+    pk('v');
+    ok('V enters the §24 rigged-vault prototype', !!(win.TD_SMASHGRAB && win.TD_SMASHGRAB.active()));
+    var sgdbg=doc.getElementById('debugBody').textContent||'';
+    ok('R4 telemetry overlay measures the squeeze (clock + tunables)', /smashgrab/.test(sgdbg) && /escapeTurns/.test(sgdbg) && /TUNE/.test(sgdbg));
+    var px0=win.TD_SMASHGRAB.view().player.x; press('left');
+    ok('vault input is routed to the prototype (movement)', win.TD_SMASHGRAB.view().player.x < px0);
+    var Av=win.TD_SMASHGRAB.view().arts.filter(function(a){return a.id==='A';})[0];
+    var guard=0; while(win.TD_SMASHGRAB.view().player.x>Av.x && guard++<30) press('left');
+    guard=0; while(win.TD_SMASHGRAB.view().player.y>Av.y && guard++<30) press('up');
+    pk('g');
+    ok('grabbing in-mode trips the collapse (overlay shows the clock ticking)',
+       win.TD_SMASHGRAB.view().tripped && /"clock"/.test(doc.getElementById('debugBody').textContent||''));
+    pk('Escape');
+    ok('Escape leaves the prototype back to the live game', !win.TD_SMASHGRAB.active());
+
   } catch(e){ R.push('HARNESS_ERROR '+(e&&e.stack?e.stack:e)); }
   var fails=R.filter(function(x){return x.indexOf('FAIL')===0||x.indexOf('HARNESS')===0;}).length;
   document.getElementById('out').textContent=R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length;

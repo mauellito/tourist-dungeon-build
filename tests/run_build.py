@@ -20,6 +20,7 @@ SUITES = [
     ("game-feel layer (TD_FEEL)", "run_feel.py"),
     ("descent contraption invariant (no soft-lock)", "run_contraption.py"),
     ("LIVE juice integration (feel fires in play)", "run_juice.py"),
+    ("Smash-and-Grab §24 fun-test (TD_SMASHGRAB)", "run_smashgrab.py"),
     ("town composition law (TD_TOWN)", "run_towncompose.py"),
     ("procedural TOWN generator + law-suite", "run_towngen.py"),
     ("FIXED authored town map + randomized tenants", "run_townmap.py"),
