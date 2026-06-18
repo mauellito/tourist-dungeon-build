@@ -213,6 +213,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <script src="rng.js"></script>
+<script src="resolve.js"></script>
 <script src="vaultfmt.js"></script>
 <script src="vaultlib.js"></script>
 <script src="lawsuite.js"></script>
@@ -989,7 +990,7 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v24 — Smash-and-Grab v5: collapse-chase + loot-scores (V)", BUILD = "f8ec358";
+  var VERSION = "play-map v25 — Gate 1: combat+smash-grab math extracted to pure TD_RESOLVE", BUILD = "be01c7c";
   document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
   newGame(urlSeed() || 7);
   if (location.hash.indexOf("#sg") === 0 && typeof TD_SMASHGRAB !== "undefined") {   // dev hook: auto-enter the §24 fun-test for render checks

@@ -116,6 +116,7 @@ def main():
         sys.exit("no chrome")
     os.makedirs(TMP, exist_ok=True)
     parts = ['<!doctype html><meta charset=utf-8><title>p</title><pre id="out">p</pre>',
+             "<script>\n" + open(os.path.join(ENGINE, "resolve.js"), encoding="utf-8").read() + "\n</script>",
              "<script>\n" + open(os.path.join(ENGINE, "smashgrab.js"), encoding="utf-8").read() + "\n</script>", REP]
     runner = os.path.join(TMP, "smashgrab_runner.html"); open(runner, "w", encoding="utf-8").write("\n".join(parts))
     ud = tempfile.mkdtemp(prefix="td_sg_")

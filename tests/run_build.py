@@ -20,6 +20,8 @@ SUITES = [
     ("game-feel layer (TD_FEEL)", "run_feel.py"),
     ("descent contraption invariant (no soft-lock)", "run_contraption.py"),
     ("LIVE juice integration (feel fires in play)", "run_juice.py"),
+    ("pure resolution core — combat + smash-grab (TD_RESOLVE)", "run_resolve.py"),
+    ("balance sim — per-policy distribution + determinism (tests/sim.js)", "run_sim.py"),
     ("Smash-and-Grab §24 fun-test (TD_SMASHGRAB)", "run_smashgrab.py"),
     ("procedural SFX stub hooks (TD_SFX)", "run_sfx.py"),
     ("town composition law (TD_TOWN)", "run_towncompose.py"),

@@ -26,7 +26,7 @@ ENGINE = os.path.join(ROOT, "engine")
 TMPDIR = os.path.join(ROOT, "tests", ".tmp")
 # EXACT play-map.html load order (the live build):
 ENGINE_FILES = [
-    "rng.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js", "assembler.js",
+    "rng.js", "resolve.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js", "assembler.js",
     "checker.js", "vaults.js", "generator.js", "interpreter.js", "mapmode.js",
     "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js", "game.js", "ui.js",
 ]

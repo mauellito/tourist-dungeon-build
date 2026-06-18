@@ -27,19 +27,17 @@ var TD_MAP = (function () {
   var STEP4 = ["up", "down", "left", "right"];
 
   // --- living-systems tuning (bible §4.13/§4.15 calibration) ----------------
-  var PLAYER_DMG = 20;
+  // GATE 1: combat/damage numbers + creature stats now live in the pure TD_RESOLVE.COMBAT (single
+  // source of truth); mapmode reads them and calls TD_RESOLVE for the attack/hp/death math.
+  var PLAYER_DMG = TD_RESOLVE.COMBAT.PLAYER_DMG;
   // three distinct simple behaviours: wanderer (drifts, occasionally toward you),
   // lurker (still until you come close, then hunts), chaser (relentless pursuit).
-  var CREATURE = {
-    wanderer: { hp: 30, dmg: 8,  name: "a shuffling nocent thing", glyph: "r" },
-    lurker:   { hp: 45, dmg: 16, name: "a patient lurker",         glyph: "L" },
-    chaser:   { hp: 26, dmg: 11, name: "a fervent docent",         glyph: "d" }
-  };
+  var CREATURE = TD_RESOLVE.COMBAT.CREATURES;
   // generous slack: walking is cheap, fighting costs, resting recovers fatigue,
   // and a full belly carries you across several levels before food matters.
   var FATIGUE_PER_STEP = 0.5, FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4;
-  var SATIATION_PER_STEP = 0.3, STARVE_HP = 2, EXHAUST_HP = 1;
-  var FALL_DMG = 25;   // the chasm exit: a desperate fall to the level below
+  var SATIATION_PER_STEP = 0.3, STARVE_HP = TD_RESOLVE.COMBAT.STARVE_HP, EXHAUST_HP = TD_RESOLVE.COMBAT.EXHAUST_HP;
+  var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
   // the secret-grammar vocabulary (CLAUDE.md): a fixed, learnable set of tells
   var TELLS = (typeof TD_VAULTS !== "undefined" && TD_VAULTS.TELLS) || {
     draft:  { text: "A cold draft slides from a seam in the wall.", kind: "heard", obj: "OBJ" },
@@ -683,8 +681,8 @@ var TD_MAP = (function () {
 
     function lowHP() { return ctrl.meters.hp > 0 && ctrl.meters.hp < 0.25 * ctrl.meters.hpMax; }
     function hurt(amount, source) {
-      ctrl.meters.hp -= amount;
-      if (ctrl.meters.hp <= 0) { ctrl.meters.hp = 0; die(combatCause(source)); }
+      var r = TD_RESOLVE.applyDamage(ctrl.meters.hp, amount);
+      ctrl.meters.hp = r.hp; if (r.dead) die(combatCause(source));
     }
     function die(cause) { if (!ctrl.dead) { ctrl.dead = true; ctrl.cause = cause; logMsg(cause, true); } }
 
@@ -743,8 +741,8 @@ var TD_MAP = (function () {
       }
       if (cr) {
         ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt" });
-        cr.hp -= PLAYER_DMG;
-        var killed = cr.hp <= 0;
+        var blow = TD_RESOLVE.strike(cr.hp, PLAYER_DMG);
+        cr.hp = blow.hp; var killed = blow.killed;
         if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
         else logMsg("You serve " + cr.name + " notice (" + PLAYER_DMG + " hp; " + cr.hp + "/" + cr.maxHp + " stands).", false);
         meterTick("fight");
@@ -890,10 +888,10 @@ var TD_MAP = (function () {
       var iv = interp.view(), down = null;
       iv.options.forEach(function (o) { var tl = (world.nodes[o.to] || {}).level; if (typeof tl === "number" && tl > curLevel()) down = o; });
       if (!down) { logMsg("You peer over the edge; there is no bottom worth reaching from here.", false); return { fell: false }; }
-      ctrl.meters.hp = Math.max(0, ctrl.meters.hp - FALL_DMG);
+      var landed = TD_RESOLVE.applyDamage(ctrl.meters.hp, FALL_DMG); ctrl.meters.hp = landed.hp;
       logMsg("You throw yourself into the dark and land badly (−" + FALL_DMG + ").", true);
       senses("Wind, then floor; the level above closes overhead.", "heard", "OBJ");
-      if (ctrl.meters.hp <= 0) { die("The visitor took the chasm for an exit; the chasm took the visitor."); return { fell: true, dead: true }; }
+      if (landed.dead) { die("The visitor took the chasm for an exit; the chasm took the visitor."); return { fell: true, dead: true }; }
       var r = interp.choose(down.id);
       ctrl.node = interp.state.node; ctrl.won = !!r.complete; shared.turn += 1;
       buildView();
