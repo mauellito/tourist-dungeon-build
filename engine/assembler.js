@@ -254,7 +254,9 @@ var TD_ASSEMBLER = (function () {
       else { cands.sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); }); var half = Math.max(1, Math.ceil(cands.length / 2)); v = cands[rng.int(0, half - 1)]; }
       var ox = L.x0 + 1 + rng.int(0, availW - v.w), oy = L.y0 + 1 + rng.int(0, availH - v.h);
       fpCount[fpKey(v)] = (fpCount[fpKey(v)] || 0) + 1;
-      rooms.push(stampVault(v, ox, oy, (seed >>> 0) + ox * 131 + oy * 17 + li + 1, wantCache));
+      var rec = stampVault(v, ox, oy, (seed >>> 0) + ox * 131 + oy * 17 + li + 1, wantCache);
+      if (isLandmark) rec.landmark = true;                                    // the dominant room stays clean (no terrain clutter)
+      rooms.push(rec);
     }
     if (rooms.length < Math.min(8, B.minRooms || 8)) return null;
 
@@ -478,7 +480,47 @@ var TD_ASSEMBLER = (function () {
     var u = upR && safeStairCell(upR); if (u) { setc(u[0], u[1], ".", "stair"); stairs.push({ x: u[0], y: u[1], kind: "up", hidden: false }); }
     var dn = dnR && safeStairCell(dnR); if (dn) { setc(dn[0], dn[1], ".", "stair"); stairs.push({ x: dn[0], y: dn[1], kind: "down", hidden: rng.chance(0.4) }); }
 
-    return { w: W, h: H, grid: grid, tag: tag, entry: { x: entryCell.x, y: entryCell.y }, stairs: stairs, rooms: rooms, type: typeName || "STANDARD", minRooms: B.minRooms };
+    // HARVEST R3 — SKIN-DRIVEN TERRAIN PATCHES (GEOMETRY ONLY). Stamp a little skin-appropriate
+    // terrain INSIDE rooms, off the sole critical path, keeping the floor connected (impassable
+    // patches are BFS-verified or reverted) and within 3-8% of walkable area. NO gameplay effect is
+    // wired (no damage / movement-cost / smell) — FLAGGED: water '~' is passable; rubble 'o' and
+    // chasm 'X' default IMPASSABLE (like authored pillars), pending a later passability ruling.
+    var skin = ["stone", "ruin", "flooded"][_h(seed >>> 0, 0, 5) % 3];
+    function placeTerrainPatches() {
+      function fw(x, y) { return inb(x, y) && (grid[y][x] === "." || grid[y][x] === "~"); }
+      var WT = { flooded: [["~", 0.80], ["o", 0.15], ["X", 0.05]], ruin: [["o", 0.65], ["X", 0.20], ["~", 0.15]], stone: [["X", 0.45], ["o", 0.40], ["~", 0.15]] }[skin];
+      function pickTile() { var r = rng.next(), a = 0; for (var i = 0; i < WT.length; i++) { a += WT[i][1]; if (r < a) return WT[i][0]; } return WT[0][0]; }
+      var crit = {};                                                          // the sole critical path up->down, kept clear
+      if (stairs.length >= 2) {
+        var s0 = stairs[0], s1 = stairs[1], q = [[s0.x, s0.y]], prev = {}, seen = {}; seen[s0.x + "," + s0.y] = 1; var found = false;
+        while (q.length) { var c = q.shift(); if (c[0] === s1.x && c[1] === s1.y) { found = true; break; } for (var d = 0; d < 4; d++) { var nx = c[0] + D4[d][0], ny = c[1] + D4[d][1], k = nx + "," + ny; if (fw(nx, ny) && !seen[k]) { seen[k] = 1; prev[k] = c[0] + "," + c[1]; q.push([nx, ny]); } } }
+        if (found) { var kk = s1.x + "," + s1.y; while (kk) { crit[kk] = 1; kk = prev[kk]; } }
+      }
+      var lmCells = {}; rooms.forEach(function (r) { if (r.landmark && r.floor) r.floor.forEach(function (c) { lmCells[c[0] + "," + c[1]] = 1; }); });   // keep the dominant landmark room clear
+      function cand(x, y) { if (!inb(x, y) || grid[y][x] !== "." || tag[y][x] !== "room" || crit[x + "," + y] || lmCells[x + "," + y]) return false; for (var d = 0; d < 4; d++) { var t = tag[y + D4[d][1]][x + D4[d][0]]; if (t === "door" || t === "stair") return false; } return true; }
+      function connected() {
+        if (stairs.length < 2) return true;
+        var q = [[stairs[0].x, stairs[0].y]], seen = {}, n = 1; seen[stairs[0].x + "," + stairs[0].y] = 1;
+        while (q.length) { var c = q.shift(); for (var d = 0; d < 4; d++) { var nx = c[0] + D4[d][0], ny = c[1] + D4[d][1], k = nx + "," + ny; if (fw(nx, ny) && !seen[k]) { seen[k] = 1; n++; q.push([nx, ny]); } } }
+        var tot = 0; for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (fw(x, y)) tot++;
+        return n === tot && seen[stairs[1].x + "," + stairs[1].y];
+      }
+      var wc = 0; for (var y2 = 0; y2 < H; y2++) for (var x2 = 0; x2 < W; x2++) if (fw(x2, y2)) wc++;
+      var target = Math.round(wc * (0.03 + rng.next() * 0.05)), placed = 0, tries = target * 40;
+      while (placed < target && tries-- > 0) {
+        var x = rng.int(1, W - 2), y = rng.int(1, H - 2); if (!cand(x, y)) continue;
+        var tile = pickTile(), blob = [[x, y]], grow = rng.int(1, 3);
+        for (var g = 0; g < grow; g++) { var b = blob[rng.int(0, blob.length - 1)], dd = D4[rng.int(0, 3)], gx = b[0] + dd[0], gy = b[1] + dd[1]; if (cand(gx, gy) && !blob.some(function (cc) { return cc[0] === gx && cc[1] === gy; })) blob.push([gx, gy]); }
+        var saved = blob.map(function (cc) { return [cc[0], cc[1], grid[cc[1]][cc[0]], tag[cc[1]][cc[0]]]; });
+        blob.forEach(function (cc) { if (tile === "~") setc(cc[0], cc[1], "~", "water"); else setc(cc[0], cc[1], tile, "wall"); });
+        if (tile !== "~" && !connected()) { saved.forEach(function (s) { setc(s[0], s[1], s[2], s[3]); }); continue; }   // impassable patch would split the floor -> revert
+        placed += blob.length;
+      }
+      return placed;
+    }
+    if (doLandmark) placeTerrainPatches();   // standard floors only (same scope as the landmark); NODE keeps its runtime water
+
+    return { w: W, h: H, grid: grid, tag: tag, entry: { x: entryCell.x, y: entryCell.y }, stairs: stairs, rooms: rooms, skin: skin, type: typeName || "STANDARD", minRooms: B.minRooms };
   }
 
   // generateForLevel — the DRIFT gate in action: produce a STANDARD level that passes BOTH the
