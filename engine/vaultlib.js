@@ -6,6 +6,22 @@
 
 var TD_VAULTLIB = (function () {
   var SOURCES = [
+  // landmark-hall.des
+  `NAME: ws_landmark_hall
+TAGS: worked_stone room large landmark
+WEIGHT: 3
+EDGES: N door, S door, W door, E door
+SUBST: ? = . . o
+MAP
+#####+#####
+#.o.....o.#
+#.........#
++....?....#
+#.........#
+#....?....+
+#.o.....o.#
+#####+#####
+ENDMAP`,
   // large-hall.des
   `NAME: ws_large_hall
 TAGS: worked_stone room large

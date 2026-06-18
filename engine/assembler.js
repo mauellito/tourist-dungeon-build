@@ -188,15 +188,49 @@ var TD_ASSEMBLER = (function () {
     function fillCarve(x, y) { return canCarve(x, y) && straightOK(x, y); }   // filler: denser allowed (chunk rock / raise walkable) but still no >=4 straight run
 
     var MINW = B.minW || 10, MINH = B.minH || 8, MAXW = B.maxW || 15, MAXH = B.maxH || 10, leaves = [];
+    var fcx = W / 2, fcy = H / 2;   // floor centre — the landmark grows here (R1)
+    // R1 landmark applies to STANDARD-sized floors and larger; the small live NODE floor (41x23) is too
+    // tight to seat a 1.8x-median central landmark without dropping its law pass-rate, so it is excluded
+    // (its baseline green is preserved). FLAGGED: the live per-node floor shows no landmark yet.
+    var doLandmark = (W >= 45 && H >= 30);
     (function bsp(x0, y0, x1, y1, depth) {
       var w = x1 - x0 + 1, h = y1 - y0 + 1;
       var canLR = w >= 2 * MINW + 1, canTB = h >= 2 * MINH + 1, must = (w > MAXW || h > MAXH);
       if (!canLR && !canTB) { leaves.push({ x0: x0, y0: y0, x1: x1, y1: y1 }); return; }
       if (!must && depth >= 3 && rng.chance(0.20)) { leaves.push({ x0: x0, y0: y0, x1: x1, y1: y1 }); return; }
       var lr = (canLR && canTB) ? ((w / MAXW) >= (h / MAXH)) : canLR;
-      if (lr) { var c1 = x0 + MINW + rng.int(0, w - 2 * MINW - 1); bsp(x0, y0, c1, y1, depth + 1); bsp(c1 + 1, y0, x1, y1, depth + 1); }
-      else { var c2 = y0 + MINH + rng.int(0, h - 2 * MINH - 1); bsp(x0, y0, x1, c2, depth + 1); bsp(x0, c2 + 1, x1, y1, depth + 1); }
+      // HARVEST R1: when a region straddles the floor centre, push the cut to an extreme so the centre
+      // stays in the LARGER child — over the recursion this grows ONE big leaf around the centre to host
+      // the dominant landmark room. Off-centre regions keep their normal random cut (layout variety).
+      if (lr) {
+        var loW = x0 + MINW, hiW = x1 - MINW - 1, c1;
+        if (doLandmark && fcx >= x0 && fcx <= x1) c1 = (fcx <= (x0 + x1) / 2) ? hiW : loW;
+        else c1 = loW + rng.int(0, hiW - loW);
+        bsp(x0, y0, c1, y1, depth + 1); bsp(c1 + 1, y0, x1, y1, depth + 1);
+      } else {
+        var loH = y0 + MINH, hiH = y1 - MINH - 1, c2;
+        if (doLandmark && fcy >= y0 && fcy <= y1) c2 = (fcy <= (y0 + y1) / 2) ? hiH : loH;
+        else c2 = loH + rng.int(0, hiH - loH);
+        bsp(x0, y0, x1, c2, depth + 1); bsp(x0, c2 + 1, x1, y1, depth + 1);
+      }
     })(1, 1, W - 2, H - 2, 0);
+
+    // HARVEST R1 — LANDMARK: one leaf hosts the floor's DOMINANT room (its largest fitting vault) so a
+    // walked floor has one clearly dominant room. The host must be BIG ENOUGH to seat a >=1.8x-median
+    // vault, biased CENTRAL: score = leaf area minus a penalty for centroid distance from the floor
+    // centre. It stays a normal tagged room (joins via doors, obeys all laws); the gate re-rolls on any
+    // law failure. (If the floor is small/uniform, the harness records the off-centre fallback rate.)
+    var landmarkLeaf = -1, lmScore = -1e9;
+    if (doLandmark) for (var lj = 0; lj < leaves.length; lj++) {
+      var Lj = leaves[lj], lcx = (Lj.x0 + Lj.x1) / 2, lcy = (Lj.y0 + Lj.y1) / 2;
+      var larea = (Lj.x1 - Lj.x0 + 1) * (Lj.y1 - Lj.y0 + 1);
+      var contains = (fcx >= Lj.x0 && fcx <= Lj.x1 && fcy >= Lj.y0 && fcy <= Lj.y1) ? 1 : 0;
+      var dist = Math.abs(lcx - fcx) + Math.abs(lcy - fcy);
+      // CENTRAL first (the leaf straddling the floor centre), then biggest such leaf — the dominant
+      // room lands central; size breaks ties. A big edge leaf no longer wins over a central one.
+      var score = contains * 100000 + larea - 3 * dist;
+      if (score > lmScore) { lmScore = score; landmarkLeaf = lj; }
+    }
 
     // one authored vault per leaf, JITTERED within the leaf (random offset => varied positions, no
     // shared edge-lines, honest rock around it). Some leaves get a secret cache; pick varied sizes.
@@ -205,15 +239,18 @@ var TD_ASSEMBLER = (function () {
     for (var li = 0; li < leaves.length; li++) {
       var L = leaves[li], availW = (L.x1 - L.x0 + 1) - 2, availH = (L.y1 - L.y0 + 1) - 2;   // 1-cell margin per side => 2-cell carveable channel between leaves
       if (availW < 5 || availH < 4) continue;
-      var wantCache = rng.chance(0.16);
+      var isLandmark = (li === landmarkLeaf);
+      var wantCache = isLandmark ? false : rng.chance(0.16);                  // the landmark is always a real room
       var fits = function (v) { return v.w <= availW && v.h <= availH && (fpCount[fpKey(v)] || 0) < 3; };   // cap 3 per footprint
       var cands = POOL.filter(function (v) { return (wantCache ? isSecretVault(v) : !isSecretVault(v)) && fits(v); });
       if (wantCache && !cands.length) { wantCache = false; cands = POOL.filter(function (v) { return !isSecretVault(v) && fits(v); }); }
       if (!cands.length) continue;
       // VARIETY for size-spread: among fitting vaults (footprint not yet maxed) pick from the
       // larger half (keeps coverage up for L3/L9 while spreading footprints so <=3 share a size).
+      // The LANDMARK leaf instead takes the LARGEST fitting vault — the floor's dominant room.
       var v;
-      if (wantCache) v = weightedPick(cands);
+      if (isLandmark && !wantCache) { cands.sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); }); v = cands[0]; }
+      else if (wantCache) v = weightedPick(cands);
       else { cands.sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); }); var half = Math.max(1, Math.ceil(cands.length / 2)); v = cands[rng.int(0, half - 1)]; }
       var ox = L.x0 + 1 + rng.int(0, availW - v.w), oy = L.y0 + 1 + rng.int(0, availH - v.h);
       fpCount[fpKey(v)] = (fpCount[fpKey(v)] || 0) + 1;

@@ -31,10 +31,10 @@ function openCorners(g){var H=g.length,W=g[0].length,n=0;for(var y=0;y<H;y++)for
   if(walk(g,x+1,y+1)&&!walk(g,x+1,y)&&!walk(g,x,y+1))n++; if(walk(g,x-1,y+1)&&!walk(g,x-1,y)&&!walk(g,x,y+1))n++;}return n;}
 function roomComps(m){var g=m.grid,t=m.tag,H=g.length,W=g[0].length,seen={},rooms=[];
   function rm(x,y){return y>=0&&x>=0&&y<H&&x<W&&(t[y][x]==='room'||t[y][x]==='landmark'||t[y][x]==='loot');}
-  for(var y=0;y<H;y++)for(var x=0;x<W;x++){if(!rm(x,y)||seen[x+','+y])continue;var st=[[x,y]],c=0;seen[x+','+y]=1;var minx=x,maxx=x,miny=y,maxy=y;
-    while(st.length){var p=st.pop();c++;if(p[0]<minx)minx=p[0];if(p[0]>maxx)maxx=p[0];if(p[1]<miny)miny=p[1];if(p[1]>maxy)maxy=p[1];
+  for(var y=0;y<H;y++)for(var x=0;x<W;x++){if(!rm(x,y)||seen[x+','+y])continue;var st=[[x,y]],c=0;seen[x+','+y]=1;var minx=x,maxx=x,miny=y,maxy=y,sx=0,sy=0;
+    while(st.length){var p=st.pop();c++;sx+=p[0];sy+=p[1];if(p[0]<minx)minx=p[0];if(p[0]>maxx)maxx=p[0];if(p[1]<miny)miny=p[1];if(p[1]>maxy)maxy=p[1];
       [[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var nx=p[0]+d[0],ny=p[1]+d[1];if(rm(nx,ny)&&!seen[nx+','+ny]){seen[nx+','+ny]=1;st.push([nx,ny]);}});}
-    if(c>=6)rooms.push({size:c,bw:maxx-minx+1,bh:maxy-miny+1});}
+    if(c>=6)rooms.push({size:c,bw:maxx-minx+1,bh:maxy-miny+1,cx:sx/c,cy:sy/c});}
   return rooms;}
 function tagCount(m,tg){var n=0;for(var y=0;y<m.h;y++)for(var x=0;x<m.w;x++)if(m.tag[y][x]===tg)n++;return n;}
 function median(a){if(!a.length)return 0;var s=a.slice().sort(function(x,y){return x-y;}),i=s.length>>1;return s.length%2?s[i]:(s[i-1]+s[i])/2;}
@@ -43,6 +43,7 @@ function gen(seed,type){return A.generateGated(seed,type||"STANDARD",200);}  // 
 try{
   var N=30, passN=0, conn1=0, corner0=0, stairsOK=0, secretsOK=0, doorOK=0;
   var roomCounts=[], covers=[], medAreas=[], secrets=[], notched=[], landmarkRatio=[], terrainPct=[];
+  var lmOK=0, lmCentral=0, lmFallback=0;
   for(var s=1;s<=N;s++){
     var res=gen(s); if(!res||!res.map){ok('seed '+s+' produced a map',false);continue;}
     var m=res.map,g=m.grid;
@@ -61,6 +62,10 @@ try{
     // interest measures (0 at baseline): notched rooms (size < bw*bh), landmark ratio (max/median area), terrain %
     var nn=rc.filter(function(r){return r.size < r.bw*r.bh;}).length; notched.push(rc.length?Math.round(100*nn/rc.length):0);
     var mx=Math.max.apply(null,areas||[0]),md=median(areas)||1; landmarkRatio.push(rc.length?(mx/md).toFixed(2):"0");
+    // R1 LANDMARK acceptance: one dominant room (>=1.8x median area), centroid in central 50%
+    if(rc.length){ var big=rc[0]; for(var ri=1;ri<rc.length;ri++)if(rc[ri].size>big.size)big=rc[ri];
+      var has=(mx/md)>=1.8, cen=(big.cx>=m.w*0.25&&big.cx<=m.w*0.75&&big.cy>=m.h*0.25&&big.cy<=m.h*0.75);
+      if(has)lmOK++; if(has&&cen)lmCentral++; if(has&&!cen)lmFallback++; }
     var terr=0; for(var y2=0;y2<m.h;y2++)for(var x2=0;x2<m.w;x2++){var c=g[y2][x2];if(c==='~'||c==='X'||c==='o')terr++;} terrainPct.push(walkN?Math.round(1000*terr/walkN)/10:0);
   }
   ok('BASELINE: law-suite GREEN on all '+N+' regular seeds', passN===N, passN+'/'+N+' passed');
@@ -69,6 +74,7 @@ try{
   ok('HARD: both stairs + entry present on all seeds', stairsOK===N, stairsOK+'/'+N);
   ok('HARD: door discipline — tagged doors present on all seeds', doorOK===N, doorOK+'/'+N);
   ok('HARD: secrets present (gate value) on all seeds', secretsOK===N, secretsOK+'/'+N);
+  ok('R1 LANDMARK: a central dominant room >=1.8x median on the strong majority (rest = largest-room fallback)', lmOK>=Math.ceil(0.85*N) && lmCentral>=Math.ceil(0.80*N), lmOK+'/'+N+' >=1.8x (central '+lmCentral+'; fallback '+(N-lmOK)+'/'+N+')');
   // spot-check other sizes
   var nodeP=0,hallP=0; for(var k=1;k<=6;k++){if((gen(k,"NODE")||{}).passed)nodeP++; if((gen(k,"HALLS")||{}).passed)hallP++;}
   ok('spot-check NODE passes', nodeP>=5, nodeP+'/6'); ok('spot-check HALLS passes', hallP>=5, hallP+'/6');
