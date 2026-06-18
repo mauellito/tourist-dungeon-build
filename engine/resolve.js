@@ -32,16 +32,26 @@ var TD_RESOLVE = (function () {
   // ====================== SMASH-AND-GRAB (pure) ======================
   var SG = (function () {
     var TUNE = {
-      ESCAPE_TURNS: 20,        // slab-door budget: ticks to fully seal the slab ahead (lower = faster)
+      // ---- CALIBRATED (post-Gate-1 balance pass). The slab (timer) is the primary generic threat;
+      // the collapse is DEMOTED to a conditional edge that only catches runs SLOWED by a fight (it does
+      // not chase a clean sprinter — DELAY ~6 ticks of head-start), and a stronger footrace rate is
+      // reserved for the chasm SET-PIECE. These two split the deaths so no single cause dominates. ----
+      ESCAPE_TURNS: 17,        // slab-door budget: ticks to fully seal the slab ahead (THE primary generic threat)
       WEIGHT_PER_TREASURE: 2,  // each grabbed treasure adds this much LOAD
-      SPRINT_THRESHOLD: 4,     // LOAD strictly above this => SPRINT disabled (both threats gain 2x on you)
-      HEAVY_PACE: 2,           // ticks per move when over-loaded (vs 1 when sprinting)
-      COLLAPSE_DELAY: 4,       // a head-start: ticks before the collapse-edge starts advancing (telegraph)
-      COLLAPSE_RATE: 0.7,      // cells the death-edge advances per tick (< 1 so a LIGHT run outruns it)
-      TREMOR: "hard"           // grab/seal shake severity: soft | med | hard
+      SPRINT_THRESHOLD: 2,     // LOAD strictly above this => SPRINT disabled. Cautious can keep ONE treasure light.
+      HEAVY_PACE: 1.165,       // ticks/move when over-loaded (vs 1 sprinting) — the weight-as-pressure term
+      COLLAPSE_SETPIECE: false,    // the chasm set-piece flips this true to use the strong footrace rate below
+      COLLAPSE_DELAY: 5.9,         // head-start before the edge advances — long enough that a clean run outpaces it
+      COLLAPSE_RATE: 0.88,         // generic edge speed — catches runs that LOST TIME (a fight), not clean sprinters
+      COLLAPSE_RATE_SETPIECE: 1.0, // strong footrace speed, reserved for the chasm/collapse set-piece only
+      TREMOR: "hard",          // grab/seal shake severity: soft | med | hard
+      LOOT: null               // optional per-treasure VALUE override (array, in TREAS order); else TREASVAL
     };
     var RECOVERY_DEPTH = 3;
-    var TREASVAL = { "6,5": 15, "6,10": 25, "15,5": 30, "15,10": 50 };
+    // Loot is valued for GREED-BY-QUANTITY: near-flat values so carrying MORE (greedy) banks more than
+    // carrying the best two (cautious). A steep "richest-deep" gradient is reserved for set-pieces — under
+    // a steep gradient the cautious top-two haul rivals the greedy total and greed cannot pay (calibration).
+    var TREASVAL = { "6,5": 25, "6,10": 25, "15,5": 25, "15,10": 25 };
     var ROWS = [
       "###############################",
       "#####..............############",
@@ -83,7 +93,7 @@ var TD_RESOLVE = (function () {
       return {
         active: false, player: { x: ENTRY.x, y: ENTRY.y },
         arts: ARTS.map(function (a) { return { id: a.id, name: ARTNAMES[a.id], x: a.x, y: a.y, taken: false, fallen: false }; }),
-        treas: TREAS.map(function (t) { return { x: t.x, y: t.y, taken: false, value: TREASVAL[t.x + "," + t.y] || 5 }; }),
+        treas: TREAS.map(function (t, i) { return { x: t.x, y: t.y, taken: false, value: (TUNE.LOOT && TUNE.LOOT[i] != null) ? TUNE.LOOT[i] : (TREASVAL[t.x + "," + t.y] || 5) }; }),
         load: 0, score: 0, tripped: false, doorClosed: 0, carried: null, treasCarried: 0,
         passedSlab: false, dead: false, escaped: false, swallowed: false, fallenPending: null, runs: 0,
         origin: null, dist: null
@@ -91,7 +101,7 @@ var TD_RESOLVE = (function () {
     }
 
     function sealed(S) { return S.tripped && S.doorClosed >= TUNE.ESCAPE_TURNS; }
-    function frontier(S) { return S.tripped ? Math.max(0, (S.doorClosed - TUNE.COLLAPSE_DELAY)) * TUNE.COLLAPSE_RATE : -1; }
+    function frontier(S) { var rate = TUNE.COLLAPSE_SETPIECE ? TUNE.COLLAPSE_RATE_SETPIECE : TUNE.COLLAPSE_RATE; return S.tripped ? Math.max(0, (S.doorClosed - TUNE.COLLAPSE_DELAY)) * rate : -1; }
     function distAt(S, x, y) { return S.dist ? S.dist[x + "," + y] : undefined; }
     function rubble(S, x, y) { if (!S.tripped || !S.dist) return false; var d = S.dist[x + "," + y]; return (d !== undefined) && d <= frontier(S); }
     function playerLead(S) { var d = distAt(S, S.player.x, S.player.y); return (d === undefined) ? 99 : (d - frontier(S)); }

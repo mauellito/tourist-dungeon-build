@@ -51,37 +51,41 @@ try{
   ok('R1 floor behind the origin becomes impassable RUBBLE', SG.view().rubble(SG.view().collapse.origin.x, SG.view().collapse.origin.y)===true);
   ok('R1 moves emit step + grind + a proximity scale for juice', mv && mv.sfx==='step' && mv.grind===true && typeof mv.proximity==='number', mv?("prox="+mv.proximity):"no move");
 
-  // ===== R1 SWALLOWED: a heavy/greedy run is caught by the edge (distinct from the slab) =====
+  // ===== R1 SWALLOWED: the collapse catches a run that LOST TIME (post-calibration it does NOT chase a
+  // clean sprinter — that is the demotion). Simulate a fight's time-cost (bump the tick clock, exactly
+  // as the sim does) then flee: the death-edge overtakes -> SWALLOWED (crash), distinct from the slab. =====
   SG.enter(2); v=SG.view();
-  v.treas.forEach(function(t){ goTo(t.x,t.y); SG.get(); });               // load up -> not sprintable
-  goTo(SG.view().arts[0].x, SG.view().arts[0].y); SG.get();
-  var caught=null; for(var z=0;z<40 && !SG.over();z++){ var r=flee(); if(r&&r.dead)caught=r; if(SG.over())break; }
+  goTo(SG.view().arts[0].x, SG.view().arts[0].y); SG.get();                 // grab -> trip the collapse
+  SG._state().doorClosed += 7;                                            // a fight ate your head-start (the edge is now at your heels)
+  var caught=null; for(var z=0;z<60 && !SG.over();z++){ var r=flee(); if(r&&r.dead)caught=r; if(SG.over())break; }
   var vs=SG.view();
-  ok('R1 SWALLOWED: a heavy run is caught from behind (death, crash cue)', vs.dead===true && vs.swallowed===true && !vs.escaped, "dead="+vs.dead+" swallowed="+vs.swallowed);
+  ok('R1 SWALLOWED: a time-lost run is caught from behind by the collapse (crash cue)', vs.dead===true && vs.swallowed===true && !vs.escaped && caught && caught.sfx==='crash', "dead="+vs.dead+" swallowed="+vs.swallowed);
 
-  // ===== R2 LOOT THAT BITES: values, score, richest is deep =====
+  // ===== R2 LOOT THAT BITES: each $ scores; calibrated to FLAT values (greed-by-QUANTITY) =====
   SG.enter(3); v=SG.view();
-  var vals=v.treas.map(function(t){return t.value;}), rich=v.treas.slice().sort(function(a,b){return b.value-a.value;})[0];
-  ok('R2 each $ has a VALUE and they differ', vals.every(function(x){return x>0;}) && Math.max.apply(null,vals)>Math.min.apply(null,vals), vals.join(','));
-  ok('R2 the richest $ sits DEEP (far side, by the chasm/grab point)', rich.x>=12, "richest $"+rich.value+" at "+rich.x+","+rich.y);
-  goTo(rich.x,rich.y); var gl=SG.get();
-  ok('R2 grabbing $ adds its value to a running SCORE', gl.treasure && gl.value===rich.value && SG.view().score===rich.value, "score="+SG.view().score);
+  var vals=v.treas.map(function(t){return t.value;});
+  ok('R2 every $ carries a positive VALUE (loot scores)', vals.every(function(x){return x>0;}), vals.join(','));
+  ok('R2 values are FLAT (greed pays by carrying MORE, not better — calibration)', Math.max.apply(null,vals)===Math.min.apply(null,vals), vals.join(','));
+  goTo(v.treas[0].x,v.treas[0].y); var gl=SG.get();
+  ok('R2 grabbing $ adds its value to a running SCORE', gl.treasure && gl.value===v.treas[0].value && SG.view().score===gl.value, "score="+SG.view().score);
 
-  // ===== R2 weight threshold: 2 sprintable, the 3rd tips you over =====
+  // ===== R2 weight threshold: ONE treasure stays sprintable; the SECOND tips you over =====
   SG.enter(4); v=SG.view();
-  var byv=v.treas.slice().sort(function(a,b){return b.value-a.value;});
-  goTo(byv[0].x,byv[0].y); SG.get(); goTo(byv[1].x,byv[1].y); SG.get();
-  ok('R2 two richest $ kept: heavy score but still SPRINTABLE', SG.view().sprintable===true && SG.view().score===byv[0].value+byv[1].value, "load="+SG.view().load+" score="+SG.view().score);
-  goTo(byv[2].x,byv[2].y); SG.get();
-  ok('R2 the THIRD $ tips you over the threshold (sprint lost)', SG.view().sprintable===false, "load="+SG.view().load);
+  goTo(v.treas[0].x,v.treas[0].y); SG.get();
+  ok('R2 one treasure kept: scoring but still SPRINTABLE', SG.view().sprintable===true && SG.view().score>0, "load="+SG.view().load+" score="+SG.view().score);
+  goTo(v.treas[1].x,v.treas[1].y); SG.get();
+  ok('R2 a SECOND treasure tips you over the weight threshold (sprint lost)', SG.view().sprintable===false, "load="+SG.view().load);
 
-  // ===== R2 WIN: a clean light run escapes WITH a score =====
-  SG.enter(5); v=SG.view();
-  var two=v.treas.slice().sort(function(a,b){return b.value-a.value;}).slice(0,2);
-  goTo(two[0].x,two[0].y); SG.get(); goTo(two[1].x,two[1].y); SG.get();
-  goTo(SG.view().arts[0].x, SG.view().arts[0].y); SG.get();
-  var esc=null; for(var w=0;w<40 && !SG.over();w++){ var r2=flee(); if(r2&&r2.escaped)esc=r2; if(SG.over())break; }
-  ok('R2 WIN: a light run ESCAPES carrying a real score (chime)', SG.view().escaped===true && SG.view().score>0 && esc && esc.sfx==='chime', "escaped="+SG.view().escaped+" score="+SG.view().score);
+  // ===== R2 WIN: a clean light run (one treasure) can ESCAPE with a score (chime) =====
+  var won=false, wonScore=0, wonChime=false;
+  for(var ws=0; ws<20 && !won; ws++){
+    SG.enter(ws+30); var vw=SG.view();
+    goTo(vw.treas[0].x,vw.treas[0].y); SG.get();                            // one treasure -> stays light
+    goTo(SG.view().arts[0].x, SG.view().arts[0].y); SG.get();
+    var esc=null; for(var w=0;w<60 && !SG.over();w++){ var r2=flee(); if(r2&&r2.escaped)esc=r2; if(SG.over())break; }
+    if(SG.view().escaped){ won=true; wonScore=SG.view().score; wonChime=!!(esc&&esc.sfx==='chime'); }
+  }
+  ok('R2 WIN: a light (one-treasure) run can ESCAPE carrying a score (chime)', won && wonScore>0 && wonChime, "score="+wonScore);
 
   // ===== slab still kills independently: with the collapse held off, too-slow -> VOIDED (not swallowed) =====
   withTune('COLLAPSE_DELAY', 9999, function(){

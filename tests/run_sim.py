@@ -26,6 +26,15 @@ try{
     ok(p+': win-rate is a fraction in [0,1]', r.winRate>=0&&r.winRate<=1, p+' '+(r.winRate*100).toFixed(1)+'%');
     ok(p+': death causes sum to the deaths', (r.death.collapse+r.death.slab+r.death.combat)===(r.N-r.wins));
   });
+  // CALIBRATION REGRESSION (post-Gate-1): lock the greed tradeoff + anti-degeneracy so the loop
+  // can't silently re-degenerate. Fixed seed/N => deterministic guard. (Targets: greed pays + costs;
+  // no single death-cause dominates.)
+  var P=res.policies;
+  ok('REGRESSION: greed WINS LESS than cautious (cost of greed)', P.greedy.winRate < P.cautious.winRate, (P.greedy.winRate*100).toFixed(1)+"% < "+(P.cautious.winRate*100).toFixed(1)+"%");
+  ok('REGRESSION: greed BANKS MORE than cautious (greed pays)', P.greedy.lootPerLife > P.cautious.lootPerLife, "$"+P.greedy.lootPerLife.toFixed(1)+" > $"+P.cautious.lootPerLife.toFixed(1));
+  ok('REGRESSION: greed loot/life >= 1.25x cautious (tradeoff real)', P.greedy.lootPerLife >= 1.25*P.cautious.lootPerLife, (P.greedy.lootPerLife/(P.cautious.lootPerLife||1)).toFixed(2)+"x");
+  ['greedy','cautious','random'].forEach(function(p){var r=P[p],d=(r.N-r.wins)||1,mx=Math.max(r.death.collapse,r.death.slab,r.death.combat)/d;
+    ok('REGRESSION: '+p+' has NO single death-cause > 60%', mx<=0.60, (mx*100).toFixed(1)+"% top cause");});
   // DETERMINISM: same seed -> byte-identical aggregate (and a different seed differs)
   var a=JSON.stringify(TD_SIM.runAll({N:200,seed:99})), b=JSON.stringify(TD_SIM.runAll({N:200,seed:99}));
   ok('determinism: same seed -> identical run', a===b);

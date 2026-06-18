@@ -46,12 +46,13 @@ try{
   for(var i=0;i<40 && !SG.over(W);i++) flee(W);
   ok('pure SG: a light run ESCAPES with a score', W.escaped===true && W.score>0, "escaped="+W.escaped+" score="+W.score);
 
-  // ---- SG resolution: a greedy heavy run is SWALLOWED ----
+  // ---- SG resolution: a run that LOST TIME (a fight) is SWALLOWED by the collapse (post-calibration
+  // the edge does not chase a clean sprinter; it catches you when a fight ate your head-start) ----
   var L=SG.newState(); L.active=true;
-  L.treas.forEach(function(t){ goTo(L,t.x,t.y); SG.get(L); });
   goTo(L,L.arts[0].x,L.arts[0].y); SG.get(L);
-  for(var j=0;j<40 && !SG.over(L);j++) flee(L);
-  ok('pure SG: a greedy heavy run is SWALLOWED (collapse)', L.dead===true && L.swallowed===true, "dead="+L.dead+" swallowed="+L.swallowed);
+  L.doorClosed += 7;                                          // simulate a fight's time-cost (as the sim does)
+  for(var j=0;j<60 && !SG.over(L);j++) flee(L);
+  ok('pure SG: a time-lost run is SWALLOWED by the collapse', L.dead===true && L.swallowed===true, "dead="+L.dead+" swallowed="+L.swallowed);
 
   // ---- determinism: same choices -> identical outcome ----
   function play(grabAll){ var S=SG.newState(); S.active=true;
