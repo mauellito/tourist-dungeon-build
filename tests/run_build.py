@@ -22,6 +22,7 @@ SUITES = [
     ("LIVE juice integration (feel fires in play)", "run_juice.py"),
     ("pure resolution core — combat + smash-grab (TD_RESOLVE)", "run_resolve.py"),
     ("balance sim — per-policy distribution + determinism (tests/sim.js)", "run_sim.py"),
+    ("harvest interest-pass — live generator hard rules + metric bands", "run_harvest.py"),
     ("Smash-and-Grab §24 fun-test (TD_SMASHGRAB)", "run_smashgrab.py"),
     ("procedural SFX stub hooks (TD_SFX)", "run_sfx.py"),
     ("town composition law (TD_TOWN)", "run_towncompose.py"),
