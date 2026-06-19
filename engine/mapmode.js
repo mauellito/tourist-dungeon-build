@@ -135,34 +135,43 @@ var TD_MAP = (function () {
     var mm = res.map;
     if (mm.h !== H || mm.w !== W) { console.error("composeNodeAssembler null: dim-mismatch(WxH got " + mm.w + "x" + mm.h + ", want " + W + "x" + H + ") node=" + nodeKey); return asmNull("dimMismatch"); }
     var g = []; for (var y = 0; y < H; y++) g.push(mm.grid[y].slice());
+    var rawGrid = []; for (var yr = 0; yr < H; yr++) rawGrid.push(mm.grid[yr].slice());   // pristine generator floor (verify aid)
     function isF(x, y) { return g[y] && g[y][x] === "."; }
+    // THE FLOOR IS THE GENERATOR'S FLOOR. g is mm.grid copied AS-IS — never carved, punched, or widened.
+    // Everything below READS the generator's own tags (door / secret / stair) + collects existing floor
+    // cells for breadth edges. Not one cell of g is written. (open corners live==raw, by construction.)
     var spawn = { x: mm.entry.x, y: mm.entry.y };
-    var roomDoors = [], featDead = [], featOther = [], deadEnds = [], corrCount = 0, ax = 0, ay = 0, nF = 0;
+    var roomDoors = [], secrets = [], featDead = [], featOther = [], corrCount = 0, ax = 0, ay = 0, nF = 0;
     for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
       var t = mm.tag[y][x];
-      if (g[y][x] === ".") { nF++; ax += x; ay += y; }
+      if (g[y][x] === "." || g[y][x] === "~") { nF++; ax += x; ay += y; }   // walkable centroid
       if (t === "corridor") corrCount++;
-      if (t === "door") roomDoors.push({ x: x, y: y, state: R.pick(["closed", "closed", "ajar", "open"]) });
-      if (t === "feature") {
-        var fn = DIR4.filter(function (d) { return isF(x + d[0], y + d[1]); });
-        if (fn.length === 1) { var d = fn[0]; deadEnds.push({ x: x, y: y, wallX: x - d[0], wallY: y - d[1] }); featDead.push({ x: x, y: y }); }
-        else featOther.push({ x: x, y: y });
-      }
+      if (t === "door") roomDoors.push({ x: x, y: y, state: R.pick(["closed", "closed", "ajar", "open"]) });   // the generator's own room doorways (pass its L4)
+      if (t === "secret") secrets.push({ x: x, y: y });                                                          // the generator's own telegraphed secrets
+      if (t === "feature") { var fn = DIR4.filter(function (d) { return isF(x + d[0], y + d[1]); }); (fn.length === 1 ? featDead : featOther).push({ x: x, y: y }); }
     }
-    // graph edge-doors: spread dead-end features first (natural outward exits), then other
-    // features, then the farthest floor cells. Need numDoors distinct cells, never the spawn.
-    var seend = {}, edge = [];
-    function addCand(c) { var k = c.x + "," + c.y; if (!seend[k] && !(c.x === spawn.x && c.y === spawn.y)) { seend[k] = 1; edge.push(c); } }
-    featDead.forEach(addCand); featOther.forEach(addCand);
-    if (edge.length < numDoors) {
-      var fl = []; for (var y2 = 1; y2 < H - 1; y2++) for (var x2 = 1; x2 < W - 1; x2++) if (g[y2][x2] === "." && !seend[x2 + "," + y2] && !(x2 === spawn.x && y2 === spawn.y)) fl.push([x2, y2]);
+    // LEVEL TRANSITIONS use the generator's OWN stairs: descent = the down-stair, ascent = the up-stair.
+    var stairsArr = mm.stairs || [];
+    var downStair = stairsArr.filter(function (s) { return s.kind === "down"; })[0] || null;
+    var upStair = stairsArr.filter(function (s) { return s.kind === "up"; })[0] || null;
+    // SAME-LEVEL (breadth) edges are seated on EXISTING floor cells (dead-end features first, then far floor
+    // cells) — NEVER carved (operator ruling: keep breadth navigable on the generator's own floor; do not
+    // punch geometry). A future ruling may give breadth its own authored exits (the seam the directive flags).
+    var stairKeys = {}; if (downStair) stairKeys[downStair.x + "," + downStair.y] = 1; if (upStair) stairKeys[upStair.x + "," + upStair.y] = 1;
+    var seenB = {}, breadthCells = [];
+    function addB(c) { var k = c.x + "," + c.y; if (!seenB[k] && !stairKeys[k] && !(c.x === spawn.x && c.y === spawn.y) && breadthCells.length < 16) { seenB[k] = 1; breadthCells.push({ x: c.x, y: c.y }); } }
+    featDead.forEach(addB); featOther.forEach(addB);
+    if (breadthCells.length < 16) {
+      var fl = []; for (var y2 = 1; y2 < H - 1; y2++) for (var x2 = 1; x2 < W - 1; x2++) if (g[y2][x2] === "." && !seenB[x2 + "," + y2] && !stairKeys[x2 + "," + y2] && !(x2 === spawn.x && y2 === spawn.y)) fl.push([x2, y2]);
       fl.sort(function (a, b) { return (Math.abs(b[0] - spawn.x) + Math.abs(b[1] - spawn.y)) - (Math.abs(a[0] - spawn.x) + Math.abs(a[1] - spawn.y)); });
-      for (var i = 0; i < fl.length && edge.length < numDoors; i++) addCand({ x: fl[i][0], y: fl[i][1] });
+      for (var i = 0; i < fl.length && breadthCells.length < 16; i++) addB({ x: fl[i][0], y: fl[i][1] });
     }
-    if (edge.length < numDoors) { console.error("composeNodeAssembler null: doors(need=" + numDoors + " got=" + edge.length + ") node=" + nodeKey); return asmNull("doors"); }
     var roomList = (mm.rooms || []).map(function (rm) { return { tag: "room", aspect: (rm.x1 - rm.x0 + 1) / Math.max(1, rm.y1 - rm.y0 + 1), area: (rm.x1 - rm.x0 + 1) * (rm.y1 - rm.y0 + 1), x0: rm.x0, y0: rm.y0, x1: rm.x1, y1: rm.y1, door: rm.door || { x: rm.cx, y: rm.cy } }; });
     return {
-      grid: g, spawn: spawn, doorPts: edge.slice(0, numDoors), roomDoors: roomDoors, deadEnds: deadEnds,
+      grid: g, rawGrid: rawGrid, spawn: spawn,
+      downStair: downStair, upStair: upStair, breadthCells: breadthCells,
+      doorPts: (downStair ? [downStair] : []).concat(upStair ? [upStair] : []).concat(breadthCells),   // wired-exit list (compat)
+      roomDoors: roomDoors, secrets: secrets, deadEnds: [],
       tag: "vault", rooms: roomList.length, roomList: roomList, corridorCells: corrCount,
       corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: nF / (W * H), source: "assembler"
     };
@@ -462,21 +471,40 @@ var TD_MAP = (function () {
       var cl = curLevel();
       var comp = composeNode(seed, ctrl.node, v.options.length);
       var g = comp.grid, doors = {};
-      v.options.forEach(function (o, i) {
-        var dp = comp.doorPts[i]; if (!dp) return;
-        var toLevel = (world.nodes[o.to] || {}).level;
-        var type = (typeof toLevel === "number" && toLevel < cl) ? "stair_up"
-          : (typeof toLevel === "number" && toLevel > cl) ? "stair_down"
-            : (o.one_way ? "oneway" : "door");
-        doors[key(dp.x, dp.y)] = {
-          edgeId: o.id, type: type, takeable: o.takeable, reason: o.reason,
-          one_way: o.one_way, to: o.to, label: o.label, tells: o.tells || []
-        };
-      });
+      // Map each graph edge onto the GENERATOR'S OWN exits: level transitions take the down/up STAIR;
+      // same-level breadth edges sit on existing floor cells (NEVER carved). No geometry is opened for
+      // a graph edge. If a node has more exits than the floor offers, FLAG the seam — never punch.
+      // (The test-only legacy carver has no stair concept — it keeps the old doorPts[i]-by-edge mapping.)
+      var seam = 0;
+      if (comp.breadthCells) {
+        var bi = 0;
+        v.options.forEach(function (o) {
+          var toLevel = (world.nodes[o.to] || {}).level;
+          var dir = (typeof toLevel === "number") ? (toLevel < cl ? "up" : toLevel > cl ? "down" : "same") : "same";
+          var cell = null, type;
+          if (dir === "down" && comp.downStair && !doors[key(comp.downStair.x, comp.downStair.y)]) { cell = comp.downStair; type = "stair_down"; }
+          else if (dir === "up" && comp.upStair && !doors[key(comp.upStair.x, comp.upStair.y)]) { cell = comp.upStair; type = "stair_up"; }
+          else { cell = comp.breadthCells[bi++]; type = (dir === "up") ? "stair_up" : (dir === "down") ? "stair_down" : (o.one_way ? "oneway" : "door"); }
+          if (!cell || doors[key(cell.x, cell.y)]) { seam++; return; }   // ran out of floor cells -> FLAG, never punch
+          doors[key(cell.x, cell.y)] = { edgeId: o.id, type: type, takeable: o.takeable, reason: o.reason, one_way: o.one_way, to: o.to, label: o.label, tells: o.tells || [] };
+        });
+        if (seam) console.warn("composeNode SEAM: node " + ctrl.node + " had " + seam + " lattice edge(s) with no spare floor exit (FLAGGED, not punched — separate ruling).");
+      } else {
+        v.options.forEach(function (o, i) {                                   // legacy carver (test-only)
+          var dp = comp.doorPts[i]; if (!dp) return;
+          var toLevel = (world.nodes[o.to] || {}).level;
+          var type = (typeof toLevel === "number" && toLevel < cl) ? "stair_up" : (typeof toLevel === "number" && toLevel > cl) ? "stair_down" : (o.one_way ? "oneway" : "door");
+          doors[key(dp.x, dp.y)] = { edgeId: o.id, type: type, takeable: o.takeable, reason: o.reason, one_way: o.one_way, to: o.to, label: o.label, tells: o.tells || [] };
+        });
+      }
       ctrl.grid = g; ctrl.doors = doors; ctrl.features = {};
       ctrl.items = {}; ctrl.plain = {}; ctrl.secrets = {};
-      // v21 — room doorways carry a rendered state (closed / ajar / open).
+      // v21 — room doorways carry a rendered state (closed / ajar / open) — the GENERATOR'S own door tags.
       ctrl.roomDoors = {}; (comp.roomDoors || []).forEach(function (rd) { ctrl.roomDoors[key(rd.x, rd.y)] = { state: rd.state }; });
+      // SECRETS are the generator's own tag==="secret" cells (telegraphed per the Secret Grammar Law);
+      // the controller no longer invents wall-cache secrets. Each carries a tell + a small reward on search.
+      var SECK = ["ration", "bandage", "souvenir"], TELLV0 = ["draft", "rhyme", "hollow"];
+      (comp.secrets || []).forEach(function (s, i) { if (!doors[key(s.x, s.y)]) ctrl.secrets[key(s.x, s.y)] = { kind: SECK[i % SECK.length], found: false, tell: TELLV0[i % 3], gen: true }; });
       ctrl.player = { x: comp.spawn.x, y: comp.spawn.y };
       ctrl.composition = comp;
       // v2 (Jaquay) — MAP MEMORY: explored geometry persists per node across revisits
@@ -492,30 +520,26 @@ var TD_MAP = (function () {
       spawnCoins();
       if (decorate) decorate(ctrl, { CX: comp.spawn.x, CY: comp.spawn.y, key: key, isFloor: isFloor });
     }
-    // adaptive contents for a varied screen: loot on reachable floor + one
-    // telegraphed secret in a wall (secret density rises in v18 R4).
+    // adaptive contents for a varied screen: loot on reachable floor. For the ASSEMBLER (live) floor,
+    // secrets are the generator's own tag==="secret" cells (registered in buildView) and are NOT invented
+    // here — the floor is the generator's floor. The test-only legacy carver has no generator secrets, so
+    // it keeps the old wall-cache injection (gated on no generator secrets present).
     function placeDefaults(comp) {
       var g = comp.grid, sp = comp.spawn, R = nodeRng(seed, ctrl.node + ":fill");
       var floors = floorCells(g).filter(function (c) { return !(c[0] === sp.x && c[1] === sp.y) && !ctrl.doors[key(c[0], c[1])]; });
       var kinds = ["ration", "bandage", "souvenir"];
       for (var i = 0; i < 3 && floors.length; i++) { var f = floors[R.int(0, floors.length - 1)]; tryItem(f[0], f[1], kinds[i]); }
-      // v18 R4 (outcome #5): secrets at LEARNABLE density. Several hidden pockets
-      // per room, each in a wall and each telegraphed by a fixed tell (Secret
-      // Grammar Law), spaced apart so they read as distinct, and CYCLING the
-      // vocabulary from a per-room offset so across a few rooms the player meets
-      // all three tells (draft / rhyme / hollow) and learns the language.
+      if (comp.secrets && comp.secrets.length) return;   // ASSEMBLER floor: secrets are the generator's own (no invention)
+      // --- LEGACY carver only: inject telegraphed wall-cache secrets at learnable density + at dead-ends. ---
       var TELLV = ["draft", "rhyme", "hollow"], want = R.int(2, 3), placedS = [], off = R.int(0, 2);
       for (var fj = 0; fj < floors.length && placedS.length < want; fj++) {
         var x = floors[fj][0], y = floors[fj][1], ds = DIRS4(x, y), wn = null;
         for (var k = 0; k < ds.length; k++) { var wx = ds[k][0], wy = ds[k][1]; if (inb(wx, wy) && g[wy][wx] === "#" && !ctrl.secrets[key(wx, wy)]) { wn = [wx, wy]; break; } }
         if (!wn) continue;
-        var tooClose = placedS.some(function (p) { return Math.max(Math.abs(p[0] - wn[0]), Math.abs(p[1] - wn[1])) < 4; });
-        if (tooClose) continue;
+        if (placedS.some(function (p) { return Math.max(Math.abs(p[0] - wn[0]), Math.abs(p[1] - wn[1])) < 4; })) continue;
         addSecret(wn[0], wn[1], R.pick(kinds), TELLV[(off + placedS.length) % 3]);
         placedS.push(wn);
       }
-      // v2 (Jaquay) — every naked dead-end HIDES a telegraphed secret in its terminal
-      // wall, so no dead end is a pointless walk: it always rewards the reach.
       (comp.deadEnds || []).forEach(function (de, di) {
         if (!ctrl.secrets[key(de.wallX, de.wallY)] && g[de.wallY] && g[de.wallY][de.wallX] === "#")
           addSecret(de.wallX, de.wallY, kinds[di % kinds.length], TELLV[(off + di) % 3]);

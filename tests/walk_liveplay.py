@@ -136,6 +136,17 @@ function WALK_PROOF(seed) {
     for (var i = 0; i < M; i++) { var c = dg._compose("walkchk" + i, 1 + (i % 3)); if (!c || c.source !== "assembler") bad.push("walkchk" + i + "=" + (c ? c.source : "null")); }
     var tally = dg._compTally ? dg._compTally() : {};
     step("NO-SILENT-LEGACY", bad.length === 0 && (tally.debug || 0) === 0, bad.length + "/" + M + " floors not assembler" + (bad.length ? " [" + bad.slice(0, 5).join(",") + "]" : "") + "; debug-floors=" + (tally.debug || 0) + "  (legacy carver must be unreachable)");
+
+    // THE FLOOR IS THE GENERATOR'S FLOOR: the composed grid must be byte-identical to the raw generator
+    // grid (no carve/punch). Assert open-corner count live == raw on EVERY composed node.
+    function corners(rows) { var H = rows.length, W = rows[0].length, n = 0;
+      function F(x, y) { if (y < 0 || x < 0 || y >= H || x >= W) return false; var c = rows[y][x]; return c === "." || c === "~"; }
+      function Wl(x, y) { if (y < 0 || x < 0 || y >= H || x >= W) return true; return rows[y][x] === "#"; }
+      for (var y = 0; y < H - 1; y++) for (var x = 0; x < W - 1; x++) { if (F(x, y) && F(x + 1, y + 1) && Wl(x + 1, y) && Wl(x, y + 1)) n++; if (F(x + 1, y) && F(x, y + 1) && Wl(x, y) && Wl(x + 1, y + 1)) n++; } return n; }
+    function rows(g) { return g.map(function (r) { return (typeof r === "string") ? r : r.join(""); }); }
+    var diff = [];
+    for (var j = 0; j < M; j++) { var c2 = dg._compose("walkchk" + j, 1 + (j % 3)); if (!c2 || !c2.rawGrid) continue; var lc = corners(rows(c2.grid)), rc = corners(rows(c2.rawGrid)); if (lc !== rc) diff.push("walkchk" + j + "=" + rc + "->" + lc); }
+    step("FLOOR-IS-GENERATORS", diff.length === 0, diff.length + "/" + M + " floors with live != raw open corners" + (diff.length ? " [" + diff.slice(0, 5).join(",") + "]" : "") + "  (composed grid must equal the generator grid)");
   }
 
   return R;
