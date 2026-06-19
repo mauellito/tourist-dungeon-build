@@ -95,11 +95,17 @@ var TD_GAME = (function () {
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
     var invOpen, invSel, look, sensedWater, vendor, pendingVendor, pendingExit, exitReturn, left, returnScreen, lastDungeonLevel;
+    var lifeN = 0;   // per-life counter so each new character rolls a distinct (deterministic) stat block
 
     function freshCharacter() {
       if (typeof TD_CONTRAPTION !== "undefined") TD_CONTRAPTION.reset();   // THROWAWAY prototype: each life starts with the descent sealed
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
       character = { ticket: null, signalsSeen: new Set(), events: { clicks: [], brassRejected: false, anchorRejected: false } };
+      // TEN-STAT SPINE (combat track R2): each life rolls a bell-curved 1..1000 stat block, surfaced
+      // to the player as FEEL-WORDS ONLY. Deeds accrue and realize on rest (scaffold). Numbers never leak.
+      // The Con->HP derived effect lives in TD_STATS.DERIVED.hpMax; live HP wire-in is deferred to the
+      // descent-slice pass so existing meters/tests are unchanged this round.
+      if (typeof TD_STATS !== "undefined") { lifeN += 1; character.stats = TD_STATS.create(TD_RNG.make((lifeN * 2654435761) >>> 0 || 1)); character.progress = TD_STATS.newProgress(); }
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };

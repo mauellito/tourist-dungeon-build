@@ -23,6 +23,7 @@ SUITES = [
     ("pure resolution core — combat + smash-grab (TD_RESOLVE)", "run_resolve.py"),
     ("balance sim — per-policy distribution + determinism (tests/sim.js)", "run_sim.py"),
     ("harvest interest-pass — live generator hard rules + metric bands", "run_harvest.py"),
+    ("ten-stat spine — feel-words, Lucky bounds, derived registry (TD_STATS)", "run_stats.py"),
     ("Smash-and-Grab §24 fun-test (TD_SMASHGRAB)", "run_smashgrab.py"),
     ("procedural SFX stub hooks (TD_SFX)", "run_sfx.py"),
     ("town composition law (TD_TOWN)", "run_towncompose.py"),
