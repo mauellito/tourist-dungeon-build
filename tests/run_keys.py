@@ -225,6 +225,14 @@ F.onload = function(){
     ok('o opens the adjacent inner door', vo.plain && vo.plain[pkk] && vo.plain[pkk].open);
     pk('c'); var vc=view();
     ok('c closes the adjacent inner door', vc.plain && vc.plain[pkk] && !vc.plain[pkk].open);
+    // auto-open toggle (Shift+O): OFF -> a shut door blocks the step; o still opens it deliberately
+    pk('O'); var bx=view().player.x, by=view().player.y;
+    press(pn.dir); var vblk=view();
+    ok('auto-open OFF: walking into a shut door is blocked (you stay put)',
+       vblk.player.x===bx && vblk.player.y===by && !vblk.plain[pkk].open);
+    pk('o'); var vrop=view();
+    ok('o opens the shut door deliberately with auto-open off', vrop.plain[pkk] && vrop.plain[pkk].open);
+    pk('O');   // restore default (auto-open ON)
 
     // ============================ SEARCH (secret) ========================
     // a Round 1.5 cluster floor can leave the visitor mid-room — walk to a tile

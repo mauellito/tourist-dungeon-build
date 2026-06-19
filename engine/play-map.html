@@ -213,7 +213,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "54a6a3e";</script>
+<script>window.__BUILD = "aaf34a1";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -671,7 +671,8 @@ window.__initPlayMap = function () {
       legRow("Numpad", "7 8 9 · 4 5 6 · 1 2 3") +
       legRow("Wait", ". / numpad 5") +
       legRow("Auto-explore", "x") + legRow("Label all", "Tab") +
-      legRow("Open / use", "o / Enter") + legRow("Close door", "c") + legRow("Search", "s") +
+      legRow("Open / commit", "o (+dir) / Enter") + legRow("Close door", "c (+dir)") +
+      legRow("Auto-open", "Shift+O") + legRow("Search", "s") +
       legRow("Get item", "g") + legRow("Inventory", "i") + legRow("Look", "l") +
       "<hr>" +
       '<div class="glyphkey">' +
@@ -908,6 +909,7 @@ window.__initPlayMap = function () {
   // =========================================================== INPUT =========
   var MOVE = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", y: "ul", u: "ur", b: "dl", n: "dr" };
   var NUMPAD = { Numpad1: "dl", Numpad2: "down", Numpad3: "dr", Numpad4: "left", Numpad6: "right", Numpad7: "ul", Numpad8: "up", Numpad9: "ur" };
+  var doorCmd = null;   // "open" | "close": set when o/c needs a direction; next direction key resolves it
   document.addEventListener("keydown", function (e) {
     var raw = e.key, code = e.code;
     var k = (raw && raw.length === 1) ? raw.toLowerCase() : raw;
@@ -957,12 +959,27 @@ window.__initPlayMap = function () {
       if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.invSelect(k.charCodeAt(0) - 97); draw(); return; }
       return;
     }
+    // door command awaiting a direction (o/c then a direction key); Esc / any other key cancels
+    if (doorCmd) {
+      var dcd = MOVE[k] || NUMPAD[code];
+      if (dcd) { e.preventDefault(); var rr = (doorCmd === "open") ? sim.openDoorDir(dcd) : sim.closeDoorDir(dcd); doorCmd = null; fireFeel(rr); return; }
+      if (k === "Escape") { e.preventDefault(); doorCmd = null; sim.say("Never mind."); draw(); return; }
+      doorCmd = null;   // fall through: a non-direction key cancels the door command
+    }
     if (k === "x") { e.preventDefault(); var res = TD_UI.autoExplore(sim); if (res && res.say) sim.say(res.say); fireFeel({ moved: true }); return; }
-    if (k === "Enter" || k === "o") { e.preventDefault(); fireFeel(sim.commit()); return; }
+    if (raw === "O") { e.preventDefault(); sim.toggleAutoOpen(); draw(); return; }   // toggle auto-open doors (Shift+O)
+    if (k === "Enter") { e.preventDefault(); fireFeel(sim.commit()); return; }
+    if (k === "o") { e.preventDefault();
+      if (sim._phase && sim._phase() === "dungeon") { var ro = sim.openDoorAuto(); if (ro && ro.ambiguous) { doorCmd = "open"; sim.say("Open which way? (press a direction)"); draw(); } else fireFeel(ro); }
+      else fireFeel(sim.commit());   // town: o behaves as commit (enter / buy)
+      return; }
     if (k === "." || code === "Numpad5") { e.preventDefault(); fireFeel(sim.wait()); return; }
     if (k === "g") { e.preventDefault(); fireFeel(sim.get()); return; }
     if (k === "s") { e.preventDefault(); sim.search(); draw(); return; }
-    if (k === "c") { e.preventDefault(); sim.closeDoor(); draw(); return; }
+    if (k === "c") { e.preventDefault();
+      if (sim._phase && sim._phase() === "dungeon") { var rc = sim.closeDoorAuto(); if (rc && rc.ambiguous) { doorCmd = "close"; sim.say("Close which way? (press a direction)"); draw(); } else fireFeel(rc); }
+      else fireFeel(sim.closeDoor());
+      return; }
     if (k === "i") { e.preventDefault(); sim.toggleInventory(); draw(); return; }
     if (k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
     var dir = MOVE[k] || NUMPAD[code];
@@ -973,7 +990,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map — live floor is TD_GEN2 (zero open corners, 8-neighbor isolation); rendered directly @ 54x34";
+  var VERSION = "play-map — doors: auto-open toggle (Shift+O) + deliberate o/c +dir; TD_GEN2 floor @ 54x34";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

@@ -322,23 +322,43 @@ function TD_MAP_TESTS() {
   });
 
   // ----------------------------------------------- PLAIN DOORS: OPEN / CLOSE
-  test("a shut plain door blocks; o opens it, c closes it, and it blocks pursuit", function () {
+  test("doors: auto-open toggle, deliberate o+dir / c+dir, and close refused when occupied", function () {
     var g = TD_MAP.create(world(), { creatures: false });
     var fn = floorNbr(g), k = fn.x + "," + fn.y; g._addPlain(fn.x, fn.y);
+    var px = g._player().x;
+    var back = fn.dir === "left" ? "right" : fn.dir === "right" ? "left" : fn.dir === "up" ? "down" : "up";
+
+    // --- AUTO-OPEN OFF: a shut door BLOCKS; o+dir opens it (a turn, no move); then you pass. ---
+    g.setAutoOpen(false);
+    assert(g.autoOpen() === false, "auto-open is off");
     assert(!g._passable(fn.x, fn.y), "a shut plain door is not passable");
     var b = g.move(fn.dir);
-    assert(!b.moved && b.plain, "the shut door blocks the step and reveals");
-    var o = g.open();
-    assert(o.opened, "the door opens");
-    assert(g._plain()[k].open, "it is now open");
-    assert(g._passable(fn.x, fn.y), "an open plain door is passable");
+    assert(!b.moved && b.plain, "auto-open OFF: the shut door blocks the step");
+    eq(g._player().x, px, "you did not move into the shut door");
+    var o = g.openDoorDir(fn.dir);
+    assert(o.opened && g._plain()[k].open, "o+dir opens the plain door");
+    eq(g._player().x, px, "opening the door does not move you (a turn spent in place)");
     g.move(fn.dir);
-    eq(g._player().x, fn.x, "now you can step through"); eq(g._player().y, fn.y);
-    var back = fn.dir === "left" ? "right" : fn.dir === "right" ? "left" : fn.dir === "up" ? "down" : "up";
+    eq(g._player().x, fn.x, "now you step through the open door"); eq(g._player().y, fn.y);
+
+    // --- c+dir closes; passage + sight blocked again. ---
     g.move(back);
-    var c = g.closeDoor();
-    assert(c.closed, "c closes the adjacent open door");
-    assert(!g._plain()[k].open, "it is shut again");
+    var c = g.closeDoorDir(fn.dir);
+    assert(c.closed && !g._plain()[k].open, "c+dir closes the open door");
+    assert(!g._passable(fn.x, fn.y), "a closed door blocks passage again");
+
+    // --- AUTO-OPEN ON: a single step opens the shut door AND passes through. ---
+    g.setAutoOpen(true);
+    var ao = g.move(fn.dir);
+    assert(ao.moved && g._plain()[k].open, "auto-open ON: stepping into a shut door opens it and you pass");
+    eq(g._player().x, fn.x, "you are now on the door cell");
+
+    // --- 'c' REFUSED when a creature is in the doorway. ---
+    g.move(back);
+    g._setCreatures([{ x: fn.x, y: fn.y, kind: "lurker", hp: 9, maxHp: 9, dmg: 1, name: "a clerk", glyph: "L" }]);
+    var refusal = g.closeDoorDir(fn.dir);
+    assert(!refusal.closed && refusal.blocked, "c refuses to close on a creature in the doorway");
+    assert(g._plain()[k].open, "the door stays open while occupied");
   });
 
   // ------------------------------------------------ THIRD MONSTER: THE CHASER

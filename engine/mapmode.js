@@ -348,6 +348,10 @@ var TD_MAP = (function () {
     };
     // the turn counter lives on the shared object so town + dungeon agree on it.
     if (typeof shared.turn !== "number") shared.turn = 0;
+    // AUTO-OPEN doors: true (default) = stepping into a closed door opens it and you pass through;
+    // false = a closed door BLOCKS, you must open it deliberately ('o'). Persisted across descents.
+    if (typeof shared.autoOpenDoors !== "boolean") shared.autoOpenDoors = true;
+    ctrl.autoOpenDoors = shared.autoOpenDoors;
     var decorate = opts.decorate || null;   // town layer places signals / marks brass
     var onCross = opts.onCross || null;      // town layer gates a door (e.g. Brass Door)
 
@@ -912,13 +916,21 @@ var TD_MAP = (function () {
         return { moved: false, bumpedDoor: true, event: ctrl.lastEvent };
       }
 
-      // a plain inner door: if shut, it blocks (bump reveals, o/Enter opens); if
-      // open you walk through it.
-      var pd = plainAt(nx, ny);
-      if (pd && !pd.open) {
-        ctrl.pendingDoor = { plain: true, x: nx, y: ny };
-        logMsg("A plain inner door, shut. Press o (or Enter) to open it.", false);
-        return { moved: false, bumpedDoor: true, plain: true, event: ctrl.lastEvent };
+      // INNER DOORS (a generator room doorway OR a plain inner door). When SHUT, behaviour depends on
+      // the AUTO-OPEN setting: ON -> the door opens and you pass through in one step (the default feel);
+      // OFF -> the door BLOCKS; you must open it deliberately ('o' + direction). Locked/secret stays shut.
+      var rdShut = ctrl.roomDoors[key(nx, ny)];
+      var pdShut = plainAt(nx, ny);
+      var innerShut = (rdShut && rdShut.state !== "open") || (pdShut && !pdShut.open);
+      if (innerShut) {
+        if (rdShut && rdShut.locked) { logMsg("The door is locked; it wants a key.", false); return { moved: false, bumpedDoor: true, locked: true, event: ctrl.lastEvent }; }
+        if (!ctrl.autoOpenDoors) {
+          ctrl.pendingDoor = pdShut ? { plain: true, x: nx, y: ny } : { roomDoor: true, x: nx, y: ny };
+          logMsg("The door is shut. Press o to open it.", false);
+          return { moved: false, bumpedDoor: true, plain: !!pdShut, event: ctrl.lastEvent };
+        }
+        if (rdShut) rdShut.state = "open";          // auto-open: it gives as you pass
+        if (pdShut) pdShut.open = true;
       }
 
       // CHASM: impassable terrain; bumping it prompts a desperate fall (Enter).
@@ -933,9 +945,6 @@ var TD_MAP = (function () {
 
       ctrl.player.x = nx; ctrl.player.y = ny;
       ctrl.pendingDoor = null; ctrl.pendingFall = null;
-      // v2 — stepping into a closed room doorway OPENS it (it gives as you pass), so
-      // sight then carries through into the room beyond (never before).
-      var rdHere = ctrl.roomDoors[key(nx, ny)]; if (rdHere && rdHere.state === "closed") rdHere.state = "open";
       reveal(nx, ny);
       var f = featureAt(nx, ny);
       if (f) { if (f.id) ctrl.character.signalsSeen.add(f.id); if (f.kind) senses(f.text, f.kind, f.obj); else logMsg(f.text, false); }
@@ -1012,18 +1021,57 @@ var TD_MAP = (function () {
       return { searched: true, found: found.length, event: ctrl.lastEvent };
     }
 
-    // close an adjacent open plain door (so a creature cannot follow).
-    function closeDoor() {
+    // ---- DELIBERATE DOOR HANDLING (open/close, room doors AND plain doors, uniformly) ----
+    // An inner door is SHUT if a roomDoor is closed/ajar or a plain door is !open.
+    function innerShutAt(x, y) { var rd = ctrl.roomDoors[key(x, y)], pl = plainAt(x, y); return (rd && rd.state !== "open") || (pl && !pl.open); }
+    function innerOpenAt(x, y) { var rd = ctrl.roomDoors[key(x, y)], pl = plainAt(x, y); return (rd && rd.state === "open") || (pl && pl.open); }
+    function adjShut() { var a = []; for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; var x = ctrl.player.x + dx, y = ctrl.player.y + dy; if (innerShutAt(x, y)) a.push({ x: x, y: y }); } return a; }
+    function adjOpen() { var a = []; for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; var x = ctrl.player.x + dx, y = ctrl.player.y + dy; if (innerOpenAt(x, y)) a.push({ x: x, y: y }); } return a; }
+
+    // OPEN a specific cell's inner door (closed/ajar -> open). Costs a turn; the player does not move.
+    function openInnerAt(x, y) {
+      ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
+      if (ctrl.dead || ctrl.won) return { opened: false };
+      var rd = ctrl.roomDoors[key(x, y)], pl = plainAt(x, y);
+      if (rd && rd.locked) { logMsg("The door is locked; it wants a key.", false); return { opened: false, locked: true, event: ctrl.lastEvent }; }   // FLAG: locked doors need a key, not 'o'
+      if (rd && rd.state !== "open") { rd.state = "open"; reveal(x, y); logMsg("You open the door.", false); endTurn("step"); return { opened: true, event: ctrl.lastEvent }; }
+      if (pl && !pl.open) { pl.open = true; reveal(x, y); logMsg("The inner door swings open.", false); endTurn("step"); return { opened: true, plain: true, event: ctrl.lastEvent }; }
+      logMsg("There is no closed door that way.", false);   // no door -> no turn spent
+      return { opened: false, none: true, event: ctrl.lastEvent };
+    }
+    // CLOSE a specific cell's inner door (open/ajar -> closed) — only if the cell is EMPTY.
+    function closeInnerAt(x, y) {
       ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
       if (ctrl.dead || ctrl.won) return { closed: false };
-      for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
-        if (!dx && !dy) continue;
-        var x = ctrl.player.x + dx, y = ctrl.player.y + dy, p = plainAt(x, y);
-        if (p && p.open && !creatureAt(x, y)) { p.open = false; logMsg("You pull the inner door shut.", false); endTurn("step"); return { closed: true, event: ctrl.lastEvent }; }
-      }
-      logMsg("There is no open door beside you to close.", false);
-      return { closed: false, event: ctrl.lastEvent };
+      if (!innerOpenAt(x, y)) { logMsg("There is no open door that way.", false); return { closed: false, none: true, event: ctrl.lastEvent }; }
+      if (creatureAt(x, y) || itemAt(x, y) || (ctrl.player.x === x && ctrl.player.y === y)) { logMsg("Something's in the doorway; it will not close.", false); return { closed: false, blocked: true, event: ctrl.lastEvent }; }
+      var rd = ctrl.roomDoors[key(x, y)], pl = plainAt(x, y);
+      if (rd) rd.state = "closed";
+      if (pl) pl.open = false;
+      logMsg("You pull the door shut.", false); endTurn("step");
+      return { closed: true, event: ctrl.lastEvent };   // a closed door is opaque again (FOV recomputes on view)
     }
+    function openDoorDir(dir) { if (!DIRS[dir]) return { opened: false }; return openInnerAt(ctrl.player.x + DIRS[dir][0], ctrl.player.y + DIRS[dir][1]); }
+    function closeDoorDir(dir) { if (!DIRS[dir]) return { closed: false }; return closeInnerAt(ctrl.player.x + DIRS[dir][0], ctrl.player.y + DIRS[dir][1]); }
+    // 'o' alone: exactly one adjacent closed door -> open it; none -> message; many -> ambiguous (prompt dir).
+    function openDoorAuto() {
+      if (ctrl.dead || ctrl.won) return { opened: false };
+      var c = adjShut();
+      if (c.length === 1) return openInnerAt(c[0].x, c[0].y);
+      if (c.length === 0) { ctrl.lastEvent = null; logMsg("There is no closed door beside you.", false); return { opened: false, none: true, event: ctrl.lastEvent }; }
+      return { opened: false, ambiguous: true };
+    }
+    // 'c' alone: exactly one adjacent open door -> close it; none -> message; many -> ambiguous (prompt dir).
+    function closeDoorAuto() {
+      if (ctrl.dead || ctrl.won) return { closed: false };
+      var c = adjOpen();
+      if (c.length === 1) return closeInnerAt(c[0].x, c[0].y);
+      if (c.length === 0) { ctrl.lastEvent = null; logMsg("There is no open door beside you to close.", false); return { closed: false, none: true, event: ctrl.lastEvent }; }
+      return { closed: false, ambiguous: true };
+    }
+    function closeDoor() { return closeDoorAuto(); }   // legacy alias (close-behind: nearest open door)
+    function setAutoOpen(b) { ctrl.autoOpenDoors = !!b; shared.autoOpenDoors = ctrl.autoOpenDoors; return ctrl.autoOpenDoors; }
+    function toggleAutoOpen() { setAutoOpen(!ctrl.autoOpenDoors); logMsg("Auto-open doors: " + (ctrl.autoOpenDoors ? "ON — you pass through shut doors." : "OFF — shut doors block; open with o."), false); return ctrl.autoOpenDoors; }
 
     function doorReveal(d) {
       var base = d.label || "A door";
@@ -1058,6 +1106,7 @@ var TD_MAP = (function () {
       if (ctrl.pendingFall) return fallDescend();
       var p = ctrl.pendingDoor;
       if (p && p.plain) return openPlain(p.x, p.y);
+      if (p && p.roomDoor) return openInnerAt(p.x, p.y);   // a bumped room door (auto-open off): Enter opens it
       if (!p) {                                            // no pending edge door
         for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
           if (!dx && !dy) continue;
@@ -1146,6 +1195,8 @@ var TD_MAP = (function () {
       world: world, state: ctrl, interp: interp,
       move: move, open: openDoor, view: view, postmortem: postmortem,
       wait: wait, get: get, dropItem: dropItem, search: search, closeDoor: closeDoor,
+      openDoorDir: openDoorDir, openDoorAuto: openDoorAuto, closeDoorDir: closeDoorDir, closeDoorAuto: closeDoorAuto,
+      toggleAutoOpen: toggleAutoOpen, setAutoOpen: setAutoOpen, autoOpen: function () { return ctrl.autoOpenDoors; },
       isDead: function () { return ctrl.dead; }, isComplete: function () { return ctrl.won; },
       // helpers for the town layer + tests
       _doors: function () { return ctrl.doors; },

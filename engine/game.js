@@ -774,6 +774,28 @@ var TD_GAME = (function () {
       if (placeId === "DUNGEON") { var r = dungeon.closeDoor(); afterDungeon(); return r; }
       logMsg("There is nothing here you may close."); return { closed: false };
     }
+    // deliberate door open/close (dungeon only). 'o' alone = openDoorAuto (commit() in town = enter/buy).
+    function openDoorAuto() {
+      if (placeId === "DUNGEON") { var r = dungeon.openDoorAuto(); afterDungeon(); return r; }
+      return commit();
+    }
+    function openDoorDir(dir) {
+      if (placeId === "DUNGEON") { var r = dungeon.openDoorDir(dir); afterDungeon(); return r; }
+      return { opened: false };
+    }
+    function closeDoorAuto() {
+      if (placeId === "DUNGEON") { var r = dungeon.closeDoorAuto(); afterDungeon(); return r; }
+      logMsg("There is nothing here you may close."); return { closed: false };
+    }
+    function closeDoorDir(dir) {
+      if (placeId === "DUNGEON") { var r = dungeon.closeDoorDir(dir); afterDungeon(); return r; }
+      return { closed: false };
+    }
+    function toggleAutoOpen() {
+      if (placeId === "DUNGEON") { var r = dungeon.toggleAutoOpen(); afterDungeon(); return r; }
+      shared.autoOpenDoors = !(shared.autoOpenDoors !== false);   // flip even in town so the setting persists into the dungeon
+      logMsg("Auto-open doors: " + (shared.autoOpenDoors ? "ON." : "OFF.")); return shared.autoOpenDoors;
+    }
 
     // inventory: the carried pack, plus the ticket as an inspectable virtual item
     function ticketDesc() {
@@ -946,6 +968,7 @@ var TD_GAME = (function () {
       world: world, session: session,
       move: move, open: commit, commit: commit, view: view, postmortem: postmortem, newCharacter: newCharacter,
       wait: wait, get: get, search: search, closeDoor: closeDoor,
+      openDoorAuto: openDoorAuto, openDoorDir: openDoorDir, closeDoorAuto: closeDoorAuto, closeDoorDir: closeDoorDir, toggleAutoOpen: toggleAutoOpen,
       toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected,
       lookToggle: lookToggle, lookMove: lookMove,
       confirmExit: confirmExit, cancelExit: cancelExit,
