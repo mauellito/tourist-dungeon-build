@@ -354,15 +354,32 @@ function TD_MAP_TESTS() {
   });
 
   // ------------------------------------------- COMBAT NARRATION + HP --------
-  test("combat is narrated: your blow shows HP, the reply is in the Bureau register", function () {
+  test("combat is narrated in FEEL-WORDS — no numbers leak (Disco Elysium law)", function () {
     var g = TD_MAP.create(world(), { creatures: true });
     g._setCreatures([]); var fn = floorNbr(g);
     g._setCreatures([{ x: fn.x, y: fn.y, kind: "lurker", hp: 45, maxHp: 45, dmg: 16, name: "a patient lurker", glyph: "L" }]);
     var r = g.move(fn.dir);
     assert(r.attacked && !r.killed, "it survives the first blow");
     var texts = g._messages().map(function (m) { return m.text; }).join(" || ");
-    includes(texts, "25/45", "the log shows the creature's remaining HP after your blow");
-    includes(texts, "amends your itinerary", "the creature's single reply is narrated in the register");
+    // the blow + reply are narrated, but NO hit-point number appears (no "25/45", no bare HP)
+    assert(/notice|lands on|still stands|strike/.test(texts), "the blow is narrated in the register");
+    includes(texts, "amends your itinerary", "the creature's reply is narrated in the register");
+    assert(!/\d+\s*\/\s*\d+/.test(texts) && !/\d+\s*hit point/.test(texts), "combat narration leaks NO hit-point number");
+  });
+
+  test("LIVE two-function combat: player + creature stat blocks resolve via hit/damage + read (feel-words, no leak)", function () {
+    var g = TD_MAP.create(world(), { creatures: true });
+    var ch = g._character();                                   // the live game gives the player a stat spine + gear
+    ch.stats = TD_STATS.create(TD_RNG.make(5)); ch.weapon = TD_RESOLVE.GEAR.WEAPONS.shortsword; ch.armor = TD_RESOLVE.GEAR.ARMOR.light;
+    g._setCreatures([]); var fn = floorNbr(g);
+    var crStats = { might: 600, dex: 600, con: 600, int: 300, per: 400, lucky: 500, intuition: 380, appearance: 400, charm: 300, grit: 420 };
+    g._setCreatures([{ x: fn.x, y: fn.y, kind: "lurker", hp: 100, maxHp: 100, dmg: 16, name: "a patient lurker", glyph: "L",
+                       fighter: TD_RESOLVE.fighter(crStats, { name: "claw", type: "blade", base: 16, acc: 0 }, TD_RESOLVE.GEAR.ARMOR.light) }]);
+    var r = g.move(fn.dir);
+    assert(r.attacked && typeof r.hit === "boolean", "bumping resolves via the two-function model (connect/miss flag)");
+    var texts = g._messages().map(function (m) { return m.text; }).join(" || ");
+    assert(/It looks/.test(texts) && /reads it as/.test(texts), "THE READ surfaced feel-words: Per (OBJ seen) + Intuition (SUBJ)");
+    assert(!/\d+\s*\/\s*\d+/.test(texts) && !/\d+\s*hit point/.test(texts), "live combat + read leak NO number");
   });
 
   // ------------------------------------------- MESSAGE URGENCY TIERS --------

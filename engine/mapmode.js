@@ -581,7 +581,7 @@ var TD_MAP = (function () {
       ctrl.creatures = [];
       if (livingOn && inDungeon()) (vd.creatures || []).forEach(function (c) {
         var def = CREATURE[c.kind]; if (!def) return;
-        ctrl.creatures.push({ x: ox + c.x, y: oy + c.y, kind: c.kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph });
+        ctrl.creatures.push({ x: ox + c.x, y: oy + c.y, kind: c.kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, fighter: defFighter(def) });
       });
       if (decorate) decorate(ctrl, { CX: CX, CY: CY, key: key, isFloor: isFloor });
     }
@@ -618,7 +618,7 @@ var TD_MAP = (function () {
         var spot = pickSpot();
         if (!spot) continue;
         var def = CREATURE[kind];
-        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph });
+        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, fighter: defFighter(def) });
       }
     }
     function pickSpot() {
@@ -652,9 +652,19 @@ var TD_MAP = (function () {
         }
         if (move) {
           if (move.x === ctrl.player.x && move.y === ctrl.player.y) {        // it reaches you: it bites
-            ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: cr.dmg, kind: "taken" });
-            hurt(cr.dmg, cr);
-            if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary by " + cr.dmg + " hit points.", lowHP());
+            var pf2 = playerFighter();
+            if (pf2 && cr.fighter) {                                         // LIVE two-function (feel-words, no numbers)
+              if (TD_RESOLVE.hit(cr.fighter, pf2, rng).hit) {
+                var dmg2 = TD_RESOLVE.damage(cr.fighter, pf2, rng).damage;
+                ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: dmg2, kind: "taken" });
+                hurt(dmg2, cr);
+                if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary.", lowHP());
+              } else logMsg(cap(cr.name) + " lunges and misses.", false);
+            } else {                                                        // legacy flat fallback
+              ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: cr.dmg, kind: "taken" });
+              hurt(cr.dmg, cr);
+              if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary.", lowHP());
+            }
           } else { cr.x = move.x; cr.y = move.y; }
         }
       });
@@ -679,6 +689,24 @@ var TD_MAP = (function () {
       return null;
     }
 
+    // COMBAT-TRACK PHASE 3: two-function combat on real floors. A creature carries a stat block +
+    // gear (synthesized from its bestiary hp/dmg — PLACEHOLDER, calibration pending). The player
+    // fighter reads the character's stat spine + starting gear. When BOTH are present the live combat
+    // resolves via TD_RESOLVE.hit()/damage()/read(); otherwise (test harness, no spine) it falls back
+    // to the legacy flat path. Numbers never reach the player — combat lines are feel-words.
+    function defFighter(def) {
+      if (typeof TD_RESOLVE === "undefined" || !TD_RESOLVE.GEAR) return null;
+      return {
+        stats: { might: 380 + def.dmg * 14, dex: 470, con: 320 + def.hp * 6, int: 300, per: 420, lucky: 500, intuition: 380, appearance: 400, charm: 300, grit: 420 },
+        weapon: { name: def.name, type: "blade", base: def.dmg, acc: 0 },
+        armor: TD_RESOLVE.GEAR.ARMOR.light
+      };
+    }
+    function playerFighter() {
+      var ch = ctrl.character;
+      if (!ch || !ch.stats || typeof TD_RESOLVE === "undefined" || typeof TD_RESOLVE.fighter !== "function") return null;
+      return TD_RESOLVE.fighter(ch.stats, ch.weapon, ch.armor);
+    }
     function lowHP() { return ctrl.meters.hp > 0 && ctrl.meters.hp < 0.25 * ctrl.meters.hpMax; }
     function hurt(amount, source) {
       var r = TD_RESOLVE.applyDamage(ctrl.meters.hp, amount);
@@ -740,15 +768,27 @@ var TD_MAP = (function () {
         return { moved: false, refused: true, dmz: true };
       }
       if (cr) {
-        ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt" });
-        var blow = TD_RESOLVE.strike(cr.hp, PLAYER_DMG);
-        cr.hp = blow.hp; var killed = blow.killed;
-        if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
-        else logMsg("You serve " + cr.name + " notice (" + PLAYER_DMG + " hp; " + cr.hp + "/" + cr.maxHp + " stands).", false);
+        var pf = playerFighter(), killed = false, connected = true;
+        if (pf && cr.fighter) {                                   // LIVE two-function combat (feel-words, no numbers)
+          if (!cr.read) { var rd = TD_RESOLVE.read(pf, cr.fighter, rng); senses("It looks " + rd.seen.word + ".", "seen", "OBJ"); senses("Something in you reads it as " + rd.sense.word + ".", "intuition", "SUBJ"); cr.read = true; }
+          var h = TD_RESOLVE.hit(pf, cr.fighter, rng); connected = h.hit;
+          if (h.hit) {
+            var dmg = TD_RESOLVE.damage(pf, cr.fighter, rng).damage;
+            ctrl.fx.push({ x: cr.x, y: cr.y, amount: dmg, kind: "dealt" });
+            var blow = TD_RESOLVE.strike(cr.hp, dmg); cr.hp = blow.hp; killed = blow.killed;
+            if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
+            else logMsg("Your " + ((pf.weapon && pf.weapon.verb) || "blow") + " lands on " + cr.name + "; it still stands.", false);
+          } else logMsg("You swing at " + cr.name + " and the blow goes wide.", false);
+        } else {                                                  // legacy flat fallback (no stat spine / test harness)
+          ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt" });
+          var fblow = TD_RESOLVE.strike(cr.hp, PLAYER_DMG); cr.hp = fblow.hp; killed = fblow.killed;
+          if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
+          else logMsg("You serve " + cr.name + " notice; it still stands.", false);
+        }
         meterTick("fight");
         if (!ctrl.dead) creaturesStep();
         shared.turn += 1;
-        return { moved: false, attacked: true, killed: killed, event: ctrl.lastEvent, dead: ctrl.dead };
+        return { moved: false, attacked: true, killed: killed, hit: connected, event: ctrl.lastEvent, dead: ctrl.dead };
       }
 
       // an EDGE door (a stair / traversal to another node): CONTACT REVEALS, it

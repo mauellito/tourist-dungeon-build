@@ -106,6 +106,9 @@ var TD_GAME = (function () {
       // The Con->HP derived effect lives in TD_STATS.DERIVED.hpMax; live HP wire-in is deferred to the
       // descent-slice pass so existing meters/tests are unchanged this round.
       if (typeof TD_STATS !== "undefined") { lifeN += 1; character.stats = TD_STATS.create(TD_RNG.make((lifeN * 2654435761) >>> 0 || 1)); character.progress = TD_STATS.newProgress(); }
+      // starting gear (combat track phase 3): a weapon + armour the player carries; both feed combat
+      // and encumbrance. PLACEHOLDER loadout from the roster (rosters/shops are a later directive).
+      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.weapon = TD_RESOLVE.GEAR.WEAPONS.shortsword; character.armor = TD_RESOLVE.GEAR.ARMOR.light; }
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
