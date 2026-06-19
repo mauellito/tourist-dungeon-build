@@ -47,10 +47,26 @@ var TD_RESOLVE = (function () {
       impact:  { verb: "crush",   lean: "crush-robustness->DAMAGE" },
       polearm: { verb: "skewer",  lean: "reach->positioning" }
     },
-    WEAPONS: {   // STUB: one generic weapon per type (values PLACEHOLDER)
-      plain:  { name: "a plain blade", base: 12, type: "blade",   acc: 2,  verb: "cut" },
-      mace:   { name: "a heavy mace",  base: 14, type: "impact",  acc: -1, verb: "crush",  crush: 0.5 },  // crush: armour robustness counts half
-      spear:  { name: "a plain spear", base: 11, type: "polearm", acc: 0,  verb: "skewer", reach: true } // reach -> positioning (spatial; deferred)
+    // THE ROSTER (~a dozen, under the 3 types). Each: { name, type, base, acc, weight, bulk } +
+    // type-verb fields. ALL VALUES PLACEHOLDER (balance-sim calibrates). weight+bulk feed the
+    // encumbrance bands (wire-in NEXT). Verbs wired: blades add acc in hit(); impact's `crush`
+    // reduces the defender's effective robustness in damage(); polearms carry `reach` + an
+    // `opening` strike (now-resolvable on the first exchange) — full positioning is a LIVE HOOK.
+    WEAPONS: {
+      // BLADES — fast, light, accuracy-leaning -> HIT
+      dagger:     { name: "a dagger",      type: "blade",   base: 6,  acc: 5,  weight: 1, bulk: 1, verb: "cut",    firstStrike: true },  // lightest, highest acc, lowest base; first-strike (initiative HOOK)
+      shortsword: { name: "a shortsword",  type: "blade",   base: 9,  acc: 3,  weight: 2, bulk: 2, verb: "cut" },
+      longsword:  { name: "a longsword",   type: "blade",   base: 12, acc: 2,  weight: 4, bulk: 3, verb: "cut" },
+      sabre:      { name: "a sabre",       type: "blade",   base: 10, acc: 4,  weight: 3, bulk: 2, verb: "cut" },
+      // HEAVY / IMPACT — slow, heavy, Might-leaning -> DAMAGE (crush: armour robustness counts for less)
+      mace:       { name: "a mace",        type: "impact",  base: 13, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.6 },
+      warhammer:  { name: "a warhammer",   type: "impact",  base: 16, acc: -3, weight: 9, bulk: 6, verb: "crush",  crush: 0.4 },  // heaviest: biggest crush + encumbrance
+      axe:        { name: "an axe",        type: "impact",  base: 14, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.55 },
+      flail:      { name: "a flail",       type: "impact",  base: 13, acc: -2, weight: 7, bulk: 5, verb: "crush",  crush: 0.5 },
+      // POLEARMS — reach -> POSITIONING (opening strike now-resolvable; full positioning a HOOK)
+      spear:      { name: "a spear",       type: "polearm", base: 11, acc: 1,  weight: 4, bulk: 5, verb: "skewer", reach: true, opening: 3 },  // hit-in-line
+      halberd:    { name: "a halberd",     type: "polearm", base: 14, acc: 0,  weight: 7, bulk: 6, verb: "skewer", reach: true, opening: 2 },
+      pike:       { name: "a pike",        type: "polearm", base: 12, acc: 0,  weight: 8, bulk: 8, verb: "skewer", reach: true, opening: 4 }   // longest reach -> biggest opening
     },
     // ARMOR — one master dial, light <-> bulky (named tiers): bulkier = more robustness + more
     // encumbrance (worse evasion). DURABILITY DROPPED (no wear, no repair). Values PLACEHOLDER.
@@ -60,13 +76,16 @@ var TD_RESOLVE = (function () {
              heavy:  { name: "heavy armour",  robustness: 8, encumbrance: 4 } }
   };
   function _S() { return (typeof TD_STATS !== "undefined") ? TD_STATS : null; }
-  function fighter(stats, weapon, armor) { return { stats: stats, weapon: weapon || GEAR.WEAPONS.plain, armor: armor || GEAR.ARMOR.none }; }
+  function fighter(stats, weapon, armor) { return { stats: stats, weapon: weapon || GEAR.WEAPONS.longsword, armor: armor || GEAR.ARMOR.none }; }
 
   // HIT: gap = attacker accuracy - defender evasion. The roll is GAP-SCALED — a clear gap is reliable
   // (sigmoid saturates), a close gap is swingy (~50/50). Lucky adds its bounded +/-10% thumb. PLACEHOLDER.
-  function hit(att, def, rng) {
+  // opts.opening (first exchange): a POLEARM's reach lands an opening strike (acc bonus). Full
+  // positioning (reach controlling spacing across the fight) is a LIVE HOOK for the spatial wire-in.
+  function hit(att, def, rng, opts) {
     var S = _S(); if (!S) return { hit: true, p: 1, gap: 0 };
     var acc = S.DERIVED.accuracy(att.stats) + ((att.weapon && att.weapon.acc) || 0);
+    if (opts && opts.opening && att.weapon && att.weapon.reach) acc += (att.weapon.opening || 0);   // polearm opening strike
     var eva = S.DERIVED.evasion(def.stats) - ((def.armor && def.armor.encumbrance) || 0);   // bulky armour dulls evasion
     var gap = acc - eva;
     var p = 1 / (1 + Math.exp(-gap * 0.15));                       // PLACEHOLDER slope: clear gap -> reliable, gap~0 -> swingy
@@ -84,7 +103,7 @@ var TD_RESOLVE = (function () {
     var rob = ((def.armor && def.armor.robustness) || 0) * ((att.weapon && att.weapon.crush != null) ? att.weapon.crush : 1);
     var crit = rng ? (rng.next() < 0.05) : false;                  // PLACEHOLDER crit rate
     if (crit) raw = Math.round(raw * 1.5);
-    var dmg = raw - rob, deMinimis = false;
+    var dmg = Math.round(raw - rob), deMinimis = false;            // whole HP (crush can make robustness fractional)
     if (dmg < 1) { dmg = raw > 0 ? 1 : 0; deMinimis = true; }      // armour ate it -> a hit still lands for de minimis
     return { damage: dmg, crit: crit, deMinimis: deMinimis };
   }

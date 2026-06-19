@@ -57,6 +57,20 @@ try{
   var AR=T.GEAR.ARMOR;
   ok('ARMOR dial light<->bulky (3-4 named tiers): bulkier = more robustness + more encumbrance', AR.none.robustness<AR.light.robustness&&AR.light.robustness<AR.medium.robustness&&AR.medium.robustness<AR.heavy.robustness&&AR.none.encumbrance<AR.heavy.encumbrance, Object.keys(AR).join(','));
 
+  // ---- R1 WEAPON ROSTER: ~a dozen under 3 types; each verb measurably changes resolution ----
+  var W=T.GEAR.WEAPONS, types={blade:0,impact:0,polearm:0};
+  Object.keys(W).forEach(function(k){types[W[k].type]=(types[W[k].type]||0)+1;});
+  ok('roster loads ~a dozen weapons across the 3 types', Object.keys(W).length>=10 && types.blade>=3 && types.impact>=3 && types.polearm>=3, Object.keys(W).length+" weapons "+JSON.stringify(types));
+  ok('every weapon has name+type+base+acc+weight+bulk (name showable; numbers internal)', Object.keys(W).every(function(k){var w=W[k];return typeof w.name==='string'&&!!w.type&&typeof w.base==='number'&&typeof w.acc==='number'&&typeof w.weight==='number'&&typeof w.bulk==='number';}));
+  ok('dagger: highest accuracy + lowest base + lightest + first-strike flag (initiative HOOK)', W.dagger.firstStrike===true && W.dagger.acc>=W.sabre.acc && W.dagger.base<=W.shortsword.base && W.dagger.weight<=W.mace.weight, "dagger acc="+W.dagger.acc+" base="+W.dagger.base);
+  var df=T.fighter(st({dex:500}));
+  ok('BLADE verb: weapon accuracy widens the gap (dagger out-hits a no-acc weapon, same Dex)', rate(T.fighter(st({dex:500}),W.dagger),df,600,5) > rate(T.fighter(st({dex:500}),nw),df,600,5), rate(T.fighter(st({dex:500}),W.dagger),df,600,5).toFixed(2)+" vs "+rate(T.fighter(st({dex:500}),nw),df,600,5).toFixed(2));
+  var b16={name:"b16",type:"blade",base:16,acc:0}, wh=T.fighter(st({might:600}),W.warhammer), eqBlade=T.fighter(st({might:600}),b16);
+  ok('IMPACT verb: warhammer crushes robustness (more DAMAGE vs heavy armour than an EQUAL-base blade)', T.damage(wh,heavy,null).damage > T.damage(eqBlade,heavy,null).damage, "warhammer="+T.damage(wh,heavy,null).damage+" blade16="+T.damage(eqBlade,heavy,null).damage);
+  var pf=T.fighter(st({dex:500}),W.pike);
+  var pOpen=T.hit(pf,df,RNG.make(1),{opening:true}).p, pSteady=T.hit(pf,df,RNG.make(1)).p;
+  ok('POLEARM verb: reach flag + opening strike raises the opening hit (full positioning a HOOK)', W.spear.reach===true && W.pike.reach===true && pOpen>pSteady, "open="+pOpen.toFixed(2)+" steady="+pSteady.toFixed(2));
+
   // ---- THE READ: feel-words only, OBJ honest, SUBJ can mislead ----
   var obsHi=T.fighter(st({per:1000,intuition:1000})), obsLo=T.fighter(st({per:200,intuition:120}));
   var tgt=T.fighter(st({might:900,dex:900}));
