@@ -212,32 +212,13 @@
 <div class="vstamp" id="vstamp"></div>
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
-<script src="rng.js"></script>
-<script src="resolve.js"></script>
-<script src="stats.js"></script>
-<script src="burden.js"></script>
-<script src="vaultfmt.js"></script>
-<script src="vaultlib.js"></script>
-<script src="lawsuite.js"></script>
-<script src="assembler.js"></script>
-<script src="checker.js"></script>
-<script src="vaults.js"></script>
-<script src="generator.js"></script>
-<script src="interpreter.js"></script>
-<script src="mapmode.js"></script>
-<script src="voices.js"></script>
-<script src="towngen.js"></script>
-<script src="townlaws.js"></script>
-<script src="towngen2.js"></script>
-<script src="townmap.js"></script>
-<script src="contraption.js"></script>
-<script src="smashgrab.js"></script>
-<script src="sfx.js"></script>
-<script src="game.js"></script>
-<script src="ui.js"></script>
-<script src="feel.js"></script>
+<!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
+<script>window.__BUILD = "92f2be7";</script>
 <script>
-(function () {
+// Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
+// block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
+// it must not run at parse time — the dynamic loader gates it on the last script's load event.
+window.__initPlayMap = function () {
   var TS = 22, FONT = "18px Consolas, monospace", camera = null;
   var P = TD_UI.PALETTE;   // the single palette table — every colour means one thing
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
@@ -992,8 +973,9 @@
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "play-map v31 — live floor STANDARD 49x35: landmark + terrain on every descent", BUILD = "fa2e790";
-  document.getElementById("vstamp").textContent = VERSION + " · " + BUILD;
+  var VERSION = "play-map — live floor STANDARD 49x35: landmark + terrain on every descent";
+  var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
+  document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
   if (location.hash.indexOf("#sg") === 0 && typeof TD_SMASHGRAB !== "undefined") {   // dev hook: auto-enter the §24 fun-test for render checks
     sgEnter();
@@ -1006,6 +988,32 @@
       for (var i = 0; i < 6 && i < pth.length && !TD_SMASHGRAB.over(); i++) sgApply(TD_SMASHGRAB.move(pth[i]));
     }
   }
+};
+</script>
+
+<!-- DYNAMIC ENGINE LOADER — kills dev-time stale-cache bugs.
+     Each engine file is requested as "<file>?b=<build>", so a code change (new git hash via
+     scripts/stamp_build.py) changes every URL and the browser CANNOT serve a stale cached mix.
+     async=false forces in-order execution (load order preserved exactly); page init fires only
+     after the final script has loaded, so the engine globals are guaranteed to exist. -->
+<script>
+(function () {
+  // CURRENT ORDER PRESERVED — rng.js ... feel.js. Keep in sync with sync_build.py's self-check.
+  var files = [
+    "rng.js", "resolve.js", "stats.js", "burden.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
+    "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "mapmode.js",
+    "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js", "contraption.js",
+    "smashgrab.js", "sfx.js", "game.js", "ui.js", "feel.js"
+  ];
+  var b = window.__BUILD || "dev", done = 0;
+  files.forEach(function (f) {
+    var s = document.createElement("script");
+    s.src = f + "?b=" + b;
+    s.async = false;                                  // preserve execution order
+    s.onload = function () { if (++done === files.length && window.__initPlayMap) window.__initPlayMap(); };
+    s.onerror = function () { console.error("engine load FAILED: " + s.src); };
+    document.head.appendChild(s);
+  });
 })();
 </script>
 </body>
