@@ -15,7 +15,7 @@
 "use strict";
 
 var TD_MAP = (function () {
-  var W = 41, H = 23, CX = 20, CY = 11;
+  var W = 49, H = 35, CX = 24, CY = 17;   // floor-size ruling: NODE(41x23) -> STANDARD(49x35) — turns on the harvest landmark + terrain (gated to W>=45,H>=30)
   var REVEAL = 4;
 
   // (the fixed 8-slot door template was removed in Round 1.5 — door mouths now
@@ -119,7 +119,7 @@ var TD_MAP = (function () {
   function composeNodeAssembler(seed, nodeKey, numDoors) {
     if (typeof TD_ASSEMBLER === "undefined") return null;
     var R = nodeRng(seed, nodeKey + ":asm");
-    var res = TD_ASSEMBLER.generateGated(R.int(1, 2000000000) >>> 0, "NODE", 400);
+    var res = TD_ASSEMBLER.generateGated(R.int(1, 2000000000) >>> 0, "STANDARD", 400);
     if (!res || !res.passed || !res.map) return null;
     var mm = res.map; if (mm.h !== H || mm.w !== W) return null;
     var g = []; for (var y = 0; y < H; y++) g.push(mm.grid[y].slice());
