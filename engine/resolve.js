@@ -68,13 +68,16 @@ var TD_RESOLVE = (function () {
       halberd:    { name: "a halberd",     type: "polearm", base: 14, acc: 0,  weight: 7, bulk: 6, verb: "skewer", reach: true, opening: 2 },
       pike:       { name: "a pike",        type: "polearm", base: 12, acc: 0,  weight: 8, bulk: 8, verb: "skewer", reach: true, opening: 4 }   // longest reach -> biggest opening
     },
-    // ARMOR — one master dial, light <-> bulky (named tiers): bulkier = more robustness + more
-    // encumbrance (worse evasion). DURABILITY DROPPED (no wear, no repair). Values PLACEHOLDER.
-    ARMOR: { none:   { name: "unarmoured",    robustness: 0, encumbrance: 0 },
-             light:  { name: "light armour",  robustness: 3, encumbrance: 1 },
-             medium: { name: "medium armour", robustness: 5, encumbrance: 2 },
-             heavy:  { name: "heavy armour",  robustness: 8, encumbrance: 4 } }
+    // ARMOR — ONE MASTER DIAL, light <-> bulky (4 named tiers). The single dial position drives BOTH
+    // together: bulkier = more robustness (damage-reduction) AND more encumbrance (worse evasion ->
+    // easier to hit). That coupling IS the tradeoff. DURABILITY DROPPED (no wear, no repair sink).
+    // Values PLACEHOLDER (balance-sim calibrates). `none` aliases `unarmored` for back-compat.
+    ARMOR: { unarmored: { name: "unarmoured",     robustness: 0,  encumbrance: 0 },
+             light:     { name: "padded leather", robustness: 3,  encumbrance: 1 },
+             medium:    { name: "mail",           robustness: 6,  encumbrance: 3 },
+             heavy:     { name: "plate",          robustness: 10, encumbrance: 6 } }
   };
+  GEAR.ARMOR.none = GEAR.ARMOR.unarmored;   // alias so older callers (fighter default, tests) keep working
   function _S() { return (typeof TD_STATS !== "undefined") ? TD_STATS : null; }
   function fighter(stats, weapon, armor) { return { stats: stats, weapon: weapon || GEAR.WEAPONS.longsword, armor: armor || GEAR.ARMOR.none }; }
 

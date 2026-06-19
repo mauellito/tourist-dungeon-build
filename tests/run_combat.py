@@ -71,6 +71,13 @@ try{
   var pOpen=T.hit(pf,df,RNG.make(1),{opening:true}).p, pSteady=T.hit(pf,df,RNG.make(1)).p;
   ok('POLEARM verb: reach flag + opening strike raises the opening hit (full positioning a HOOK)', W.spear.reach===true && W.pike.reach===true && pOpen>pSteady, "open="+pOpen.toFixed(2)+" steady="+pSteady.toFixed(2));
 
+  // ---- R2 ARMOR TIERS: one dial, 4 named tiers; the coupling IS the tradeoff ----
+  ok('ARMOR: 4 named tiers off the dial (unarmoured / padded leather / mail / plate)', !!AR.unarmored && /leather/.test(AR.light.name) && /mail/.test(AR.medium.name) && /plate/.test(AR.heavy.name), [AR.unarmored.name,AR.light.name,AR.medium.name,AR.heavy.name].join(' / '));
+  var atk=T.fighter(st({might:600,dex:600}),nw);
+  var defLight=T.fighter(st({dex:500}),null,AR.light), defHeavy=T.fighter(st({dex:500}),null,AR.heavy);
+  ok('ARMOR tradeoff: bulkier REDUCES damage more (plate < padded)', T.damage(atk,defHeavy,null).damage < T.damage(atk,defLight,null).damage, "plate="+T.damage(atk,defHeavy,null).damage+" padded="+T.damage(atk,defLight,null).damage);
+  ok('ARMOR tradeoff: bulkier WORSENS evasion (plate easier to hit than padded)', rate(atk,defHeavy,600,7) > rate(atk,defLight,600,7), rate(atk,defHeavy,600,7).toFixed(2)+" vs "+rate(atk,defLight,600,7).toFixed(2));
+
   // ---- THE READ: feel-words only, OBJ honest, SUBJ can mislead ----
   var obsHi=T.fighter(st({per:1000,intuition:1000})), obsLo=T.fighter(st({per:200,intuition:120}));
   var tgt=T.fighter(st({might:900,dex:900}));
