@@ -10,7 +10,7 @@ import html, os, re, shutil, subprocess, sys, tempfile
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENGINE = os.path.join(ROOT, "engine"); TMP = os.path.join(ROOT, "tests", ".tmp")
-FILES = ["rng.js", "resolve.js", "stats.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js", "assembler.js", "checker.js", "vaults.js",
+FILES = ["rng.js", "resolve.js", "stats.js", "burden.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js", "assembler.js", "checker.js", "vaults.js",
          "generator.js", "interpreter.js", "mapmode.js", "voices.js", "towngen.js", "townlaws.js",
          "towngen2.js", "townmap.js", "contraption.js", "game.js", "ui.js"]
 CH = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",

@@ -702,10 +702,40 @@ var TD_MAP = (function () {
         armor: TD_RESOLVE.GEAR.ARMOR.light
       };
     }
+    // ENCUMBRANCE (R2): the carried loadout (gear + weighty inventory + purse) -> a TD_BURDEN band ->
+    // worse EVASION (folded into the player fighter) + slower MOVE/tempo. PLACEHOLDER magnitudes.
+    var ENC_EVASION = { unencumbered: 0, laden: 2, strained: 5, overloaded: 9 };   // band -> evasion-dulling (placeholder)
+    function carriedItems() {
+      var its = [], ch = ctrl.character;
+      if (ch && ch.weapon) its.push(ch.weapon);
+      (ctrl.inventory || []).forEach(function (it) { if (it && typeof it.weight === "number") its.push(it); });
+      return its;
+    }
+    function playerPurse() { return (ctrl.character && ctrl.character.purse) || {}; }   // coins arrive in R3
+    function playerBand() {
+      if (typeof TD_BURDEN === "undefined" || !ctrl.character || !ctrl.character.stats) return null;
+      return TD_BURDEN.compute(ctrl.character.stats, carriedItems(), playerPurse());
+    }
     function playerFighter() {
       var ch = ctrl.character;
       if (!ch || !ch.stats || typeof TD_RESOLVE === "undefined" || typeof TD_RESOLVE.fighter !== "function") return null;
-      return TD_RESOLVE.fighter(ch.stats, ch.weapon, ch.armor);
+      var armor = ch.armor, bnd = playerBand();
+      if (bnd) { var pen = ENC_EVASION[bnd.band.key] || 0; if (pen) armor = { name: armor ? armor.name : "unarmoured", robustness: armor ? armor.robustness : 0, encumbrance: (armor ? armor.encumbrance : 0) + pen }; }   // burden dulls evasion
+      return TD_RESOLVE.fighter(ch.stats, ch.weapon, armor);
+    }
+    // feel-word on a band CROSSING (no number) + a tempo penalty when slow (the world gains a step on you).
+    function updateBand() {
+      var bnd = playerBand(); if (!bnd) return;
+      var key = bnd.band.key;
+      if (ctrl.lastBand == null) { ctrl.lastBand = key; }
+      else if (key !== ctrl.lastBand) {
+        var order = ["unencumbered", "laden", "strained", "overloaded"];
+        if (order.indexOf(key) > order.indexOf(ctrl.lastBand)) logMsg("You are " + bnd.band.word + ".", key === "overloaded");   // announce only on the way UP
+        ctrl.lastBand = key;
+      }
+      var deficit = (100 - bnd.band.speed) / 100;                 // 0 .. 0.5 : how much slower than full speed
+      ctrl.slowDebt = (ctrl.slowDebt || 0) + deficit;
+      if (ctrl.slowDebt >= 1 && !ctrl.dead) { ctrl.slowDebt -= 1; creaturesStep(); }   // you are slow -> the world takes an extra step
     }
     function lowHP() { return ctrl.meters.hp > 0 && ctrl.meters.hp < 0.25 * ctrl.meters.hpMax; }
     function hurt(amount, source) {
@@ -737,6 +767,7 @@ var TD_MAP = (function () {
         if (!ctrl.wasExhausted) { logMsg("You are spent past prudence; exhaustion sets in.", true); ctrl.wasExhausted = true; }
         hurt(EXHAUST_HP, { name: "exhaustion", exhaust: true });
       } else { ctrl.wasExhausted = false; }
+      updateBand();   // encumbrance: band feel-word on crossing + tempo penalty when slow
     }
 
     function move(dir) {
@@ -1041,6 +1072,8 @@ var TD_MAP = (function () {
       _setCreatures: function (list) { ctrl.creatures = list.slice(); },
       _meters: function () { return ctrl.meters; },
       _character: function () { return ctrl.character; },
+      _band: function () { return playerBand(); },
+      _playerFighter: function () { return playerFighter(); },
       _features: function () { return ctrl.features; },
       _items: function () { return ctrl.items; },
       _plain: function () { return ctrl.plain; },

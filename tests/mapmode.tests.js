@@ -382,6 +382,27 @@ function TD_MAP_TESTS() {
     assert(!/\d+\s*\/\s*\d+/.test(texts) && !/\d+\s*hit point/.test(texts), "live combat + read leak NO number");
   });
 
+  test("R2 encumbrance: heavier loadout -> a slower band AND worse evasion (band folds into the fighter)", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    var ch = g._character(); ch.stats = TD_STATS.create(TD_RNG.make(3)); ch.weapon = TD_RESOLVE.GEAR.WEAPONS.shortsword; ch.armor = TD_RESOLVE.GEAR.ARMOR.light; ch.purse = {};
+    var lb = g._band(), lf = g._playerFighter();
+    ch.purse = { gold: 3000 };                                  // ~120 lb of coin -> over the carry cap
+    var hb = g._band(), hf = g._playerFighter();
+    assert(hb.band.speed < lb.band.speed, "heavier loadout -> a slower band");
+    assert(hf.armor.encumbrance > lf.armor.encumbrance, "heavier loadout -> worse evasion (band penalty folds in)");
+  });
+  test("R2 encumbrance: a band CROSSING announces a feel-word — no number", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    var ch = g._character(); ch.stats = TD_STATS.create(TD_RNG.make(3)); ch.weapon = TD_RESOLVE.GEAR.WEAPONS.shortsword; ch.armor = TD_RESOLVE.GEAR.ARMOR.light; ch.purse = {};
+    var fn = floorNbr(g); g.move(fn.dir);                       // walk light -> band recorded (Unencumbered)
+    ch.purse = { gold: 3000 };                                  // pile on coin
+    var fn2 = floorNbr(g); if (fn2) g.move(fn2.dir);            // walk heavy -> cross to a worse band -> announce
+    var texts = g._messages().map(function (m) { return m.text; }).join(" || ");
+    var m = /You are (Laden|Strained|Overloaded)\./.exec(texts);
+    assert(!!m, "a band-crossing feel-word fires (you are <band>)");
+    assert(!/\d/.test(m ? m[0] : "0"), "the band word carries no number");
+  });
+
   // ------------------------------------------- MESSAGE URGENCY TIERS --------
   test("critical events (low HP hit, one-way seal) are flagged urgent in the log", function () {
     var g = TD_MAP.create(world(), { creatures: true });
