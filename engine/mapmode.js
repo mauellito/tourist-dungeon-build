@@ -112,16 +112,28 @@ var TD_MAP = (function () {
     return TD_RNG.make(h || 1);
   }
   var DIR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  // The live floor is ASSEMBLER-ONLY. The pre-law-suite carver (composeNodeOld) must never ship — it
+  // has open corners + meaningless geometry. composeNode retries the gated assembler with fresh seeds
+  // and, only if every retry fails (a real generator gap), renders an UNMISTAKABLE debug floor. The
+  // legacy carver is kept for reference but hard-gated off.
+  var ALLOW_LEGACY = false;
+  var asmTally = { assembler: 0, retryRescued: 0, debug: 0, gateFail: 0, dimMismatch: 0, doors: 0, noAsm: 0, worstLaw: {} };
+  function asmNull(kind, worst) { asmTally[kind] = (asmTally[kind] || 0) + 1; if (worst) asmTally.worstLaw[worst] = (asmTally.worstLaw[worst] || 0) + 1; return null; }
   // Option A (node-as-assembler-floor): a node's GEOMETRY is a NODE-sized scattered vault floor
   // from TD_ASSEMBLER; the lattice GRAPH is untouched — we retrofit the graph edge-doors + room
   // doors + dead-ends onto the assembler floor. Falls back to the legacy geometry (composeNodeOld)
   // if the assembler isn't loaded or can't host this node's edge-degree.
-  function composeNodeAssembler(seed, nodeKey, numDoors) {
-    if (typeof TD_ASSEMBLER === "undefined") return null;
-    var R = nodeRng(seed, nodeKey + ":asm");
+  function composeNodeAssembler(seed, nodeKey, numDoors, salt) {
+    if (typeof TD_ASSEMBLER === "undefined") return asmNull("noAsm");
+    var R = nodeRng(seed, nodeKey + ":asm" + (salt || ""));
     var res = TD_ASSEMBLER.generateGated(R.int(1, 2000000000) >>> 0, "STANDARD", 400);
-    if (!res || !res.passed || !res.map) return null;
-    var mm = res.map; if (mm.h !== H || mm.w !== W) return null;
+    if (!res || !res.passed || !res.map) {
+      var worst = (res && res.laws) ? (Object.keys(res.laws).filter(function (k) { return !res.laws[k].pass; })[0] || "?") : "?";
+      console.error("composeNodeAssembler null: gate-fail(passed=false,attempt=" + (res ? res.attempt : "-") + ",worstLaw=" + worst + ") node=" + nodeKey);
+      return asmNull("gateFail", worst);
+    }
+    var mm = res.map;
+    if (mm.h !== H || mm.w !== W) { console.error("composeNodeAssembler null: dim-mismatch(WxH got " + mm.w + "x" + mm.h + ", want " + W + "x" + H + ") node=" + nodeKey); return asmNull("dimMismatch"); }
     var g = []; for (var y = 0; y < H; y++) g.push(mm.grid[y].slice());
     function isF(x, y) { return g[y] && g[y][x] === "."; }
     var spawn = { x: mm.entry.x, y: mm.entry.y };
@@ -147,7 +159,7 @@ var TD_MAP = (function () {
       fl.sort(function (a, b) { return (Math.abs(b[0] - spawn.x) + Math.abs(b[1] - spawn.y)) - (Math.abs(a[0] - spawn.x) + Math.abs(a[1] - spawn.y)); });
       for (var i = 0; i < fl.length && edge.length < numDoors; i++) addCand({ x: fl[i][0], y: fl[i][1] });
     }
-    if (edge.length < numDoors) return null;
+    if (edge.length < numDoors) { console.error("composeNodeAssembler null: doors(need=" + numDoors + " got=" + edge.length + ") node=" + nodeKey); return asmNull("doors"); }
     var roomList = (mm.rooms || []).map(function (rm) { return { tag: "room", aspect: (rm.x1 - rm.x0 + 1) / Math.max(1, rm.y1 - rm.y0 + 1), area: (rm.x1 - rm.x0 + 1) * (rm.y1 - rm.y0 + 1), x0: rm.x0, y0: rm.y0, x1: rm.x1, y1: rm.y1, door: rm.door || { x: rm.cx, y: rm.cy } }; });
     return {
       grid: g, spawn: spawn, doorPts: edge.slice(0, numDoors), roomDoors: roomDoors, deadEnds: deadEnds,
@@ -156,10 +168,37 @@ var TD_MAP = (function () {
     };
   }
   function composeNode(seed, nodeKey, numDoors) {
-    var a = composeNodeAssembler(seed, nodeKey, numDoors);
-    return a || composeNodeOld(seed, nodeKey, numDoors);
+    // ASSEMBLER-ONLY: try the gated assembler, then up to 5 RETRIES with fresh outer seeds (each still
+    // 400 attempts). Never serve the ungated legacy carver. If every retry fails, that is a real
+    // generator gap -> a LOUD console.error + an unmistakable debug floor (never a playable blob).
+    for (var s = 0; s < 6; s++) {
+      var a = composeNodeAssembler(seed, nodeKey, numDoors, s ? (":r" + s) : "");
+      if (a) { if (s === 0) asmTally.assembler++; else { asmTally.retryRescued++; console.warn("composeNode: " + nodeKey + " rescued on retry " + s); } return a; }
+    }
+    // TEST-ONLY: legacy-carver unit suites (run_architecture/run_map) flip TD_MAP.setLegacy(true) to
+    // exercise composeNodeOld directly. NEVER reachable in live play (ALLOW_LEGACY is false by default).
+    if (ALLOW_LEGACY) { var legacy = composeNodeOld(seed, nodeKey, numDoors); if (legacy) { asmTally.legacy = (asmTally.legacy || 0) + 1; return legacy; } }
+    asmTally.debug++;
+    console.error("composeNode: " + nodeKey + " UNAVAILABLE after 6x400 attempts — null reasons " + JSON.stringify(asmTally) + " — rendering DEBUG FLOOR (generator gap)");
+    return debugFloor(seed, nodeKey, numDoors);
+  }
+  // an UNMISTAKABLE last-resort floor: one small room + a Bureau sign reading the failure. Never
+  // mistakable for real geometry. Only reachable if every assembler retry failed (a generator gap).
+  function debugFloor(seed, nodeKey, numDoors) {
+    var g = newGrid(), rx = CX - 3, ry = CY - 2;
+    for (var y = ry; y <= ry + 4; y++) for (var x = rx; x <= rx + 6; x++) if (inb(x, y)) g[y][x] = ".";
+    var spawn = { x: CX, y: CY }, signKey = key(rx + 1, ry + 1);
+    var edge = []; for (var i = 0; i < numDoors; i++) { var ex = rx + 1 + i, ey = ry + 4; if (g[ey] && g[ey][ex] === ".") edge.push({ x: ex, y: ey }); }
+    return {
+      grid: g, spawn: spawn, doorPts: edge, roomDoors: [], deadEnds: [],
+      tag: "debug", rooms: 1, roomList: [], corridorCells: 0, corrLens: [], corrWidths: [],
+      comX: CX, comY: CY, floorDensity: 0, source: "debug",
+      sign: { key: signKey, text: "FLOOR UNAVAILABLE — see console" }
+    };
   }
   function composeNodeOld(seed, nodeKey, numDoors) {
+    if (!ALLOW_LEGACY) return null;   // HARD-GATED: the pre-law-suite carver must never ship to play
+
     var R = nodeRng(seed, nodeKey), g = newGrid();
     var corr = {};                                   // corridor cell keys "x,y"
     var LO = 2, HIX = W - 3, HIY = H - 3;             // 2-wide wall border (room for door runs)
@@ -1118,6 +1157,7 @@ var TD_MAP = (function () {
       _setChasm: function (x, y) { ctrl.chasm[key(x, y)] = 1; ctrl.grid[y][x] = "X"; },
       _passable: function (x, y) { return passable(x, y); },
       _composition: function () { return ctrl.composition || null; },
+      _compTally: function () { return asmTally; },
       _compose: function (nodeKey, numDoors) { return composeNode(seed, nodeKey, numDoors); },
       _levelWet: function (L) { return levelIsWet(L); },
       _rebuild: function () { buildView(); },                 // re-enter the current node (tests map memory)
@@ -1127,7 +1167,7 @@ var TD_MAP = (function () {
     return api;
   }
 
-  return { create: create, _W: W, _H: H, _CREATURE: CREATURE, _ITEMS: ITEMS, makeItem: makeItem, hungerStage: hungerStage };
+  return { create: create, _W: W, _H: H, _CREATURE: CREATURE, _ITEMS: ITEMS, makeItem: makeItem, hungerStage: hungerStage, setLegacy: function (b) { ALLOW_LEGACY = !!b; } };
 })();
 
 if (typeof module !== "undefined" && module.exports) { module.exports = TD_MAP; }

@@ -128,6 +128,16 @@ function WALK_PROOF(seed) {
   step("ASSEMBLER-FLOOR", dv && dv.compSource === "assembler",
        "compSource=" + (dv ? dv.compSource : "n/a") + "  (must be 'assembler' = NEW vault floor, not old geometry)");
 
+  // ---- (3b) NO SILENT LEGACY: EVERY composed floor must be assembler (never legacy/debug). Compose a
+  // spread of nodes through the live path and assert all sources == "assembler" + zero debug fallbacks.
+  var dg = sim._dungeon();
+  if (dg && dg._compose) {
+    var bad = [], M = 20;
+    for (var i = 0; i < M; i++) { var c = dg._compose("walkchk" + i, 1 + (i % 3)); if (!c || c.source !== "assembler") bad.push("walkchk" + i + "=" + (c ? c.source : "null")); }
+    var tally = dg._compTally ? dg._compTally() : {};
+    step("NO-SILENT-LEGACY", bad.length === 0 && (tally.debug || 0) === 0, bad.length + "/" + M + " floors not assembler" + (bad.length ? " [" + bad.slice(0, 5).join(",") + "]" : "") + "; debug-floors=" + (tally.debug || 0) + "  (legacy carver must be unreachable)");
+  }
+
   return R;
 }
 

@@ -31,6 +31,9 @@ REPORTER = """
 (function(){
   var out = document.getElementById('out');
   try {
+    // run_map's geometry tests exercise the legacy carver (composeNodeOld) and don't load the
+    // assembler; live play is assembler-only. Opt into the carver (gated off by default).
+    if (TD_MAP.setLegacy) TD_MAP.setLegacy(true);
     var r = TD_MAP_TESTS();
     var lines = r.results.map(function(x){ return (x.ok?'PASS ':'FAIL ') + x.name + (x.ok?'':'  ::  ' + x.err); });
     lines.push('SUMMARY ' + r.pass + '/' + (r.pass + r.fail));
