@@ -39,7 +39,16 @@ try{
   var a=JSON.stringify(TD_SIM.runAll({N:200,seed:99})), b=JSON.stringify(TD_SIM.runAll({N:200,seed:99}));
   ok('determinism: same seed -> identical run', a===b);
   ok('a different seed gives a different stream', a!==JSON.stringify(TD_SIM.runAll({N:200,seed:100})));
-  o.textContent=report+"\n\n"+R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SIM fail="+fails;
+
+  // ===== NEW COMBAT MODEL (two-function + gear + encumbrance) — MEASURE only =====
+  var cres=TD_SIM.runCombat({N:N, seed:SEED}), creport=TD_SIM.formatCombat(cres);
+  ok('combat model: 3 policies run through real TD_RESOLVE hit/damage + TD_BURDEN', !!cres.policies.greedy&&!!cres.policies.cautious&&!!cres.policies.random);
+  ['greedy','cautious','random'].forEach(function(p){var r=cres.policies[p];
+    ok('combat '+p+': win-rate is a fraction in [0,1]', r.winRate>=0&&r.winRate<=1, p+' '+(r.winRate*100).toFixed(1)+'%');
+    ok('combat '+p+': combat-deaths = N - wins', r.death.combat===(r.N-r.wins));});
+  ok('combat model determinism: same seed -> identical run', JSON.stringify(TD_SIM.runCombat({N:200,seed:77}))===JSON.stringify(TD_SIM.runCombat({N:200,seed:77})));
+
+  o.textContent=report+"\n\n"+creport+"\n\n"+R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SIM fail="+fails;
 }catch(e){o.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e);document.title="SIM harness_error";}})();</script>
 """.replace("__N__", N).replace("__SEED__", SEED)
 
@@ -58,7 +67,9 @@ def main():
     os.makedirs(TMP, exist_ok=True)
     parts = ['<!doctype html><meta charset=utf-8><title>p</title><pre id="out">p</pre>',
              "<script>\n" + open(os.path.join(ENGINE, "rng.js"), encoding="utf-8").read() + "\n</script>",
+             "<script>\n" + open(os.path.join(ENGINE, "stats.js"), encoding="utf-8").read() + "\n</script>",
              "<script>\n" + open(os.path.join(ENGINE, "resolve.js"), encoding="utf-8").read() + "\n</script>",
+             "<script>\n" + open(os.path.join(ENGINE, "burden.js"), encoding="utf-8").read() + "\n</script>",
              "<script>\n" + open(os.path.join(TESTS, "sim.js"), encoding="utf-8").read() + "\n</script>", REP]
     runner = os.path.join(TMP, "sim_runner.html"); open(runner, "w", encoding="utf-8").write("\n".join(parts))
     ud = tempfile.mkdtemp(prefix="td_sim_")

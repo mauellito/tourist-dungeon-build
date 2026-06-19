@@ -141,7 +141,101 @@
     return L.join("\n");
   }
 
-  var API = { runAll: runAll, runPolicy: runPolicy, format: format, flagsFor: flagsFor, POLICIES: POLICIES, SIM: SIM };
+  // ===================== THE NEW COMBAT MODEL (gear + two-function + encumbrance) =====================
+  // MEASURE only. Runs the 3 policies through the REAL TD_RESOLVE.hit()/damage()/read() + TD_BURDEN,
+  // gear from the roster: greed grabs coin -> heavier -> worse evasion + slower tempo -> caught more.
+  // SIM OVERLAY (placeholder modeling knobs, NOT balance data): player stat block, the foe gauntlet,
+  // coin drop per kill, and the band->evasion / band->tempo mappings. Real numbers are in TD_RESOLVE.
+  // SIM OVERLAY knobs (placeholder modeling assumptions, NOT game numbers): the foe gauntlet, the
+  // per-kill loot drop, and the band->evasion / band->tempo mappings (the live band->evasion is the
+  // descent-slice's job; this stands in for it so the instrument can exercise the encumbrance path).
+  // NOTE FINDING: at canon coin weight (25/lb), per-floor COIN loot barely burdens vs the carry cap —
+  // coin-greed bites only at large hauls ("the only way to be rich is paperwork"). The drop here is
+  // sized so the instrument visibly exercises greed->burden->evasion; real loot weight is calibration.
+  var SIM_C = {
+    PLAYER_STATS: { might: 560, dex: 560, con: 560, int: 500, per: 560, lucky: 500, intuition: 560, appearance: 500, charm: 500, grit: 540 },
+    MAX_FOES: 10, FOE_CHANCE: 0.7, COINS_PER_KILL: 400,          // gold coins dropped per kill (sim overlay)
+    CAUTIOUS_CAP: "laden",                                       // cautious stops short of this band (stays light)
+    ENC_EVASION: { unencumbered: 0, laden: 2, strained: 5, overloaded: 9 },   // band -> extra evasion-dulling (placeholder)
+    ENC_TEMPO:   { unencumbered: 0, laden: 0, strained: 1, overloaded: 2 }    // band -> extra foe blows (slower) (placeholder)
+  };
+  var B = (typeof TD_BURDEN !== "undefined") ? TD_BURDEN : (typeof require !== "undefined" ? require("../engine/burden.js") : null);
+  function creatureFighter(kind) {
+    var c = R.COMBAT.CREATURES[kind];   // synthesize a stat block from the bestiary hp/dmg (PLACEHOLDER sim mapping)
+    return {
+      kind: kind, hp: c.hp,
+      stats: { might: 380 + c.dmg * 14, dex: 470, con: 320 + c.hp * 6, int: 300, per: 420, lucky: 500, intuition: 380, appearance: 400, charm: 300, grit: 420 },
+      weapon: { name: c.name, type: "blade", base: c.dmg, acc: 0 },
+      armor: R.GEAR.ARMOR.light
+    };
+  }
+  function oneCombatRun(rng, policy) {
+    var ps = SIM_C.PLAYER_STATS, pw = R.GEAR.WEAPONS.longsword, pa = R.GEAR.ARMOR.light;
+    var php = (typeof TD_STATS !== "undefined") ? TD_STATS.DERIVED.hpMax(ps) : 100;
+    var purse = { copper: 0, silver: 0, gold: 0 }, carried = [pw];   // armour's encumbrance is intrinsic (applied to evasion); loot weight is the burden
+    var patk = { stats: ps, weapon: pw, armor: pa };
+    var kinds = Object.keys(R.COMBAT.CREATURES), nFoes = 0;
+    for (var i = 0; i < SIM_C.MAX_FOES; i++) if (rng.chance(SIM_C.FOE_CHANCE)) nFoes++;
+    var rounds = 0, kills = 0, dead = false;
+    for (var f = 0; f < nFoes && !dead; f++) {
+      var cr = creatureFighter(rng.pick(kinds)), chp = cr.hp;
+      var band = B ? B.compute(ps, carried, purse).band.key : "unencumbered";
+      var enc = SIM_C.ENC_EVASION[band] || 0, tempo = SIM_C.ENC_TEMPO[band] || 0;
+      var pdef = { stats: ps, weapon: pw, armor: { name: pa.name, robustness: pa.robustness, encumbrance: pa.encumbrance + enc } };
+      var guard = 0;
+      while (chp > 0 && !dead && guard++ < 60) {
+        if (R.hit(patk, cr, rng).hit) chp -= R.damage(patk, cr, rng).damage;     // player swings
+        rounds++;
+        if (chp <= 0) { kills++; break; }
+        for (var t = 0; t <= tempo && !dead; t++) {                              // foe swings (+ tempo extra when you're slow)
+          if (R.hit(cr, pdef, rng).hit) { php -= R.damage(cr, pdef, rng).damage; if (php <= 0) dead = true; }
+        }
+      }
+      if (!dead) {                                                               // grab the coin drop per policy
+        var drop = SIM_C.COINS_PER_KILL, take = 0;
+        if (policy === "greedy") take = drop;
+        else if (policy === "cautious") take = (B && B.compute(ps, carried, { gold: purse.gold + drop }).band.key === SIM_C.CAUTIOUS_CAP) ? 0 : drop;  // stop short of the cap band
+        else take = rng.chance(0.5) ? drop : 0;
+        purse.gold += take;
+      }
+    }
+    var win = !dead, loot = win && B ? B.purseValue(purse) : 0;
+    return { cause: dead ? "combat" : "survive", win: win, loot: loot, ttk: kills ? rounds / kills : null, kills: kills, band: B ? B.compute(ps, carried, purse).band.key : "unencumbered" };
+  }
+  function runCombatPolicy(policy, N, seed) {
+    var rng = RNG.make(seed), runs = [];
+    for (var i = 0; i < N; i++) runs.push(oneCombatRun(rng, policy));
+    var wins = runs.filter(function (r) { return r.win; }).length;
+    var ttks = runs.filter(function (r) { return r.ttk != null; }).map(function (r) { return r.ttk; });
+    return { policy: policy, N: N, wins: wins, winRate: wins / N, ttkMean: mean(ttks), ttkMedian: median(ttks),
+      death: { combat: N - wins }, lootPerLife: mean(runs.map(function (r) { return r.loot; })) };
+  }
+  function runCombat(opts) {
+    opts = opts || {}; var N = opts.N || 1000, seed = (opts.seed == null ? 1234 : opts.seed) >>> 0;
+    var bp = {}; POLICIES.forEach(function (p) { bp[p] = runCombatPolicy(p, N, seed); });
+    var f = [];   // combat-model is combat-only by design (no collapse/slab) -> skip the single-death-cause flag; keep win-rate + greed-matters
+    POLICIES.forEach(function (p) { var r = bp[p]; if (r.winRate > 0.95) f.push(p + ": win-rate " + pct(r.winRate) + " > 95% (trivial)"); if (r.winRate < 0.05) f.push(p + ": win-rate " + pct(r.winRate) + " < 5% (unwinnable)"); });
+    if (Math.abs(bp.greedy.winRate - bp.cautious.winRate) < 0.05 && Math.abs(bp.greedy.lootPerLife - bp.cautious.lootPerLife) < 0.05 * (bp.cautious.lootPerLife || 1)) f.push("greed-doesn't-matter: greedy ≈ cautious");
+    return { N: N, seed: seed, sim: SIM_C, policies: bp, flags: f };
+  }
+  function formatCombat(res) {
+    var L = [];
+    L.push("TOURIST DUNGEON — balance sim: NEW COMBAT MODEL (two-function + gear + encumbrance)   (N=" + res.N + ", seed=" + res.seed + ")");
+    L.push("sim overlay: player stat block + gear; foes 0.." + res.sim.MAX_FOES + " @ p=" + res.sim.FOE_CHANCE + "; " + res.sim.COINS_PER_KILL + " gold/kill (real TD_RESOLVE hit/damage + TD_BURDEN)");
+    L.push("");
+    L.push(pad("policy", 10) + padL("win%", 8) + padL("TTK(md)", 9) + padL("combat-deaths", 15) + padL("loot/life", 11));
+    L.push(new Array(56).join("-"));
+    POLICIES.forEach(function (p) { var r = res.policies[p]; L.push(pad(p, 10) + padL(pct(r.winRate), 8) + padL(r.ttkMedian.toFixed(1), 9) + padL((r.N - r.wins) + "/" + r.N, 15) + padL("$" + r.lootPerLife.toFixed(0), 11)); });
+    L.push(new Array(56).join("-"));
+    L.push("(combat is the only death mode in this model; loot/life = gold value carried out, 0 on death)");
+    L.push("");
+    if (res.flags.length) { L.push("DEGENERACY FLAGS:"); res.flags.forEach(function (x) { L.push("  ⚑ " + x); }); }
+    else L.push("DEGENERACY FLAGS: none — distribution looks non-degenerate.");
+    return L.join("\n");
+  }
+
+  var API = { runAll: runAll, runPolicy: runPolicy, format: format, flagsFor: flagsFor, POLICIES: POLICIES, SIM: SIM,
+              runCombat: runCombat, formatCombat: formatCombat, SIM_C: SIM_C };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   if (typeof window !== "undefined") window.TD_SIM = API;
 
