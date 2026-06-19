@@ -29,6 +29,68 @@ var TD_RESOLVE = (function () {
   // turns-to-kill at a fixed per-hit damage (deterministic combat => exact)
   function ttk(hp, perHit) { return perHit > 0 ? Math.ceil(hp / perHit) : Infinity; }
 
+  // ============= TWO-FUNCTION COMBAT MODEL (combat track R3) =============
+  // HIT (accuracy vs evasion, gap-scaled + Lucky's universal thumb) is SEPARATE from DAMAGE
+  // (Might + weapon - armor robustness, deterministic; rare crit; de-minimis if armor eats it).
+  // Reads the ten-stat spine via TD_STATS (internal numbers; the player sees FEEL-WORDS only).
+  // STUB gear only (one generic weapon + a couple armor tiers) — rosters are the next directive.
+  // ALL MAGNITUDES ARE PLACEHOLDER — calibration is a later balance-sim pass. Do NOT hand-tune.
+  // Live wire-in to mapmode (creatures carry stat blocks) is deferred to the descent-slice pass;
+  // the legacy flat PLAYER_DMG path above stays until then.
+  var GEAR = {
+    WEAPONS: { plain: { name: "a plain blade", base: 12, type: "blade", acc: 0 } },                 // STUB: one generic weapon
+    ARMOR: { none: { name: "unarmored", robustness: 0, encumbrance: 0 },                            // STUB: a couple armor tiers
+             light: { name: "light armour", robustness: 3, encumbrance: 1 },
+             heavy: { name: "heavy armour", robustness: 8, encumbrance: 4 } }
+  };
+  function _S() { return (typeof TD_STATS !== "undefined") ? TD_STATS : null; }
+  function fighter(stats, weapon, armor) { return { stats: stats, weapon: weapon || GEAR.WEAPONS.plain, armor: armor || GEAR.ARMOR.none }; }
+
+  // HIT: gap = attacker accuracy - defender evasion. The roll is GAP-SCALED — a clear gap is reliable
+  // (sigmoid saturates), a close gap is swingy (~50/50). Lucky adds its bounded +/-10% thumb. PLACEHOLDER.
+  function hit(att, def, rng) {
+    var S = _S(); if (!S) return { hit: true, p: 1, gap: 0 };
+    var acc = S.DERIVED.accuracy(att.stats) + ((att.weapon && att.weapon.acc) || 0);
+    var eva = S.DERIVED.evasion(def.stats) - ((def.armor && def.armor.encumbrance) || 0);   // bulky armour dulls evasion
+    var gap = acc - eva;
+    var p = 1 / (1 + Math.exp(-gap * 0.15));                       // PLACEHOLDER slope: clear gap -> reliable, gap~0 -> swingy
+    p = Math.max(0.02, Math.min(0.98, p + S.luckyThumb(att.stats)));   // Lucky's universal thumb (+/-10% human)
+    var roll = rng ? rng.next() : 0.5;
+    return { hit: roll < p, p: p, gap: gap };
+  }
+
+  // DAMAGE (on a hit): deterministic Might + weapon - armor robustness; a rare crit SPIKE; a hit may
+  // land for DE MINIMIS (1) when armour eats the blow. PLACEHOLDER magnitudes.
+  function damage(att, def, rng) {
+    var S = _S();
+    var raw = ((att.weapon && att.weapon.base) || 0) + (S ? S.DERIVED.damageBonus(att.stats) : 0);
+    var rob = (def.armor && def.armor.robustness) || 0;
+    var crit = rng ? (rng.next() < 0.05) : false;                  // PLACEHOLDER crit rate
+    if (crit) raw = Math.round(raw * 1.5);
+    var dmg = raw - rob, deMinimis = false;
+    if (dmg < 1) { dmg = raw > 0 ? 1 : 0; deMinimis = true; }      // armour ate it -> a hit still lands for de minimis
+    return { damage: dmg, crit: crit, deMinimis: deMinimis };
+  }
+
+  // THE READ: Per PERCEIVES (OBJ, honest — vague-not-false at low Per; eyes miss, never lie); Intuition
+  // INTERPRETS (SUBJ confidence — can MISLEAD at low Intuition). Surfaced as FEEL-WORDS, never numbers.
+  var THREAT_WORDS = ["harmless", "slight", "an even match", "dangerous", "deadly", "overwhelming"];
+  function _threatBand(v) { var t = 0, B = [-999, -8, -2, 4, 12, 22]; for (var i = 0; i < B.length; i++) if (v >= B[i]) t = i; return t; }
+  function read(observer, target, rng) {
+    var S = _S(); if (!S) return { seen: { channel: "seen", obj: "OBJ", word: "unknown" }, sense: { channel: "intuition", obj: "SUBJ", word: "unsure" } };
+    var threat = ((target.weapon && target.weapon.base) || 0) + S.DERIVED.damageBonus(target.stats) + S.DERIVED.accuracy(target.stats);
+    var trueBand = _threatBand(threat);
+    var per = S.DERIVED.perceive(observer.stats), intu = S.DERIVED.interpret(observer.stats);
+    // OBJ (Per): the true band, hedged-but-never-false at low Per (vague, not wrong).
+    var hedge = per < 350;
+    var seen = { channel: "seen", obj: "OBJ", word: THREAT_WORDS[trueBand], vague: hedge };
+    // SUBJ (Intuition): a judgment. High Intuition -> matches truth; LOW Intuition -> may drift a band (mislead).
+    var senseBand = trueBand, confident = intu >= 670;
+    if (intu < 500) { var drift = rng ? (rng.next() < (500 - intu) / 700 ? (rng.next() < 0.5 ? -1 : 1) : 0) : 0; senseBand = Math.max(0, Math.min(THREAT_WORDS.length - 1, trueBand + drift)); }
+    var sense = { channel: "intuition", obj: "SUBJ", word: THREAT_WORDS[senseBand], confident: confident, reliable: senseBand === trueBand };
+    return { seen: seen, sense: sense };
+  }
+
   // ====================== SMASH-AND-GRAB (pure) ======================
   var SG = (function () {
     var TUNE = {
@@ -222,7 +284,10 @@ var TD_RESOLVE = (function () {
     };
   })();
 
-  return { COMBAT: COMBAT, strike: strike, applyDamage: applyDamage, ttk: ttk, SG: SG };
+  return {
+    COMBAT: COMBAT, strike: strike, applyDamage: applyDamage, ttk: ttk, SG: SG,
+    GEAR: GEAR, fighter: fighter, hit: hit, damage: damage, read: read
+  };
 })();
 
 if (typeof module !== "undefined" && module.exports) { module.exports = TD_RESOLVE; }
