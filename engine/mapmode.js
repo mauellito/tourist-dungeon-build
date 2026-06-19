@@ -15,7 +15,7 @@
 "use strict";
 
 var TD_MAP = (function () {
-  var W = 49, H = 35, CX = 24, CY = 17;   // floor-size ruling: NODE(41x23) -> STANDARD(49x35) — turns on the harvest landmark + terrain (gated to W>=45,H>=30)
+  var W = 54, H = 34, CX = 27, CY = 17;   // the live floor IS TD_GEN2's "regular" worked floor (zero open corners); W/H match its native dims
   var REVEAL = 4;
 
   // (the fixed 8-slot door template was removed in Round 1.5 — door mouths now
@@ -117,78 +117,71 @@ var TD_MAP = (function () {
   // and, only if every retry fails (a real generator gap), renders an UNMISTAKABLE debug floor. The
   // legacy carver is kept for reference but hard-gated off.
   var ALLOW_LEGACY = false;
-  var asmTally = { assembler: 0, retryRescued: 0, debug: 0, gateFail: 0, dimMismatch: 0, doors: 0, noAsm: 0, worstLaw: {} };
-  function asmNull(kind, worst) { asmTally[kind] = (asmTally[kind] || 0) + 1; if (worst) asmTally.worstLaw[worst] = (asmTally.worstLaw[worst] || 0) + 1; return null; }
-  // Option A (node-as-assembler-floor): a node's GEOMETRY is a NODE-sized scattered vault floor
-  // from TD_ASSEMBLER; the lattice GRAPH is untouched — we retrofit the graph edge-doors + room
-  // doors + dead-ends onto the assembler floor. Falls back to the legacy geometry (composeNodeOld)
-  // if the assembler isn't loaded or can't host this node's edge-degree.
-  function composeNodeAssembler(seed, nodeKey, numDoors, salt) {
-    if (typeof TD_ASSEMBLER === "undefined") return asmNull("noAsm");
-    var R = nodeRng(seed, nodeKey + ":asm" + (salt || ""));
-    var res = TD_ASSEMBLER.generateGated(R.int(1, 2000000000) >>> 0, "STANDARD", 400);
-    if (!res || !res.passed || !res.map) {
-      var worst = (res && res.laws) ? (Object.keys(res.laws).filter(function (k) { return !res.laws[k].pass; })[0] || "?") : "?";
-      console.error("composeNodeAssembler null: gate-fail(passed=false,attempt=" + (res ? res.attempt : "-") + ",worstLaw=" + worst + ") node=" + nodeKey);
-      return asmNull("gateFail", worst);
+  var asmTally = { assembler: 0, gen2: 0, retryRescued: 0, debug: 0, noGen2: 0, worstLaw: {} };
+  // THE LIVE FLOOR IS TD_GEN2 (the zero-open-corner / 8-neighbor-isolation worked generator). composeNode
+  // calls TD_GEN2.generateLevel and RENDERS IT DIRECTLY: its grid IS the floor (no carve, punch, or
+  // edge-door retrofit). gen2 encodes content as glyphs in the grid (# wall, o pillar, X chasm, ~ water,
+  // . floor, + door, ? secret, $ loot, < up-stair, > down-stair); we read those into the controller's
+  // structures WITHOUT changing the walkable footprint (so its 0 open corners survive verbatim).
+  var GEN2_WALL = { "#": 1, "o": 1 };   // pillar renders as rock; chasm/water keep their own glyph
+  function composeNodeGen2(seed, nodeKey, numDoors) {
+    if (typeof TD_GEN2 === "undefined") return null;
+    var R = nodeRng(seed, nodeKey + ":g2");
+    var lvl = TD_GEN2.generateLevel(R.int(1, 2000000000) >>> 0, { size: "regular", grammar: "worked", skin: "stone" });
+    var src = lvl.grid;
+    var g = [], rawGrid = [], roomDoors = [], secrets = [], loot = [], nF = 0, ax = 0, ay = 0;
+    for (var y = 0; y < H; y++) {
+      var row = [];
+      for (var x = 0; x < W; x++) {
+        var c = (src[y] && src[y][x]) || "#";
+        var out = GEN2_WALL[c] ? "#" : (c === "X") ? "X" : (c === "~") ? "~" : ".";   // walkable footprint preserved exactly
+        row.push(out);
+        if (out === "." || out === "~") { nF++; ax += x; ay += y; }
+        if (c === "+") roomDoors.push({ x: x, y: y, state: R.pick(["closed", "closed", "ajar", "open"]) });
+        if (c === "?") secrets.push({ x: x, y: y });
+        if (c === "$") loot.push({ x: x, y: y });
+      }
+      g.push(row); rawGrid.push(row.slice());
     }
-    var mm = res.map;
-    if (mm.h !== H || mm.w !== W) { console.error("composeNodeAssembler null: dim-mismatch(WxH got " + mm.w + "x" + mm.h + ", want " + W + "x" + H + ") node=" + nodeKey); return asmNull("dimMismatch"); }
-    var g = []; for (var y = 0; y < H; y++) g.push(mm.grid[y].slice());
-    var rawGrid = []; for (var yr = 0; yr < H; yr++) rawGrid.push(mm.grid[yr].slice());   // pristine generator floor (verify aid)
     function isF(x, y) { return g[y] && g[y][x] === "."; }
-    // THE FLOOR IS THE GENERATOR'S FLOOR. g is mm.grid copied AS-IS — never carved, punched, or widened.
-    // Everything below READS the generator's own tags (door / secret / stair) + collects existing floor
-    // cells for breadth edges. Not one cell of g is written. (open corners live==raw, by construction.)
-    var spawn = { x: mm.entry.x, y: mm.entry.y };
-    var roomDoors = [], secrets = [], featDead = [], featOther = [], corrCount = 0, ax = 0, ay = 0, nF = 0;
-    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
-      var t = mm.tag[y][x];
-      if (g[y][x] === "." || g[y][x] === "~") { nF++; ax += x; ay += y; }   // walkable centroid
-      if (t === "corridor") corrCount++;
-      if (t === "door") roomDoors.push({ x: x, y: y, state: R.pick(["closed", "closed", "ajar", "open"]) });   // the generator's own room doorways (pass its L4)
-      if (t === "secret") secrets.push({ x: x, y: y });                                                          // the generator's own telegraphed secrets
-      if (t === "feature") { var fn = DIR4.filter(function (d) { return isF(x + d[0], y + d[1]); }); (fn.length === 1 ? featDead : featOther).push({ x: x, y: y }); }
-    }
-    // LEVEL TRANSITIONS use the generator's OWN stairs: descent = the down-stair, ascent = the up-stair.
-    var stairsArr = mm.stairs || [];
-    var downStair = stairsArr.filter(function (s) { return s.kind === "down"; })[0] || null;
-    var upStair = stairsArr.filter(function (s) { return s.kind === "up"; })[0] || null;
-    // SAME-LEVEL (breadth) edges are seated on EXISTING floor cells (dead-end features first, then far floor
-    // cells) — NEVER carved (operator ruling: keep breadth navigable on the generator's own floor; do not
-    // punch geometry). A future ruling may give breadth its own authored exits (the seam the directive flags).
+    var spawn = lvl.up ? { x: lvl.up.x, y: lvl.up.y } : { x: CX, y: CY };
+    // LEVEL TRANSITIONS use gen2's OWN stairs: descent = its down-stair, ascent = its up-stair.
+    var downStair = lvl.down ? { x: lvl.down.x, y: lvl.down.y, kind: "down" } : null;
+    var upStair = lvl.up ? { x: lvl.up.x, y: lvl.up.y, kind: "up" } : null;
+    // SAME-LEVEL (breadth) edges sit on EXISTING floor cells (dead-ends first, then far cells) — NEVER
+    // carved (operator ruling). gen2 invents no geometry for graph edges; the seam is flagged, not punched.
     var stairKeys = {}; if (downStair) stairKeys[downStair.x + "," + downStair.y] = 1; if (upStair) stairKeys[upStair.x + "," + upStair.y] = 1;
+    var featDead = [];
+    for (var dy = 1; dy < H - 1; dy++) for (var dx = 1; dx < W - 1; dx++) { if (g[dy][dx] !== ".") continue; var fn = DIR4.filter(function (d) { return isF(dx + d[0], dy + d[1]); }); if (fn.length === 1) featDead.push({ x: dx, y: dy }); }
     var seenB = {}, breadthCells = [];
     function addB(c) { var k = c.x + "," + c.y; if (!seenB[k] && !stairKeys[k] && !(c.x === spawn.x && c.y === spawn.y) && breadthCells.length < 16) { seenB[k] = 1; breadthCells.push({ x: c.x, y: c.y }); } }
-    featDead.forEach(addB); featOther.forEach(addB);
+    featDead.forEach(addB);
     if (breadthCells.length < 16) {
       var fl = []; for (var y2 = 1; y2 < H - 1; y2++) for (var x2 = 1; x2 < W - 1; x2++) if (g[y2][x2] === "." && !seenB[x2 + "," + y2] && !stairKeys[x2 + "," + y2] && !(x2 === spawn.x && y2 === spawn.y)) fl.push([x2, y2]);
       fl.sort(function (a, b) { return (Math.abs(b[0] - spawn.x) + Math.abs(b[1] - spawn.y)) - (Math.abs(a[0] - spawn.x) + Math.abs(a[1] - spawn.y)); });
       for (var i = 0; i < fl.length && breadthCells.length < 16; i++) addB({ x: fl[i][0], y: fl[i][1] });
     }
-    var roomList = (mm.rooms || []).map(function (rm) { return { tag: "room", aspect: (rm.x1 - rm.x0 + 1) / Math.max(1, rm.y1 - rm.y0 + 1), area: (rm.x1 - rm.x0 + 1) * (rm.y1 - rm.y0 + 1), x0: rm.x0, y0: rm.y0, x1: rm.x1, y1: rm.y1, door: rm.door || { x: rm.cx, y: rm.cy } }; });
     return {
       grid: g, rawGrid: rawGrid, spawn: spawn,
       downStair: downStair, upStair: upStair, breadthCells: breadthCells,
       doorPts: (downStair ? [downStair] : []).concat(upStair ? [upStair] : []).concat(breadthCells),   // wired-exit list (compat)
-      roomDoors: roomDoors, secrets: secrets, deadEnds: [],
-      tag: "vault", rooms: roomList.length, roomList: roomList, corridorCells: corrCount,
-      corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: nF / (W * H), source: "assembler"
+      roomDoors: roomDoors, secrets: secrets, loot: loot, deadEnds: [],
+      tag: "gen2", rooms: 0, roomList: [], corridorCells: 0,
+      corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: nF / (W * H), source: "gen2"
     };
   }
   function composeNode(seed, nodeKey, numDoors) {
-    // ASSEMBLER-ONLY: try the gated assembler, then up to 5 RETRIES with fresh outer seeds (each still
-    // 400 attempts). Never serve the ungated legacy carver. If every retry fails, that is a real
-    // generator gap -> a LOUD console.error + an unmistakable debug floor (never a playable blob).
-    for (var s = 0; s < 6; s++) {
-      var a = composeNodeAssembler(seed, nodeKey, numDoors, s ? (":r" + s) : "");
-      if (a) { if (s === 0) asmTally.assembler++; else { asmTally.retryRescued++; console.warn("composeNode: " + nodeKey + " rescued on retry " + s); } return a; }
-    }
+    // LIVE = TD_GEN2, rendered directly (no retrofit). gen2 is deterministic + always returns a valid
+    // floor, so no retries are needed. If gen2 is absent: the test-only legacy carver (when a suite flips
+    // TD_MAP.setLegacy(true)) else a LOUD console.error + an unmistakable debug floor (never a blob).
+    var a = composeNodeGen2(seed, nodeKey, numDoors);
+    if (a) { asmTally.gen2++; asmTally.assembler++; return a; }
+    asmTally.noGen2++;
     // TEST-ONLY: legacy-carver unit suites (run_architecture/run_map) flip TD_MAP.setLegacy(true) to
     // exercise composeNodeOld directly. NEVER reachable in live play (ALLOW_LEGACY is false by default).
     if (ALLOW_LEGACY) { var legacy = composeNodeOld(seed, nodeKey, numDoors); if (legacy) { asmTally.legacy = (asmTally.legacy || 0) + 1; return legacy; } }
     asmTally.debug++;
-    console.error("composeNode: " + nodeKey + " UNAVAILABLE after 6x400 attempts — null reasons " + JSON.stringify(asmTally) + " — rendering DEBUG FLOOR (generator gap)");
+    console.error("composeNode: " + nodeKey + " UNAVAILABLE (TD_GEN2 not loaded) — tally " + JSON.stringify(asmTally) + " — rendering DEBUG FLOOR");
     return debugFloor(seed, nodeKey, numDoors);
   }
   // an UNMISTAKABLE last-resort floor: one small room + a Bureau sign reading the failure. Never
@@ -513,7 +506,11 @@ var TD_MAP = (function () {
       ctrl.explored = ctrl.exploredByNode[ctrl.node] || (ctrl.exploredByNode[ctrl.node] = new Set());
       reveal(comp.spawn.x, comp.spawn.y);
       ctrl.pendingDoor = null;
-      placeTerrain(comp);
+      // gen2 floors are rendered DIRECTLY — its own skin lays terrain (chasm/water); the controller adds
+      // no water of its own (that would change cells). Other generators keep the controller water pass.
+      if (comp.source !== "gen2") placeTerrain(comp);
+      // gen2's own loot ($) cells become items (its authored rewards), then the usual gameplay fill runs.
+      (comp.loot || []).forEach(function (l, i) { if (isFloor(l.x, l.y)) tryItem(l.x, l.y, ["souvenir", "ration", "bandage"][i % 3]); });
       if (inDungeon()) placeDefaults(comp);
       placeGlimpses();
       spawnCreatures();

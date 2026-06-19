@@ -27,7 +27,7 @@ TMPDIR = os.path.join(ROOT, "tests", ".tmp")
 # EXACT play-map.html load order (the live build):
 ENGINE_FILES = [
     "rng.js", "resolve.js", "stats.js", "burden.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js", "assembler.js",
-    "checker.js", "vaults.js", "generator.js", "interpreter.js", "mapmode.js",
+    "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "mapmode.js",
     "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js", "game.js", "ui.js",
 ]
 CHROME_CANDIDATES = [
@@ -120,22 +120,22 @@ function WALK_PROOF(seed) {
   var desc = sim.commit();
   step("commit-descend", desc && desc.to === "DUNGEON", "commit -> " + JSON.stringify(desc));
 
-  // ---- (3) confirm we are in the dungeon on a NEW vault (assembler) floor ----
+  // ---- (3) confirm we are in the dungeon on a TD_GEN2 (zero-open-corner) floor ----
   var phase1 = sim._phase();
   step("phase-dungeon", phase1 === "dungeon", "phase=" + phase1);
   var dv = sim._dungeon() ? sim._dungeon().view() : null;
   step("dungeon-view", !!dv, dv ? ("level " + dv.level + ", node " + dv.node) : "no dungeon view");
-  step("ASSEMBLER-FLOOR", dv && dv.compSource === "assembler",
-       "compSource=" + (dv ? dv.compSource : "n/a") + "  (must be 'assembler' = NEW vault floor, not old geometry)");
+  step("GEN2-FLOOR", dv && dv.compSource === "gen2",
+       "compSource=" + (dv ? dv.compSource : "n/a") + "  (must be 'gen2' = TD_GEN2 worked floor, not assembler/legacy)");
 
-  // ---- (3b) NO SILENT LEGACY: EVERY composed floor must be assembler (never legacy/debug). Compose a
-  // spread of nodes through the live path and assert all sources == "assembler" + zero debug fallbacks.
+  // ---- (3b) NO SILENT FALLBACK: EVERY composed floor must be gen2 (never legacy/debug). Compose a
+  // spread of nodes through the live path and assert all sources == "gen2" + zero debug fallbacks.
   var dg = sim._dungeon();
   if (dg && dg._compose) {
     var bad = [], M = 20;
-    for (var i = 0; i < M; i++) { var c = dg._compose("walkchk" + i, 1 + (i % 3)); if (!c || c.source !== "assembler") bad.push("walkchk" + i + "=" + (c ? c.source : "null")); }
+    for (var i = 0; i < M; i++) { var c = dg._compose("walkchk" + i, 1 + (i % 3)); if (!c || c.source !== "gen2") bad.push("walkchk" + i + "=" + (c ? c.source : "null")); }
     var tally = dg._compTally ? dg._compTally() : {};
-    step("NO-SILENT-LEGACY", bad.length === 0 && (tally.debug || 0) === 0, bad.length + "/" + M + " floors not assembler" + (bad.length ? " [" + bad.slice(0, 5).join(",") + "]" : "") + "; debug-floors=" + (tally.debug || 0) + "  (legacy carver must be unreachable)");
+    step("NO-SILENT-FALLBACK", bad.length === 0 && (tally.debug || 0) === 0, bad.length + "/" + M + " floors not gen2" + (bad.length ? " [" + bad.slice(0, 5).join(",") + "]" : "") + "; debug-floors=" + (tally.debug || 0) + "  (legacy/debug must be unreachable)");
 
     // THE FLOOR IS THE GENERATOR'S FLOOR: the composed grid must be byte-identical to the raw generator
     // grid (no carve/punch). Assert open-corner count live == raw on EVERY composed node.
