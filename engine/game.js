@@ -109,6 +109,7 @@ var TD_GAME = (function () {
       // starting gear (combat track phase 3): a weapon + armour the player carries; both feed combat
       // and encumbrance. PLACEHOLDER loadout from the roster (rosters/shops are a later directive).
       if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.weapon = TD_RESOLVE.GEAR.WEAPONS.shortsword; character.armor = TD_RESOLVE.GEAR.ARMOR.light; }
+      character.purse = { copper: 0, silver: 0, gold: 0 };   // coins picked up in the descent (weight -> encumbrance)
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };

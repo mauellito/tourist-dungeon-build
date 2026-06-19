@@ -403,6 +403,26 @@ function TD_MAP_TESTS() {
     assert(!/\d/.test(m ? m[0] : "0"), "the band word carries no number");
   });
 
+  test("R3 spawns are DENSITIES (creatures + coins scale with walkable-cell count, not a fixed N)", function () {
+    var g = TD_MAP.create(roomWorld(9, false), { creatures: true });
+    var walk = g._walkable(), d = g._spawnDensity();
+    var nc = g._creatures().length, coins = g._countItemKind("coins");
+    assert(nc === Math.max(1, Math.round(walk * d.creature)), "creature count = round(walkable * creature density), not a fixed 1-2");
+    assert(coins >= 1 && coins <= Math.round(walk * d.coin) + 1, "coin piles scale with walkable cells (density)");
+  });
+  test("R3 coin pickup raises encumbrance (greed -> burden, no number)", function () {
+    var g = TD_MAP.create(world(), { creatures: false });
+    var ch = g._character(); ch.stats = TD_STATS.create(TD_RNG.make(2)); ch.weapon = TD_RESOLVE.GEAR.WEAPONS.shortsword; ch.armor = TD_RESOLVE.GEAR.ARMOR.light; ch.purse = { copper: 0, silver: 0, gold: 0 };
+    var before = g._band().band.speed;
+    var p = g._player(); g._setCoins(p.x, p.y, 3000);           // a fat pile under your feet
+    var r = g.get();
+    assert(r.got && r.coins, "the pile is pocketed as coins (not into the pack)");
+    assert(g._character().purse.gold >= 3000, "coins land in the purse");
+    assert(g._band().band.speed < before, "the heavier purse worsens the encumbrance band");
+    var texts = g._messages().map(function (m) { return m.text; }).join(" || ");
+    assert(!/\d/.test(texts.replace(/level \d|\d+ hp/gi, "")), "coin pickup + band narration leak no raw number");
+  });
+
   // ------------------------------------------- MESSAGE URGENCY TIERS --------
   test("critical events (low HP hit, one-way seal) are flagged urgent in the log", function () {
     var g = TD_MAP.create(world(), { creatures: true });

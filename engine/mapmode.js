@@ -38,6 +38,9 @@ var TD_MAP = (function () {
   var FATIGUE_PER_STEP = 0.5, FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4;
   var SATIATION_PER_STEP = 0.3, STARVE_HP = TD_RESOLVE.COMBAT.STARVE_HP, EXHAUST_HP = TD_RESOLVE.COMBAT.EXHAUST_HP;
   var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
+  // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
+  // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
+  var CREATURE_DENSITY = 0.012, COIN_DENSITY = 0.02;
   // the secret-grammar vocabulary (CLAUDE.md): a fixed, learnable set of tells
   var TELLS = (typeof TD_VAULTS !== "undefined" && TD_VAULTS.TELLS) || {
     draft:  { text: "A cold draft slides from a seam in the wall.", kind: "heard", obj: "OBJ" },
@@ -447,6 +450,7 @@ var TD_MAP = (function () {
       if (inDungeon()) placeDefaults(comp);
       placeGlimpses();
       spawnCreatures();
+      spawnCoins();
       if (decorate) decorate(ctrl, { CX: comp.spawn.x, CY: comp.spawn.y, key: key, isFloor: isFloor });
     }
     // adaptive contents for a varied screen: loot on reachable floor + one
@@ -605,13 +609,25 @@ var TD_MAP = (function () {
     var DISPLACE_LINES = ["“Pardon.”", "It yields the way with a nod.", "You slip past with a murmured apology.", "A shuffle, a half-step, and you are through."];
     function displaceBark() { if (shared.turn - (ctrl.lastDisplace == null ? -99 : ctrl.lastDisplace) >= 5 && rng.chance(0.4)) { ctrl.lastDisplace = shared.turn; senses(DISPLACE_LINES[rng.int(0, DISPLACE_LINES.length - 1)], "heard", "OBJ"); } }
 
+    function walkableCount() { var n = 0; for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (ctrl.grid[y][x] === ".") n++; return n; }
+    function makeCoins(amount) { return { kind: "coins", glyph: "$", name: "a heap of coins", desc: "Bureau-stamped coin. It has weight.", coins: amount }; }
+    // coin loot at a per-walkable-cell DENSITY; a pile picks up into the PURSE -> weight -> band.
+    function spawnCoins() {
+      if (!inDungeon() || (world.nodes[ctrl.node] || {}).dmz) return;
+      var n = Math.round(walkableCount() * COIN_DENSITY);
+      for (var c = 0; c < n; c++) {
+        var spot = pickSpot();
+        if (!spot || itemAt(spot.x, spot.y) || creatureAt(spot.x, spot.y)) continue;
+        ctrl.items[key(spot.x, spot.y)] = makeCoins(rng.int(20, 80));   // PLACEHOLDER gold per pile
+      }
+    }
     function spawnCreatures() {
       ctrl.creatures = [];
       if (!livingOn || !inDungeon()) return;
       // DMZ law (v20 R1): a saloon or the cafeteria is demilitarised — no hostile
       // action resolves inside, so none ever spawns. (The truce is spatial, not prose.)
       if ((world.nodes[ctrl.node] || {}).dmz) return;
-      var n = rng.int(1, 2);
+      var n = Math.max(1, Math.round(walkableCount() * CREATURE_DENSITY));   // DENSITY, not a fixed count
       var kinds = ["wanderer", "lurker", "chaser"];
       for (var c = 0; c < n; c++) {
         var kind = kinds[rng.int(0, kinds.length - 1)];
@@ -890,6 +906,13 @@ var TD_MAP = (function () {
       var k = key(ctrl.player.x, ctrl.player.y), it = ctrl.items[k];
       if (!it) { logMsg("There is nothing here to take.", false); return { got: false, event: ctrl.lastEvent }; }
       delete ctrl.items[k];
+      if (it.kind === "coins") {                                // coins -> the PURSE (weight -> encumbrance), never the pack
+        if (!ctrl.character.purse) ctrl.character.purse = { copper: 0, silver: 0, gold: 0 };
+        ctrl.character.purse.gold = (ctrl.character.purse.gold || 0) + it.coins;
+        logMsg("You pocket the coins; the weight settles onto you.", false);   // no number — band feel-word does the rest
+        updateBand();                                           // the heavier purse may cross a band
+        return { got: true, coins: true, event: ctrl.lastEvent };
+      }
       ctrl.inventory.push(it);
       logMsg("You take " + it.name + ".", false);
       return { got: true, item: it, event: ctrl.lastEvent };
@@ -1074,6 +1097,10 @@ var TD_MAP = (function () {
       _character: function () { return ctrl.character; },
       _band: function () { return playerBand(); },
       _playerFighter: function () { return playerFighter(); },
+      _walkable: function () { return walkableCount(); },
+      _spawnDensity: function () { return { creature: CREATURE_DENSITY, coin: COIN_DENSITY }; },
+      _countItemKind: function (kind) { var n = 0; for (var k in ctrl.items) if (ctrl.items[k].kind === kind) n++; return n; },
+      _setCoins: function (x, y, amount) { ctrl.items[key(x, y)] = makeCoins(amount); },
       _features: function () { return ctrl.features; },
       _items: function () { return ctrl.items; },
       _plain: function () { return ctrl.plain; },
