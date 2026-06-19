@@ -5,7 +5,8 @@
 // Elysium law). Combat reads the DERIVED registry (internal numbers); the player never sees them.
 //
 // ALL MAGNITUDES ARE PLACEHOLDER — calibration is a later balance-sim pass. Do NOT hand-tune here.
-// The ratified tables (RECONCILIATION-stats-combat.md) are pending; reconcile when filed.
+// Structure ratified by character-canon-v1.3.md (the ten lanes, Lucky linear-from-neutral, the
+// two-stage read, the stat->combat derived table); only the VALUES remain calibration-pending.
 "use strict";
 
 var TD_STATS = (function () {

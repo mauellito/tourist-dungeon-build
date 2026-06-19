@@ -25,15 +25,16 @@ try{
   var h=T.hit(A,D,RNG.make(1)), dm=T.damage(A,D,RNG.make(1));
   ok('HIT and DAMAGE are separate (hit->connect/miss, damage->amount)', typeof h.hit==='boolean' && typeof dm.damage==='number');
 
-  // ---- GAP-SCALING: clear gap reliable, close gap swingy ----
-  var strong=T.fighter(st({dex:1000})), weakD=T.fighter(st({dex:1})), evenA=T.fighter(st({dex:500})), evenD=T.fighter(st({dex:500}));
+  // ---- GAP-SCALING: clear gap reliable, close gap swingy ----  (neutral-acc weapon isolates the Dex gap)
+  var nw={name:"n",base:10,type:"blade",acc:0};
+  var strong=T.fighter(st({dex:1000}),nw), weakD=T.fighter(st({dex:1}),nw), evenA=T.fighter(st({dex:500}),nw), evenD=T.fighter(st({dex:500}),nw);
   var rHigh=rate(strong,weakD,600,11), rEven=rate(evenA,evenD,600,11), rLow=rate(weakD,strong,600,11);
   ok('gap-scaling: a clear accuracy gap is RELIABLE (high hit-rate)', rHigh>0.85, rHigh.toFixed(2));
   ok('gap-scaling: an even matchup is SWINGY (~50%)', rEven>0.40&&rEven<0.60, rEven.toFixed(2));
   ok('gap-scaling: a clear DISADVANTAGE rarely connects', rLow<0.15, rLow.toFixed(2));
 
   // ---- LUCKY: shifts the hit chance by at most its +/-10% thumb ----
-  var lucky=T.fighter(st({dex:500,lucky:1000})), unluck=T.fighter(st({dex:500,lucky:1})), neutralD=T.fighter(st({dex:500}));
+  var lucky=T.fighter(st({dex:500,lucky:1000}),nw), unluck=T.fighter(st({dex:500,lucky:1}),nw), neutralD=T.fighter(st({dex:500}),nw);
   var pLucky=T.hit(lucky,neutralD,RNG.make(1)).p, pNeut=T.hit(evenA,neutralD,RNG.make(1)).p, pUn=T.hit(unluck,neutralD,RNG.make(1)).p;
   ok('LUCKY moves the hit chance by no more than its +/-10% thumb', Math.abs(pLucky-pNeut)<=0.1001 && Math.abs(pNeut-pUn)<=0.1001 && pLucky>pNeut && pUn<pNeut, "p un/neut/lucky "+pUn.toFixed(2)+"/"+pNeut.toFixed(2)+"/"+pLucky.toFixed(2));
 
@@ -47,6 +48,14 @@ try{
   ok('DAMAGE base is deterministic (no rng -> same number every call)', T.damage(mighty,bare,null).damage===T.damage(mighty,bare,null).damage);
   var crits=0; for(var i=0;i<2000;i++) if(T.damage(mighty,bare,RNG.make(i)).crit) crits++;
   ok('DAMAGE: crit is a RARE spike (~a few %)', crits>0 && crits/2000<0.15, (100*crits/2000).toFixed(1)+"% crit");
+
+  // ---- WEAPON TYPES (canon-reconcile): 3 gross types + verbs; Impact crushes armour robustness ----
+  ok('three gross weapon TYPES with verbs (Blades/Impact/Polearms)', !!T.GEAR.WEAPON_TYPES.blade && !!T.GEAR.WEAPON_TYPES.impact && !!T.GEAR.WEAPON_TYPES.polearm && T.GEAR.WEAPON_TYPES.impact.verb==='crush', Object.keys(T.GEAR.WEAPON_TYPES).join(','));
+  var blade=T.fighter(st({might:600}),{name:"b",base:14,type:"blade"}), impact=T.fighter(st({might:600}),{name:"m",base:14,type:"impact",crush:0.5});
+  var dB=T.damage(blade,heavy,null).damage, dI=T.damage(impact,heavy,null).damage;
+  ok('Impact CRUSHES armour robustness (more DAMAGE than an equal-base blade vs heavy armour)', dI>dB, "blade="+dB+" impact="+dI);
+  var AR=T.GEAR.ARMOR;
+  ok('ARMOR dial light<->bulky (3-4 named tiers): bulkier = more robustness + more encumbrance', AR.none.robustness<AR.light.robustness&&AR.light.robustness<AR.medium.robustness&&AR.medium.robustness<AR.heavy.robustness&&AR.none.encumbrance<AR.heavy.encumbrance, Object.keys(AR).join(','));
 
   // ---- THE READ: feel-words only, OBJ honest, SUBJ can mislead ----
   var obsHi=T.fighter(st({per:1000,intuition:1000})), obsLo=T.fighter(st({per:200,intuition:120}));

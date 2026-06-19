@@ -29,19 +29,35 @@ var TD_RESOLVE = (function () {
   // turns-to-kill at a fixed per-hit damage (deterministic combat => exact)
   function ttk(hp, perHit) { return perHit > 0 ? Math.ceil(hp / perHit) : Infinity; }
 
-  // ============= TWO-FUNCTION COMBAT MODEL (combat track R3) =============
-  // HIT (accuracy vs evasion, gap-scaled + Lucky's universal thumb) is SEPARATE from DAMAGE
-  // (Might + weapon - armor robustness, deterministic; rare crit; de-minimis if armor eats it).
-  // Reads the ten-stat spine via TD_STATS (internal numbers; the player sees FEEL-WORDS only).
-  // STUB gear only (one generic weapon + a couple armor tiers) — rosters are the next directive.
-  // ALL MAGNITUDES ARE PLACEHOLDER — calibration is a later balance-sim pass. Do NOT hand-tune.
-  // Live wire-in to mapmode (creatures carry stat blocks) is deferred to the descent-slice pass;
+  // ============= TWO-FUNCTION COMBAT MODEL (combat track) =============
+  // RATIFIED structure: combat-canon-v0.1.md + character-canon-v1.3.md. HIT (accuracy vs evasion,
+  // gap-scaled + Lucky's universal thumb) is SEPARATE from DAMAGE (Might + weapon - armor robustness,
+  // deterministic; rare crit; de-minimis if armor eats it). Reads the ten-stat spine via TD_STATS
+  // (internal numbers; the player sees FEEL-WORDS only). ALL MAGNITUDES ARE PLACEHOLDER — the
+  // balance-sim calibrates them; this aligns STRUCTURE to canon, not values. Do NOT hand-tune.
+  // STUB gear only (one weapon per TYPE + the armor dial) — the dozen-weapon roster is the next
+  // directive. Live wire-in to mapmode (creatures carry stat blocks) lands in the descent-slice pass;
   // the legacy flat PLAYER_DMG path above stays until then.
   var GEAR = {
-    WEAPONS: { plain: { name: "a plain blade", base: 12, type: "blade", acc: 0 } },                 // STUB: one generic weapon
-    ARMOR: { none: { name: "unarmored", robustness: 0, encumbrance: 0 },                            // STUB: a couple armor tiers
-             light: { name: "light armour", robustness: 3, encumbrance: 1 },
-             heavy: { name: "heavy armour", robustness: 8, encumbrance: 4 } }
+    // three gross weapon TYPES (player-simple; ~a dozen live under them, rostered next). Each carries
+    // a type-VERB and a lean: Blades -> accuracy/HIT · Heavy-Impact -> crush robustness/DAMAGE ·
+    // Polearms -> reach/positioning. Ranged + unarmed DEFERRED.
+    WEAPON_TYPES: {
+      blade:   { verb: "cut",     lean: "accuracy->HIT" },
+      impact:  { verb: "crush",   lean: "crush-robustness->DAMAGE" },
+      polearm: { verb: "skewer",  lean: "reach->positioning" }
+    },
+    WEAPONS: {   // STUB: one generic weapon per type (values PLACEHOLDER)
+      plain:  { name: "a plain blade", base: 12, type: "blade",   acc: 2,  verb: "cut" },
+      mace:   { name: "a heavy mace",  base: 14, type: "impact",  acc: -1, verb: "crush",  crush: 0.5 },  // crush: armour robustness counts half
+      spear:  { name: "a plain spear", base: 11, type: "polearm", acc: 0,  verb: "skewer", reach: true } // reach -> positioning (spatial; deferred)
+    },
+    // ARMOR — one master dial, light <-> bulky (named tiers): bulkier = more robustness + more
+    // encumbrance (worse evasion). DURABILITY DROPPED (no wear, no repair). Values PLACEHOLDER.
+    ARMOR: { none:   { name: "unarmoured",    robustness: 0, encumbrance: 0 },
+             light:  { name: "light armour",  robustness: 3, encumbrance: 1 },
+             medium: { name: "medium armour", robustness: 5, encumbrance: 2 },
+             heavy:  { name: "heavy armour",  robustness: 8, encumbrance: 4 } }
   };
   function _S() { return (typeof TD_STATS !== "undefined") ? TD_STATS : null; }
   function fighter(stats, weapon, armor) { return { stats: stats, weapon: weapon || GEAR.WEAPONS.plain, armor: armor || GEAR.ARMOR.none }; }
@@ -64,7 +80,8 @@ var TD_RESOLVE = (function () {
   function damage(att, def, rng) {
     var S = _S();
     var raw = ((att.weapon && att.weapon.base) || 0) + (S ? S.DERIVED.damageBonus(att.stats) : 0);
-    var rob = (def.armor && def.armor.robustness) || 0;
+    // Heavy/Impact weapons CRUSH armour robustness (it counts for less) -> their lean is DAMAGE.
+    var rob = ((def.armor && def.armor.robustness) || 0) * ((att.weapon && att.weapon.crush != null) ? att.weapon.crush : 1);
     var crit = rng ? (rng.next() < 0.05) : false;                  // PLACEHOLDER crit rate
     if (crit) raw = Math.round(raw * 1.5);
     var dmg = raw - rob, deMinimis = false;
