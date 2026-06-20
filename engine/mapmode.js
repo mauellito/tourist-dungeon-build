@@ -788,6 +788,14 @@ var TD_MAP = (function () {
       // ALWAYS fire before the commit (the timing is reliable; only the wording's precision scales).
       senses(line, tier === "murky" ? "intuition" : "seen", tier === "murky" ? "SUBJ" : "OBJ");
     }
+    // GATE 2 R3 — CRUSH-TELL HOOK (stub). A HEAVY-IMPACT blow landing on tier-4 Regulation Plate makes
+    // the shell give inward; fire the GENERATOR'S crush-tell string on the senses channel. The crush
+    // MAGNITUDE stays QB's (damage() already carries the crush term); this is only the tell. The hook is
+    // DORMANT in normal play (no impact-wielding foe exists yet) — it lights up when one does.
+    function crushTell(attWeapon) {
+      var arm = ctrl.character && ctrl.character.armor;
+      if (attWeapon && attWeapon.type === "impact" && arm && arm.tier === 4 && arm.crushTell) senses(arm.crushTell, "heard", "OBJ");
+    }
     function creaturesStep() {
       var toldIntent = false;   // one telegraph per step keeps the senses panel readable, not spammy
       ctrl.creatures.forEach(function (cr) {
@@ -808,6 +816,7 @@ var TD_MAP = (function () {
                 var dmg2 = TD_RESOLVE.damage(cr.fighter, pf2, rng).damage;
                 ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: dmg2, kind: "taken" });
                 hurt(dmg2, cr);
+                crushTell(cr.fighter.weapon);                                  // R3 hook: impact vs tier-4 plate -> the shell gives inward
                 if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary.", lowHP());
               } else logMsg(cap(cr.name) + " lunges and misses.", false);
             } else {                                                        // legacy flat fallback
