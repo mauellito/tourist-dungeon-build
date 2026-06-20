@@ -165,8 +165,19 @@
   // ----- LIVE FLOOR MODEL (sourced from gen2 + mapmode densities; single source of truth) -----
   function liveDensities() {
     var MAP = (typeof TD_MAP !== "undefined") ? TD_MAP : (typeof require !== "undefined" ? require("../engine/mapmode.js") : null);
-    if (!MAP || typeof MAP.CREATURE_DENSITY !== "number") throw new Error("balance sim needs TD_MAP densities — load engine/mapmode.js");
-    return { creature: MAP.CREATURE_DENSITY, coin: MAP.COIN_DENSITY, goldPerHeap: (MAP.COIN_GOLD_MIN + MAP.COIN_GOLD_MAX) / 2 };
+    if (!MAP || typeof MAP.CREATURE_DENSITY !== "number" || !MAP.COIN_MIX) throw new Error("balance sim needs TD_MAP densities + COIN_MIX — load engine/mapmode.js");
+    return { creature: MAP.CREATURE_DENSITY, coin: MAP.COIN_DENSITY, mix: MAP.COIN_MIX };
+  }
+  // roll a floor's coin as DENOMINATION heaps from the live COIN_MIX (same distribution mapmode spawns).
+  function rollHeaps(rng, nHeaps, mix) {
+    var tot = 0; mix.forEach(function (m) { tot += m.weight; });
+    var heaps = [];
+    for (var i = 0; i < nHeaps; i++) {
+      var r = rng.int(1, tot), acc = 0, pick = mix[mix.length - 1];
+      for (var j = 0; j < mix.length; j++) { acc += mix[j].weight; if (r <= acc) { pick = mix[j]; break; } }
+      heaps.push({ den: pick.den, count: rng.int(pick.min, pick.max) });
+    }
+    return heaps;
   }
   // live walkable = cells that become "." in composeNodeGen2 (wall/pillar 'o', chasm 'X', water '~' excluded —
   // matching mapmode.walkableCount which counts only ".").
@@ -198,13 +209,14 @@
     // SOURCE the floor from gen2: a real 'worked' 54x34 floor's walkable count -> the LIVE densities.
     var floor = pool[rng.int(0, pool.length - 1)], walk = floor.w;
     var nFoes = Math.round(walk * dens.creature);                              // live spawnCreatures density (max(1,..) is moot at this size)
-    var coinHeaps = Math.round(walk * dens.coin);                             // live spawnCoins density (count of heaps)
-    var floorGold = coinHeaps * dens.goldPerHeap;                             // total floor coin (heaps x avg gold/heap)
-    var coinPerFoe = nFoes > 0 ? Math.round(floorGold / nFoes) : floorGold;   // distributed across encounters so weight bites later fights
+    var heaps = rollHeaps(rng, Math.round(walk * dens.coin), dens.mix);        // live spawnCoins: DENOMINATION heaps
+    // policy decides which heaps to pocket: greedy hoovers ALL (bulk -> weight); cautious takes only the
+    // high-value-low-weight GOLD (stays light); random takes ~half. Coins go to the purse BY DENOMINATION.
+    function grab(h) { return policy === "greedy" ? true : policy === "cautious" ? (h.den === "gold") : rng.chance(0.5); }
     var rounds = 0, kills = 0, dead = false;
     for (var f = 0; f < nFoes && !dead; f++) {
       var cr = creatureFighter(rng.pick(kinds)), chp = cr.hp;
-      var band = B ? B.compute(ps, carried, purse).band.key : "unencumbered";
+      var band = B ? B.compute(ps, carried, purse).band.key : "unencumbered";   // accrued purse weight bites THIS fight
       var enc = SIM_C.ENC_EVASION[band] || 0, tempo = SIM_C.ENC_TEMPO[band] || 0;
       var pdef = { stats: ps, weapon: pw, armor: { name: pa.name, robustness: pa.robustness, encumbrance: pa.encumbrance + enc } };
       var guard = 0;
@@ -216,16 +228,13 @@
           if (R.hit(cr, pdef, rng).hit) { php -= R.damage(cr, pdef, rng).damage; if (php <= 0) dead = true; }
         }
       }
-      if (!dead) {                                                               // grab this stretch of floor coin per policy
-        var drop = coinPerFoe, take = 0;
-        if (policy === "greedy") take = drop;
-        else if (policy === "cautious") take = (B && B.compute(ps, carried, { gold: purse.gold + drop }).band.key === SIM_C.CAUTIOUS_CAP) ? 0 : drop;  // stop short of the cap band
-        else take = rng.chance(0.5) ? drop : 0;
-        purse.gold += take;
+      if (!dead) {                                                               // pocket this stretch of the floor's coin heaps
+        for (var hi = f; hi < heaps.length; hi += (nFoes || 1)) { var h = heaps[hi]; if (grab(h)) purse[h.den] += h.count; }
       }
     }
     var win = !dead, loot = win && B ? B.purseValue(purse) : 0;
-    return { cause: dead ? "combat" : "survive", win: win, loot: loot, ttk: kills ? rounds / kills : null, kills: kills, walk: walk, nFoes: nFoes, band: B ? B.compute(ps, carried, purse).band.key : "unencumbered" };
+    var endBand = B ? B.compute(ps, carried, purse).band.key : "unencumbered";
+    return { cause: dead ? "combat" : "survive", win: win, loot: loot, ttk: kills ? rounds / kills : null, kills: kills, walk: walk, nFoes: nFoes, band: endBand };
   }
   function runCombatPolicy(policy, N, seed, dens, pool) {
     var rng = RNG.make(seed), runs = [];
@@ -252,7 +261,8 @@
     L.push("TOURIST DUNGEON — balance sim: NEW COMBAT MODEL (two-function + gear + encumbrance)   (N=" + res.N + ", seed=" + res.seed + ")");
     var fl = res.floor || {};
     L.push("FLOOR sourced from TD_GEN2 'worked' " + fl.W + "x" + fl.H + ": avg walkable " + Math.round(fl.avgWalk || 0) + " cells (" + pct(fl.walkPct || 0) + " of floor), " + SIM_C.FLOOR_POOL + "-floor pool");
-    L.push("derived per floor: foes = round(walk x " + (fl.density ? fl.density.creature : "?") + ") ~ " + (res.policies.greedy ? res.policies.greedy.avgFoes.toFixed(1) : "?") + " | coin = round(walk x " + (fl.density ? fl.density.coin : "?") + ") heaps x " + (fl.density ? fl.density.goldPerHeap : "?") + " gold (real TD_RESOLVE hit/damage + TD_BURDEN)");
+    var mixStr = (fl.density && fl.density.mix) ? fl.density.mix.map(function (m) { return m.den + " x" + m.weight; }).join("/") : "?";
+    L.push("derived per floor: foes = round(walk x " + (fl.density ? fl.density.creature : "?") + ") ~ " + (res.policies.greedy ? res.policies.greedy.avgFoes.toFixed(1) : "?") + " | coin = round(walk x " + (fl.density ? fl.density.coin : "?") + ") DENOMINATION heaps [" + mixStr + "] (greedy hoovers all -> weight; cautious takes gold; real TD_RESOLVE + TD_BURDEN)");
     L.push("");
     L.push(pad("policy", 10) + padL("win%", 8) + padL("TTK(md)", 9) + padL("combat-deaths", 15) + padL("loot/life", 11));
     L.push(new Array(56).join("-"));

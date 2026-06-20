@@ -40,8 +40,23 @@ var TD_MAP = (function () {
   var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
-  var CREATURE_DENSITY = 0.012, COIN_DENSITY = 0.02;
-  var COIN_GOLD_MIN = 20, COIN_GOLD_MAX = 80;   // gold per coin heap (PLACEHOLDER; the balance sim reads these)
+  var CREATURE_DENSITY = 0.012, COIN_DENSITY = 0.05;   // GATE 1.1: coin density raised so a full hoard is a real load
+  // GATE 1.1 — coin heaps come in DENOMINATIONS so hoarding has weight. Canon: 25 coins/lb (denomination-
+  // blind), 1g=10s=100c by VALUE — so all-gold is the lightest way to hold a value. The floor offers mostly
+  // low-denomination BULK (copper/silver: heavy per value) and a few gold heaps (light, high value). The
+  // CAUTIOUS play is to take the gold and leave the bulk (stay light); GREED hoovers everything (crosses a
+  // burden band -> dulled evasion via playerBand()/ENC_EVASION). `weight` = relative spawn frequency.
+  var COIN_MIX = [
+    { den: "copper", weight: 4, min: 35, max: 105 },   // low-denomination BULK: heavy, near-worthless
+    { den: "silver", weight: 5, min: 22, max: 58 },    // mid bulk: real value AND real weight (greed's reward+cost)
+    { den: "gold",   weight: 2, min: 9,  max: 24 }     // high-value, low-weight: the smart pick (cautious takes these)
+  ];
+  function pickCoinDen(R) {
+    var tot = 0; COIN_MIX.forEach(function (m) { tot += m.weight; });
+    var r = R.int(1, tot), acc = 0;
+    for (var i = 0; i < COIN_MIX.length; i++) { acc += COIN_MIX[i].weight; if (r <= acc) return COIN_MIX[i]; }
+    return COIN_MIX[COIN_MIX.length - 1];
+  }
   // the secret-grammar vocabulary (CLAUDE.md): a fixed, learnable set of tells
   var TELLS = (typeof TD_VAULTS !== "undefined" && TD_VAULTS.TELLS) || {
     draft:  { text: "A cold draft slides from a seam in the wall.", kind: "heard", obj: "OBJ" },
@@ -675,15 +690,18 @@ var TD_MAP = (function () {
     function displaceBark() { if (shared.turn - (ctrl.lastDisplace == null ? -99 : ctrl.lastDisplace) >= 5 && rng.chance(0.4)) { ctrl.lastDisplace = shared.turn; senses(DISPLACE_LINES[rng.int(0, DISPLACE_LINES.length - 1)], "heard", "OBJ"); } }
 
     function walkableCount() { var n = 0; for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (ctrl.grid[y][x] === ".") n++; return n; }
-    function makeCoins(amount) { return { kind: "coins", glyph: "$", name: "a heap of coins", desc: "Bureau-stamped coin. It has weight.", coins: amount }; }
-    // coin loot at a per-walkable-cell DENSITY; a pile picks up into the PURSE -> weight -> band.
+    var COIN_DEN_NAME = { copper: "a heap of copper", silver: "a stack of silver", gold: "a few gold coins" };
+    function makeCoins(den, amount) { return { kind: "coins", den: den || "gold", glyph: "$", name: COIN_DEN_NAME[den || "gold"], desc: "Bureau-stamped coin. It has weight, all the same.", coins: amount }; }
+    // coin loot at a per-walkable-cell DENSITY; each pile is a DENOMINATION (copper/silver/gold). A pile
+    // picks up into the PURSE by denomination -> weight (25/lb, blind) -> band. Greed = grab the bulk too.
     function spawnCoins() {
       if (!inDungeon() || (world.nodes[ctrl.node] || {}).dmz) return;
       var n = Math.round(walkableCount() * COIN_DENSITY);
       for (var c = 0; c < n; c++) {
         var spot = pickSpot();
         if (!spot || itemAt(spot.x, spot.y) || creatureAt(spot.x, spot.y)) continue;
-        ctrl.items[key(spot.x, spot.y)] = makeCoins(rng.int(COIN_GOLD_MIN, COIN_GOLD_MAX));   // PLACEHOLDER gold per pile
+        var m = pickCoinDen(rng);
+        ctrl.items[key(spot.x, spot.y)] = makeCoins(m.den, rng.int(m.min, m.max));   // PLACEHOLDER counts (sim-calibrated)
       }
     }
     function spawnCreatures() {
@@ -1010,7 +1028,8 @@ var TD_MAP = (function () {
       delete ctrl.items[k];
       if (it.kind === "coins") {                                // coins -> the PURSE (weight -> encumbrance), never the pack
         if (!ctrl.character.purse) ctrl.character.purse = { copper: 0, silver: 0, gold: 0 };
-        ctrl.character.purse.gold = (ctrl.character.purse.gold || 0) + it.coins;
+        var den = it.den || "gold";                             // by DENOMINATION (weight is blind; value is not)
+        ctrl.character.purse[den] = (ctrl.character.purse[den] || 0) + it.coins;
         logMsg("You pocket the coins; the weight settles onto you.", false);   // no number — band feel-word does the rest
         updateBand();                                           // the heavier purse may cross a band
         return { got: true, coins: true, event: ctrl.lastEvent };
@@ -1244,7 +1263,7 @@ var TD_MAP = (function () {
       _walkable: function () { return walkableCount(); },
       _spawnDensity: function () { return { creature: CREATURE_DENSITY, coin: COIN_DENSITY }; },
       _countItemKind: function (kind) { var n = 0; for (var k in ctrl.items) if (ctrl.items[k].kind === kind) n++; return n; },
-      _setCoins: function (x, y, amount) { ctrl.items[key(x, y)] = makeCoins(amount); },
+      _setCoins: function (x, y, amount, den) { ctrl.items[key(x, y)] = makeCoins(den || "gold", amount); },
       _features: function () { return ctrl.features; },
       _items: function () { return ctrl.items; },
       _plain: function () { return ctrl.plain; },
@@ -1275,8 +1294,8 @@ var TD_MAP = (function () {
   return {
     create: create, _W: W, _H: H, _CREATURE: CREATURE, _ITEMS: ITEMS, makeItem: makeItem, hungerStage: hungerStage,
     setLegacy: function (b) { ALLOW_LEGACY = !!b; },
-    // live spawn densities + coin-heap value — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
-    CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_GOLD_MIN: COIN_GOLD_MIN, COIN_GOLD_MAX: COIN_GOLD_MAX
+    // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
+    CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_MIX: COIN_MIX
   };
 })();
 
