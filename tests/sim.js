@@ -149,17 +149,37 @@
   // SIM OVERLAY knobs (placeholder modeling assumptions, NOT game numbers): the foe gauntlet, the
   // per-kill loot drop, and the band->evasion / band->tempo mappings (the live band->evasion is the
   // descent-slice's job; this stands in for it so the instrument can exercise the encumbrance path).
-  // NOTE FINDING: at canon coin weight (25/lb), per-floor COIN loot barely burdens vs the carry cap —
-  // coin-greed bites only at large hauls ("the only way to be rich is paperwork"). The drop here is
-  // sized so the instrument visibly exercises greed->burden->evasion; real loot weight is calibration.
+  // CALIBRATION R0: the floor model is SOURCED FROM TD_GEN2 (the live floor), never a hardcoded snapshot.
+  // Per run we draw a real gen2 'worked' 54x34 floor, measure its walkable cells, and derive the foe
+  // count + coin loot from the SAME live densities the game spawns with (TD_MAP.CREATURE_DENSITY /
+  // COIN_DENSITY / COIN_GOLD_*). So the sim can't go stale when the floor changes again.
   var SIM_C = {
     PLAYER_STATS: { might: 560, dex: 560, con: 560, int: 500, per: 560, lucky: 500, intuition: 560, appearance: 500, charm: 500, grit: 540 },
-    MAX_FOES: 10, FOE_CHANCE: 0.7, COINS_PER_KILL: 400,          // gold coins dropped per kill (sim overlay)
     CAUTIOUS_CAP: "laden",                                       // cautious stops short of this band (stays light)
     ENC_EVASION: { unencumbered: 0, laden: 2, strained: 5, overloaded: 9 },   // band -> extra evasion-dulling (placeholder)
-    ENC_TEMPO:   { unencumbered: 0, laden: 0, strained: 1, overloaded: 2 }    // band -> extra foe blows (slower) (placeholder)
+    ENC_TEMPO:   { unencumbered: 0, laden: 0, strained: 1, overloaded: 2 },   // band -> extra foe blows (slower) (placeholder)
+    FLOOR_POOL: 120                                              // gen2 'worked' floors sampled for the walkable distribution
   };
   var B = (typeof TD_BURDEN !== "undefined") ? TD_BURDEN : (typeof require !== "undefined" ? require("../engine/burden.js") : null);
+
+  // ----- LIVE FLOOR MODEL (sourced from gen2 + mapmode densities; single source of truth) -----
+  function liveDensities() {
+    var MAP = (typeof TD_MAP !== "undefined") ? TD_MAP : (typeof require !== "undefined" ? require("../engine/mapmode.js") : null);
+    if (!MAP || typeof MAP.CREATURE_DENSITY !== "number") throw new Error("balance sim needs TD_MAP densities — load engine/mapmode.js");
+    return { creature: MAP.CREATURE_DENSITY, coin: MAP.COIN_DENSITY, goldPerHeap: (MAP.COIN_GOLD_MIN + MAP.COIN_GOLD_MAX) / 2 };
+  }
+  // live walkable = cells that become "." in composeNodeGen2 (wall/pillar 'o', chasm 'X', water '~' excluded —
+  // matching mapmode.walkableCount which counts only ".").
+  function gen2Walkable(grid) { var skip = { "#": 1, "o": 1, "X": 1, "~": 1 }, n = 0; for (var y = 0; y < grid.length; y++) { var row = grid[y]; for (var x = 0; x < row.length; x++) if (!skip[row[x]]) n++; } return n; }
+  var _floorPool = null;
+  function floorPool() {
+    if (_floorPool) return _floorPool;
+    var GEN2 = (typeof TD_GEN2 !== "undefined") ? TD_GEN2 : (typeof require !== "undefined" ? require("../engine/gen2.js") : null);
+    if (!GEN2) throw new Error("balance sim needs TD_GEN2 — load engine/gen2.js");
+    var pool = [];                                                // fixed seeds 1..POOL -> deterministic, captures per-floor variation
+    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked" }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
+    _floorPool = pool; return pool;
+  }
   function creatureFighter(kind) {
     var c = R.COMBAT.CREATURES[kind];   // synthesize a stat block from the bestiary hp/dmg (PLACEHOLDER sim mapping)
     return {
@@ -169,13 +189,18 @@
       armor: R.GEAR.ARMOR.light
     };
   }
-  function oneCombatRun(rng, policy) {
+  function oneCombatRun(rng, policy, dens, pool) {
     var ps = SIM_C.PLAYER_STATS, pw = R.GEAR.WEAPONS.longsword, pa = R.GEAR.ARMOR.light;
     var php = (typeof TD_STATS !== "undefined") ? TD_STATS.DERIVED.hpMax(ps) : 100;
     var purse = { copper: 0, silver: 0, gold: 0 }, carried = [pw];   // armour's encumbrance is intrinsic (applied to evasion); loot weight is the burden
     var patk = { stats: ps, weapon: pw, armor: pa };
-    var kinds = Object.keys(R.COMBAT.CREATURES), nFoes = 0;
-    for (var i = 0; i < SIM_C.MAX_FOES; i++) if (rng.chance(SIM_C.FOE_CHANCE)) nFoes++;
+    var kinds = Object.keys(R.COMBAT.CREATURES);
+    // SOURCE the floor from gen2: a real 'worked' 54x34 floor's walkable count -> the LIVE densities.
+    var floor = pool[rng.int(0, pool.length - 1)], walk = floor.w;
+    var nFoes = Math.round(walk * dens.creature);                              // live spawnCreatures density (max(1,..) is moot at this size)
+    var coinHeaps = Math.round(walk * dens.coin);                             // live spawnCoins density (count of heaps)
+    var floorGold = coinHeaps * dens.goldPerHeap;                             // total floor coin (heaps x avg gold/heap)
+    var coinPerFoe = nFoes > 0 ? Math.round(floorGold / nFoes) : floorGold;   // distributed across encounters so weight bites later fights
     var rounds = 0, kills = 0, dead = false;
     for (var f = 0; f < nFoes && !dead; f++) {
       var cr = creatureFighter(rng.pick(kinds)), chp = cr.hp;
@@ -191,8 +216,8 @@
           if (R.hit(cr, pdef, rng).hit) { php -= R.damage(cr, pdef, rng).damage; if (php <= 0) dead = true; }
         }
       }
-      if (!dead) {                                                               // grab the coin drop per policy
-        var drop = SIM_C.COINS_PER_KILL, take = 0;
+      if (!dead) {                                                               // grab this stretch of floor coin per policy
+        var drop = coinPerFoe, take = 0;
         if (policy === "greedy") take = drop;
         else if (policy === "cautious") take = (B && B.compute(ps, carried, { gold: purse.gold + drop }).band.key === SIM_C.CAUTIOUS_CAP) ? 0 : drop;  // stop short of the cap band
         else take = rng.chance(0.5) ? drop : 0;
@@ -200,28 +225,34 @@
       }
     }
     var win = !dead, loot = win && B ? B.purseValue(purse) : 0;
-    return { cause: dead ? "combat" : "survive", win: win, loot: loot, ttk: kills ? rounds / kills : null, kills: kills, band: B ? B.compute(ps, carried, purse).band.key : "unencumbered" };
+    return { cause: dead ? "combat" : "survive", win: win, loot: loot, ttk: kills ? rounds / kills : null, kills: kills, walk: walk, nFoes: nFoes, band: B ? B.compute(ps, carried, purse).band.key : "unencumbered" };
   }
-  function runCombatPolicy(policy, N, seed) {
+  function runCombatPolicy(policy, N, seed, dens, pool) {
     var rng = RNG.make(seed), runs = [];
-    for (var i = 0; i < N; i++) runs.push(oneCombatRun(rng, policy));
+    for (var i = 0; i < N; i++) runs.push(oneCombatRun(rng, policy, dens, pool));
     var wins = runs.filter(function (r) { return r.win; }).length;
     var ttks = runs.filter(function (r) { return r.ttk != null; }).map(function (r) { return r.ttk; });
     return { policy: policy, N: N, wins: wins, winRate: wins / N, ttkMean: mean(ttks), ttkMedian: median(ttks),
-      death: { combat: N - wins }, lootPerLife: mean(runs.map(function (r) { return r.loot; })) };
+      death: { combat: N - wins }, lootPerLife: mean(runs.map(function (r) { return r.loot; })),
+      avgWalk: mean(runs.map(function (r) { return r.walk; })), avgFoes: mean(runs.map(function (r) { return r.nFoes; })) };
   }
   function runCombat(opts) {
     opts = opts || {}; var N = opts.N || 1000, seed = (opts.seed == null ? 1234 : opts.seed) >>> 0;
-    var bp = {}; POLICIES.forEach(function (p) { bp[p] = runCombatPolicy(p, N, seed); });
+    var dens = liveDensities(), pool = floorPool();
+    var poolW = pool.map(function (p) { return p.w; }), poolArea = pool[0] ? pool[0].area : 0;
+    var floorMeta = { W: pool[0] ? pool[0].W : 0, H: pool[0] ? pool[0].H : 0, area: poolArea, avgWalk: mean(poolW), walkPct: poolArea ? mean(poolW) / poolArea : 0, density: dens };
+    var bp = {}; POLICIES.forEach(function (p) { bp[p] = runCombatPolicy(p, N, seed, dens, pool); });
     var f = [];   // combat-model is combat-only by design (no collapse/slab) -> skip the single-death-cause flag; keep win-rate + greed-matters
     POLICIES.forEach(function (p) { var r = bp[p]; if (r.winRate > 0.95) f.push(p + ": win-rate " + pct(r.winRate) + " > 95% (trivial)"); if (r.winRate < 0.05) f.push(p + ": win-rate " + pct(r.winRate) + " < 5% (unwinnable)"); });
     if (Math.abs(bp.greedy.winRate - bp.cautious.winRate) < 0.05 && Math.abs(bp.greedy.lootPerLife - bp.cautious.lootPerLife) < 0.05 * (bp.cautious.lootPerLife || 1)) f.push("greed-doesn't-matter: greedy ≈ cautious");
-    return { N: N, seed: seed, sim: SIM_C, policies: bp, flags: f };
+    return { N: N, seed: seed, sim: SIM_C, floor: floorMeta, policies: bp, flags: f };
   }
   function formatCombat(res) {
     var L = [];
     L.push("TOURIST DUNGEON — balance sim: NEW COMBAT MODEL (two-function + gear + encumbrance)   (N=" + res.N + ", seed=" + res.seed + ")");
-    L.push("sim overlay: player stat block + gear; foes 0.." + res.sim.MAX_FOES + " @ p=" + res.sim.FOE_CHANCE + "; " + res.sim.COINS_PER_KILL + " gold/kill (real TD_RESOLVE hit/damage + TD_BURDEN)");
+    var fl = res.floor || {};
+    L.push("FLOOR sourced from TD_GEN2 'worked' " + fl.W + "x" + fl.H + ": avg walkable " + Math.round(fl.avgWalk || 0) + " cells (" + pct(fl.walkPct || 0) + " of floor), " + SIM_C.FLOOR_POOL + "-floor pool");
+    L.push("derived per floor: foes = round(walk x " + (fl.density ? fl.density.creature : "?") + ") ~ " + (res.policies.greedy ? res.policies.greedy.avgFoes.toFixed(1) : "?") + " | coin = round(walk x " + (fl.density ? fl.density.coin : "?") + ") heaps x " + (fl.density ? fl.density.goldPerHeap : "?") + " gold (real TD_RESOLVE hit/damage + TD_BURDEN)");
     L.push("");
     L.push(pad("policy", 10) + padL("win%", 8) + padL("TTK(md)", 9) + padL("combat-deaths", 15) + padL("loot/life", 11));
     L.push(new Array(56).join("-"));

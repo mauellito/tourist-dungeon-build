@@ -41,6 +41,7 @@ var TD_MAP = (function () {
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
   var CREATURE_DENSITY = 0.012, COIN_DENSITY = 0.02;
+  var COIN_GOLD_MIN = 20, COIN_GOLD_MAX = 80;   // gold per coin heap (PLACEHOLDER; the balance sim reads these)
   // the secret-grammar vocabulary (CLAUDE.md): a fixed, learnable set of tells
   var TELLS = (typeof TD_VAULTS !== "undefined" && TD_VAULTS.TELLS) || {
     draft:  { text: "A cold draft slides from a seam in the wall.", kind: "heard", obj: "OBJ" },
@@ -682,7 +683,7 @@ var TD_MAP = (function () {
       for (var c = 0; c < n; c++) {
         var spot = pickSpot();
         if (!spot || itemAt(spot.x, spot.y) || creatureAt(spot.x, spot.y)) continue;
-        ctrl.items[key(spot.x, spot.y)] = makeCoins(rng.int(20, 80));   // PLACEHOLDER gold per pile
+        ctrl.items[key(spot.x, spot.y)] = makeCoins(rng.int(COIN_GOLD_MIN, COIN_GOLD_MAX));   // PLACEHOLDER gold per pile
       }
     }
     function spawnCreatures() {
@@ -1239,7 +1240,12 @@ var TD_MAP = (function () {
     return api;
   }
 
-  return { create: create, _W: W, _H: H, _CREATURE: CREATURE, _ITEMS: ITEMS, makeItem: makeItem, hungerStage: hungerStage, setLegacy: function (b) { ALLOW_LEGACY = !!b; } };
+  return {
+    create: create, _W: W, _H: H, _CREATURE: CREATURE, _ITEMS: ITEMS, makeItem: makeItem, hungerStage: hungerStage,
+    setLegacy: function (b) { ALLOW_LEGACY = !!b; },
+    // live spawn densities + coin-heap value — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
+    CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_GOLD_MIN: COIN_GOLD_MIN, COIN_GOLD_MAX: COIN_GOLD_MAX
+  };
 })();
 
 if (typeof module !== "undefined" && module.exports) { module.exports = TD_MAP; }

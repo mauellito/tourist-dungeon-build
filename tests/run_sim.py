@@ -70,6 +70,10 @@ def main():
              "<script>\n" + open(os.path.join(ENGINE, "stats.js"), encoding="utf-8").read() + "\n</script>",
              "<script>\n" + open(os.path.join(ENGINE, "resolve.js"), encoding="utf-8").read() + "\n</script>",
              "<script>\n" + open(os.path.join(ENGINE, "burden.js"), encoding="utf-8").read() + "\n</script>",
+             # CALIBRATION R0: the sim now sources its floor model from the LIVE generator (gen2) and the
+             # live spawn densities (TD_MAP) — load them so TD_GEN2 + TD_MAP densities are available.
+             "<script>\n" + open(os.path.join(ENGINE, "gen2.js"), encoding="utf-8").read() + "\n</script>",
+             "<script>\n" + open(os.path.join(ENGINE, "mapmode.js"), encoding="utf-8").read() + "\n</script>",
              "<script>\n" + open(os.path.join(TESTS, "sim.js"), encoding="utf-8").read() + "\n</script>", REP]
     runner = os.path.join(TMP, "sim_runner.html"); open(runner, "w", encoding="utf-8").write("\n".join(parts))
     ud = tempfile.mkdtemp(prefix="td_sim_")
