@@ -41,6 +41,7 @@ var TD_MAP = (function () {
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
   var CREATURE_DENSITY = 0.012, COIN_DENSITY = 0.05;   // GATE 1.1: coin density raised so a full hoard is a real load
+  var GEAR_DENSITY = 0.004;   // GATE 2: weapon/armour drops per walkable cell (rare; a few per floor)
   // GATE 1.1 — coin heaps come in DENOMINATIONS so hoarding has weight. Canon: 25 coins/lb (denomination-
   // blind), 1g=10s=100c by VALUE — so all-gold is the lightest way to hold a value. The floor offers mostly
   // low-denomination BULK (copper/silver: heavy per value) and a few gold heaps (light, high value). The
@@ -535,6 +536,7 @@ var TD_MAP = (function () {
       placeGlimpses();
       spawnCreatures();
       spawnCoins();
+      spawnGear();
       if (decorate) decorate(ctrl, { CX: comp.spawn.x, CY: comp.spawn.y, key: key, isFloor: isFloor });
     }
     // adaptive contents for a varied screen: loot on reachable floor. For the ASSEMBLER (live) floor,
@@ -702,6 +704,27 @@ var TD_MAP = (function () {
         if (!spot || itemAt(spot.x, spot.y) || creatureAt(spot.x, spot.y)) continue;
         var m = pickCoinDen(rng);
         ctrl.items[key(spot.x, spot.y)] = makeCoins(m.den, rng.int(m.min, m.max));   // PLACEHOLDER counts (sim-calibrated)
+      }
+    }
+    // GATE 2 — GEAR DROPS. Weapons (the roster's 3 types) + armour tiers appear on the floor at a
+    // per-walkable-cell density. Picking one up EQUIPS it; the displaced piece goes to the pack, where
+    // its WEIGHT counts toward the burden band (the anti-hoard lever — carrying a backup arsenal slows you).
+    var GEAR = (typeof TD_RESOLVE !== "undefined") ? TD_RESOLVE.GEAR : null;
+    function armorCarryWeight(spec) { return Math.round((spec.encumbrance || 0) * 3) + 1; }   // heft from the dial; equipped armour costs evasion, a SPARE costs this weight
+    // feel-words (NEVER a number): a weapon's weight in the hand, an armour tier's heft.
+    function weightWord(w) { return w <= 2 ? "light in the hand" : w <= 4 ? "a fair heft" : w <= 7 ? "heavy" : "a burden to swing"; }
+    function heftWord(spec) { var e = spec.encumbrance || 0; return e <= 1 ? "barely there" : e <= 3 ? "a steady weight" : "ponderous on the shoulders"; }
+    function weaponItem(spec) { var v = (GEAR && GEAR.WEAPON_TYPES[spec.type]) ? GEAR.WEAPON_TYPES[spec.type].verb : spec.verb; return { kind: "weapon", slot: "weapon", glyph: ")", name: spec.name, weight: spec.weight, bulk: spec.bulk, type: spec.type, verb: spec.verb || v, spec: spec, desc: "A " + spec.type + " weapon — you " + (spec.verb || v) + " with it. It is " + weightWord(spec.weight) + "." }; }
+    function armorItem(spec) { return { kind: "armor", slot: "armor", glyph: "[", name: spec.name, weight: armorCarryWeight(spec), bulk: 4, spec: spec, desc: spec.name + " — it sits " + heftWord(spec) + "." }; }
+    function spawnGear() {
+      if (!GEAR || !inDungeon() || (world.nodes[ctrl.node] || {}).dmz) return;
+      var wkeys = Object.keys(GEAR.WEAPONS), akeys = ["light", "medium", "heavy"];   // unarmoured isn't a drop
+      var n = Math.round(walkableCount() * GEAR_DENSITY);
+      for (var i = 0; i < n; i++) {
+        var spot = pickSpot();
+        if (!spot || itemAt(spot.x, spot.y) || creatureAt(spot.x, spot.y)) continue;
+        if (rng.chance(0.7)) ctrl.items[key(spot.x, spot.y)] = weaponItem(GEAR.WEAPONS[rng.pick(wkeys)]);   // weapons more common than armour
+        else ctrl.items[key(spot.x, spot.y)] = armorItem(GEAR.ARMOR[rng.pick(akeys)]);
       }
     }
     function spawnCreatures() {
@@ -933,7 +956,8 @@ var TD_MAP = (function () {
         var pf = playerFighter(), killed = false, connected = true;
         if (pf && cr.fighter) {                                   // LIVE two-function combat (feel-words, no numbers)
           if (!cr.read) { var rd = TD_RESOLVE.read(pf, cr.fighter, rng); senses("It looks " + rd.seen.word + ".", "seen", "OBJ"); senses("Something in you reads it as " + rd.sense.word + ".", "intuition", "SUBJ"); cr.read = true; }
-          var h = TD_RESOLVE.hit(pf, cr.fighter, rng); connected = h.hit;
+          var op = !cr.opened; cr.opened = true;                  // GATE 2: a POLEARM's reach lands an opening strike on the FIRST exchange (existing hit() hook)
+          var h = TD_RESOLVE.hit(pf, cr.fighter, rng, { opening: op }); connected = h.hit;
           if (h.hit) {
             var dmg = TD_RESOLVE.damage(pf, cr.fighter, rng).damage;
             ctrl.fx.push({ x: cr.x, y: cr.y, amount: dmg, kind: "dealt" });
@@ -1034,9 +1058,32 @@ var TD_MAP = (function () {
         updateBand();                                           // the heavier purse may cross a band
         return { got: true, coins: true, event: ctrl.lastEvent };
       }
+      if (it.kind === "weapon" || it.kind === "armor") return equipFromFloor(it);   // GATE 2: pick up = equip; old piece -> pack (weight)
       ctrl.inventory.push(it);
       logMsg("You take " + it.name + ".", false);
       return { got: true, item: it, event: ctrl.lastEvent };
+    }
+    // GATE 2 — equip a gear item off the floor; the displaced piece falls to the pack (its weight now
+    // rides the burden band). Feel-words only: name + type-verb + weight/heft, never an integer.
+    function equipFromFloor(it) {
+      var ch = ctrl.character;
+      if (it.kind === "weapon") {
+        if (ch.weapon) ctrl.inventory.push(weaponItem(ch.weapon));     // old weapon -> pack (carried weight)
+        ch.weapon = it.spec;
+        logMsg("You take up " + it.name + "; you " + (it.verb || "strike") + " with it. It feels " + weightWord(it.weight) + ".", false);
+      } else {
+        if (ch.armor && ch.armor.name !== "unarmoured") ctrl.inventory.push(armorItem(ch.armor));   // old armour -> pack
+        ch.armor = it.spec;
+        logMsg("You don " + it.name + "; it sits " + heftWord(it.spec) + ".", false);
+      }
+      updateBand();                                                    // the displaced piece may cross a band
+      return { got: true, equipped: true, slot: it.slot, item: it, event: ctrl.lastEvent };
+    }
+    // GATE 2 — re-equip a backup from the pack ('u' on a weapon/armour). Swaps with the held piece.
+    function equipFromPack(it) {
+      var i = ctrl.inventory.indexOf(it); if (i < 0) return { equipped: false };
+      ctrl.inventory.splice(i, 1);
+      return equipFromFloor(it);
     }
 
     // drop an item from the pack onto the floor (called by the town controller).
@@ -1246,7 +1293,7 @@ var TD_MAP = (function () {
     var api = {
       world: world, state: ctrl, interp: interp,
       move: move, open: openDoor, view: view, postmortem: postmortem,
-      wait: wait, get: get, dropItem: dropItem, search: search, closeDoor: closeDoor,
+      wait: wait, get: get, dropItem: dropItem, search: search, closeDoor: closeDoor, equipFromPack: equipFromPack,
       openDoorDir: openDoorDir, openDoorAuto: openDoorAuto, closeDoorDir: closeDoorDir, closeDoorAuto: closeDoorAuto,
       toggleAutoOpen: toggleAutoOpen, setAutoOpen: setAutoOpen, autoOpen: function () { return ctrl.autoOpenDoors; },
       isDead: function () { return ctrl.dead; }, isComplete: function () { return ctrl.won; },
@@ -1277,6 +1324,7 @@ var TD_MAP = (function () {
       _addSecret: function (x, y, kind, tell) { addSecret(x, y, kind, tell); },
       _addPlain: function (x, y) { ctrl.plain[key(x, y)] = { open: false }; },
       _setItem: function (x, y, kind) { ctrl.items[key(x, y)] = makeItem(kind); },
+      _setGear: function (x, y, slot, gkey) { ctrl.items[key(x, y)] = (slot === "armor") ? armorItem(GEAR.ARMOR[gkey]) : weaponItem(GEAR.WEAPONS[gkey]); },
       _setWater: function (x, y) { ctrl.water[key(x, y)] = 1; ctrl.grid[y][x] = "~"; },
       _setChasm: function (x, y) { ctrl.chasm[key(x, y)] = 1; ctrl.grid[y][x] = "X"; },
       _passable: function (x, y) { return passable(x, y); },

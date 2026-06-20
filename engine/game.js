@@ -829,6 +829,7 @@ var TD_GAME = (function () {
     function useSelected() {
       var l = invList(); if (!l.length) { logMsg("Your pack is empty."); return { used: false }; }
       var it = l[invSel];
+      if ((it.kind === "weapon" || it.kind === "armor") && placeId === "DUNGEON" && dungeon && dungeon.equipFromPack) { var r = dungeon.equipFromPack(it); afterDungeon(); clampSel(); return r; }   // GATE 2: u equips a backup (swap; old returns to pack)
       if (it.use === "eat") { meters.satiation = Math.min(meters.satiationMax, meters.satiation + (it.food || 40)); removeReal(it); logMsg("You eat " + it.name + ". The hunger eases."); }
       else if (it.use === "heal") { meters.hp = Math.min(meters.hpMax, meters.hp + (it.heal || 20)); removeReal(it); logMsg("You apply " + it.name + ". Your wounds close a little."); }
       else { logMsg(it.name + " — " + it.desc); }

@@ -63,14 +63,14 @@ var TD_RESOLVE = (function () {
       longsword:  { name: "a longsword",   type: "blade",   base: 12, acc: 2,  weight: 4, bulk: 3, verb: "cut" },
       sabre:      { name: "a sabre",       type: "blade",   base: 10, acc: 4,  weight: 3, bulk: 2, verb: "cut" },
       // HEAVY / IMPACT — slow, heavy, Might-leaning -> DAMAGE (crush: armour robustness counts for less)
-      mace:       { name: "a mace",        type: "impact",  base: 13, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.6 },
-      warhammer:  { name: "a warhammer",   type: "impact",  base: 16, acc: -3, weight: 9, bulk: 6, verb: "crush",  crush: 0.4 },  // heaviest: biggest crush + encumbrance
-      axe:        { name: "an axe",        type: "impact",  base: 14, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.55 },
-      flail:      { name: "a flail",       type: "impact",  base: 13, acc: -2, weight: 7, bulk: 5, verb: "crush",  crush: 0.5 },
+      mace:       { name: "a mace",        type: "impact",  base: 14, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.6 },   // GATE 2 R3: impact base nudged so DAMAGE/burst wins the tanky foe (lurker) without dominating
+      warhammer:  { name: "a warhammer",   type: "impact",  base: 17, acc: -3, weight: 9, bulk: 6, verb: "crush",  crush: 0.4 },  // heaviest: biggest crush + encumbrance
+      axe:        { name: "an axe",        type: "impact",  base: 15, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.55 },
+      flail:      { name: "a flail",       type: "impact",  base: 14, acc: -2, weight: 7, bulk: 5, verb: "crush",  crush: 0.5 },
       // POLEARMS — reach -> POSITIONING (opening strike now-resolvable; full positioning a HOOK)
-      spear:      { name: "a spear",       type: "polearm", base: 11, acc: 1,  weight: 4, bulk: 5, verb: "skewer", reach: true, opening: 3 },  // hit-in-line
-      halberd:    { name: "a halberd",     type: "polearm", base: 14, acc: 0,  weight: 7, bulk: 6, verb: "skewer", reach: true, opening: 2 },
-      pike:       { name: "a pike",        type: "polearm", base: 12, acc: 0,  weight: 8, bulk: 8, verb: "skewer", reach: true, opening: 4 }   // longest reach -> biggest opening
+      spear:      { name: "a spear",       type: "polearm", base: 14, acc: 1,  weight: 4, bulk: 5, verb: "skewer", reach: true, opening: 3 },  // GATE 2 R3: polearm base lifted off "strictly dominated" -> a reach GENERALIST (full positioning edge is a deferred spatial HOOK)
+      halberd:    { name: "a halberd",     type: "polearm", base: 16, acc: 0,  weight: 7, bulk: 6, verb: "skewer", reach: true, opening: 2 },
+      pike:       { name: "a pike",        type: "polearm", base: 14, acc: 0,  weight: 8, bulk: 8, verb: "skewer", reach: true, opening: 4 }   // longest reach -> biggest opening
     },
     // ARMOR — ONE MASTER DIAL, light <-> bulky (4 named tiers). The single dial position drives BOTH
     // together: bulkier = more robustness (damage-reduction) AND more encumbrance (worse evasion ->

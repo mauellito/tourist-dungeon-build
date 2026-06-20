@@ -65,7 +65,7 @@ try{
   ok('dagger: highest accuracy + lowest base + lightest + first-strike flag (initiative HOOK)', W.dagger.firstStrike===true && W.dagger.acc>=W.sabre.acc && W.dagger.base<=W.shortsword.base && W.dagger.weight<=W.mace.weight, "dagger acc="+W.dagger.acc+" base="+W.dagger.base);
   var df=T.fighter(st({dex:500}));
   ok('BLADE verb: weapon accuracy widens the gap (dagger out-hits a no-acc weapon, same Dex)', rate(T.fighter(st({dex:500}),W.dagger),df,600,5) > rate(T.fighter(st({dex:500}),nw),df,600,5), rate(T.fighter(st({dex:500}),W.dagger),df,600,5).toFixed(2)+" vs "+rate(T.fighter(st({dex:500}),nw),df,600,5).toFixed(2));
-  var b16={name:"b16",type:"blade",base:16,acc:0}, wh=T.fighter(st({might:600}),W.warhammer), eqBlade=T.fighter(st({might:600}),b16);
+  var b16={name:"b16",type:"blade",base:W.warhammer.base,acc:0}, wh=T.fighter(st({might:600}),W.warhammer), eqBlade=T.fighter(st({might:600}),b16);   // equal-base blade tracks the warhammer base (Gate 2 R3 calibrated) so this isolates CRUSH
   ok('IMPACT verb: warhammer crushes robustness (more DAMAGE vs heavy armour than an EQUAL-base blade)', T.damage(wh,heavy,null).damage > T.damage(eqBlade,heavy,null).damage, "warhammer="+T.damage(wh,heavy,null).damage+" blade16="+T.damage(eqBlade,heavy,null).damage);
   var pf=T.fighter(st({dex:500}),W.pike);
   var pOpen=T.hit(pf,df,RNG.make(1),{opening:true}).p, pSteady=T.hit(pf,df,RNG.make(1)).p;
