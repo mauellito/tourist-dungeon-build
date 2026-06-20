@@ -720,7 +720,35 @@ var TD_MAP = (function () {
       shared.turn += 1;
     }
 
+    // INTENT TELEGRAPH (graded-omens law): a hostile that ends its step ADJACENT will strike NEXT turn —
+    // it telegraphs the coming blow now, so the strike is readable + reactable, never a hidden coin-flip.
+    // No new behaviour: the creature still moves+bites on its normal schedule; this only ADDS a feel-word
+    // tell. CLARITY scales with the read (Per) — sharp for the perceptive, a vague hunch for the dull —
+    // but it ALWAYS fires before a commit and NEVER surfaces a number. (FUTURE HOOK: an Intuition stat
+    // can later sharpen the murky tier; nothing is wired to it yet.)
+    var INTENT_TELLS = {
+      clear: { wanderer: "The shuffling thing gathers itself and reaches — a blow is a breath away.",
+               lurker:   "The lurker coils, its weight tipping to strike; you have one beat to answer.",
+               chaser:   "The docent draws back to lunge — its intent is plain." },
+      vague: { wanderer: "It lurches in close, meaning to land something.",
+               lurker:   "The lurker tenses; a strike is gathering.",
+               chaser:   "The docent winds up to lunge." },
+      murky: { wanderer: "Something at your side tenses to move.",
+               lurker:   "A stillness beside you draws tight — wrong, somehow.",
+               chaser:   "A gathering at your flank; a blow is forming." }
+    };
+    function intentTier() {
+      var per = (ctrl.character && ctrl.character.stats && typeof ctrl.character.stats.per === "number") ? ctrl.character.stats.per : 500;
+      return per >= 620 ? "clear" : (per >= 420 ? "vague" : "murky");
+    }
+    function telegraphIntent(cr) {
+      var tier = intentTier(), set = INTENT_TELLS[tier] || INTENT_TELLS.vague, line = set[cr.kind] || set.wanderer;
+      // clear/vague are PERCEIVED (seen, OBJ-true); the murky tier reads as a hunch (intuition/SUBJ) — both
+      // ALWAYS fire before the commit (the timing is reliable; only the wording's precision scales).
+      senses(line, tier === "murky" ? "intuition" : "seen", tier === "murky" ? "SUBJ" : "OBJ");
+    }
     function creaturesStep() {
+      var toldIntent = false;   // one telegraph per step keeps the senses panel readable, not spammy
       ctrl.creatures.forEach(function (cr) {
         var dist = Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y);
         var move = null;
@@ -746,7 +774,11 @@ var TD_MAP = (function () {
               hurt(cr.dmg, cr);
               if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary.", lowHP());
             }
-          } else { cr.x = move.x; cr.y = move.y; }
+          } else {
+            cr.x = move.x; cr.y = move.y;
+            // poised one step away -> telegraph the strike it will land next turn (hostiles with a stat block)
+            if (!toldIntent && cr.fighter && Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y) === 1) { telegraphIntent(cr); toldIntent = true; }
+          }
         }
       });
     }
