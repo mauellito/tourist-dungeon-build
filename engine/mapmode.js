@@ -737,6 +737,39 @@ var TD_MAP = (function () {
         else ctrl.items[key(spot.x, spot.y)] = armorItem(GEAR.ARMOR[rng.pick(akeys)]);
       }
     }
+    // GATE 4 R4 — DEPTH-BANDED SPAWN TABLE. Danger rises with depth by shifting the foe MIX toward
+    // tougher bands (NOT by inflating counts — density is unchanged). Each foe carries a `band` (1..6).
+    // The mix CENTERS on a compounding target band (DANGER_RATE^(L-1)); a foe of band b on floor L is
+    // weighted SPREAD^|b - target|, so the average foe climbs steadily with depth while lower bands still
+    // appear (the tourist still meets a gnat on floor 4) and rare higher ones threaten. An occasional
+    // OUT-OF-DEPTH spawn one band over the floor seeds the must-flee read (threatTell).
+    // CALIBRATION (sandbox-tuned, R4): RATE/SPREAD give the survival curve its shape — a freshly-rolled
+    // starting char HANDLES floor 1, the ramp bites on floors 2-3, and you are mostly fleeing by floor 5.
+    // (FLAGGED: the mix's average BAND climbs ~30%/floor and effective THREAT faster; a LITERAL 20%/floor
+    // band-ramp leaves floor 5-6 too soft to force fleeing for an ungrown char — the OUTCOME "flee by 5"
+    // is senior to the 20% figure per the Spirit Clause, so the ramp is set to deliver it.)
+    var DANGER_RATE = 1.4;            // target band = RATE^(L-1): the compounding danger ramp
+    var BAND_SPREAD = 0.5;            // how tightly the mix clusters on the target band (smaller = tighter)
+    var OUT_OF_DEPTH_CHANCE = 0.10;   // chance a given spawn is one band TOO STRONG for the floor (telegraphed must-flee)
+    var KINDS_BY_BAND = (function () { var m = {}; Object.keys(CREATURE).forEach(function (k) { var b = CREATURE[k].band || 1; (m[b] = m[b] || []).push(k); }); return m; })();
+    var MAX_BAND = (function () { var mx = 1; Object.keys(CREATURE).forEach(function (k) { mx = Math.max(mx, CREATURE[k].band || 1); }); return mx; })();
+    function pickFoe(L) {
+      if (L < 1) L = 1;
+      if (L < MAX_BAND && rng.chance(OUT_OF_DEPTH_CHANCE)) {            // occasional out-of-depth (one band over)
+        var over = KINDS_BY_BAND[Math.min(MAX_BAND, L + 1)];
+        if (over && over.length) return over[rng.int(0, over.length - 1)];
+      }
+      var target = Math.pow(DANGER_RATE, L - 1), pool = [], weights = [], total = 0;
+      for (var b = 1; b <= L && b <= MAX_BAND; b++) {
+        var ks = KINDS_BY_BAND[b]; if (!ks) continue;
+        var w = Math.pow(BAND_SPREAD, Math.abs(b - target));
+        for (var i = 0; i < ks.length; i++) { pool.push(ks[i]); weights.push(w); total += w; }
+      }
+      if (!pool.length) return Object.keys(CREATURE)[0];
+      var r = rng.next() * total;
+      for (var j = 0; j < pool.length; j++) { r -= weights[j]; if (r <= 0) return pool[j]; }
+      return pool[pool.length - 1];
+    }
     function spawnCreatures() {
       ctrl.creatures = [];
       if (!livingOn || !inDungeon()) return;
@@ -744,13 +777,12 @@ var TD_MAP = (function () {
       // action resolves inside, so none ever spawns. (The truce is spatial, not prose.)
       if ((world.nodes[ctrl.node] || {}).dmz) return;
       var n = Math.max(1, Math.round(walkableCount() * CREATURE_DENSITY));   // DENSITY, not a fixed count
-      var kinds = Object.keys(CREATURE);                                       // GATE 3: the whole first bestiary
+      var L = curLevel();
       for (var c = 0; c < n; c++) {
-        var kind = kinds[rng.int(0, kinds.length - 1)];
         var spot = pickSpot();
         if (!spot) continue;
-        var def = CREATURE[kind];
-        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, arche: def.arche, fighter: defFighter(def) });
+        var kind = pickFoe(L), def = CREATURE[kind];
+        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, arche: def.arche, band: def.band || 1, firstStrike: !!def.firstStrike, tooTough: !!def.tooTough, fighter: defFighter(def) });
       }
     }
     function pickSpot() {
@@ -777,44 +809,54 @@ var TD_MAP = (function () {
     // tell. CLARITY scales with the read (Per) — sharp for the perceptive, a vague hunch for the dull —
     // but it ALWAYS fires before a commit and NEVER surfaces a number. (FUTURE HOOK: an Intuition stat
     // can later sharpen the murky tier; nothing is wired to it yet.)
-    var INTENT_TELLS = {
-      clear: { wanderer: "The shuffling thing gathers itself and reaches — a blow is a breath away.",
-               lurker:   "The lurker coils, its weight tipping to strike; you have one beat to answer.",
-               chaser:   "The docent draws back to lunge — its intent is plain.",
-               cutpurse: "The cutpurse weaves a feint and sets to dart in — fast, and aimed.",
-               enforcer: "The enforcer plants its feet and hauls the hammer back; a slow, certain ruin is coming.",
-               penitent: "The penitent throws all of itself behind the axe — one blow, and it means to spend it on you.",
-               warden:   "The warden levels the pike along its line; step in and you walk onto it.",
-               drone:    "The drone grinds round and brings the mace to bear — late, but it arrives.",
-               duelist:  "The clerk settles into guard and picks its opening — a clean thrust is queued." },
-      vague: { wanderer: "It lurches in close, meaning to land something.",
-               lurker:   "The lurker tenses; a strike is gathering.",
-               chaser:   "The docent winds up to lunge.",
-               cutpurse: "It shifts quick on its feet, looking for the gap.",
-               enforcer: "The big one cocks back; something heavy is on the way.",
-               penitent: "It rears to throw everything into one swing.",
-               warden:   "The pike-point swings toward you and holds.",
-               drone:    "It turns, slow, bringing the weight around.",
-               duelist:  "It sets its guard and reads you for an opening." },
-      murky: { wanderer: "Something at your side tenses to move.",
-               lurker:   "A stillness beside you draws tight — wrong, somehow.",
-               chaser:   "A gathering at your flank; a blow is forming.",
-               cutpurse: "A flicker at the edge of you, too quick to fix.",
-               enforcer: "A weight gathers nearby, patient and bad.",
-               penitent: "Something winds up past all sense; it will not hold.",
-               warden:   "A line of threat settles between you and the way on.",
-               drone:    "A slow wrongness grinds toward your side.",
-               duelist:  "A poised attention fixes on you, and waits." }
+    // GATE 4 R5: 24 foes share SEVEN archetypes, so the tells are keyed by ARCHETYPE (drift/ambush/
+    // pursue/skirmish/rush/slow/hold) x clarity (clear/vague/murky), with "{it}" interpolated to the
+    // foe's capitalised name. One vocabulary, learnable: the same archetype always reads the same way,
+    // so the player learns to recognise a rusher's all-or-nothing lunge vs a holder's planted line.
+    var ARCHE_TELLS = {
+      clear: { drift:    "{it} gathers itself and reaches — a blow is a breath away.",
+               ambush:   "{it} coils, its weight tipping to strike; you have one beat to answer.",
+               pursue:   "{it} draws back to lunge — its intent is plain.",
+               skirmish: "{it} weaves a feint and sets to dart in — fast, and aimed.",
+               rush:     "{it} hurls itself forward without guard; it means to spend everything on one strike, now.",
+               slow:     "{it} plants its feet and hauls its weight back — a slow, certain ruin is coming.",
+               hold:     "{it} levels its weapon along its line; step in and you walk onto it." },
+      vague: { drift:    "{it} lurches in close, meaning to land something.",
+               ambush:   "{it} tenses; a strike is gathering.",
+               pursue:   "{it} winds up to lunge.",
+               skirmish: "{it} shifts quick on its feet, looking for the gap.",
+               rush:     "{it} throws itself at you, all need and no guard.",
+               slow:     "{it} cocks back; something heavy is on the way.",
+               hold:     "{it}'s point swings toward you and holds." },
+      murky: { drift:    "Something at your side tenses to move.",
+               ambush:   "A stillness beside you draws tight — wrong, somehow.",
+               pursue:   "A gathering at your flank; a blow is forming.",
+               skirmish: "A flicker at the edge of you, too quick to fix.",
+               rush:     "Something rushes your flank past all sense; it will not hold.",
+               slow:     "A weight gathers nearby, patient and bad.",
+               hold:     "A line of threat settles between you and the way on." }
     };
     function intentTier() {
       var per = (ctrl.character && ctrl.character.stats && typeof ctrl.character.stats.per === "number") ? ctrl.character.stats.per : 500;
       return per >= 620 ? "clear" : (per >= 420 ? "vague" : "murky");
     }
     function telegraphIntent(cr) {
-      var tier = intentTier(), set = INTENT_TELLS[tier] || INTENT_TELLS.vague, line = set[cr.kind] || set.wanderer;
+      var tier = intentTier(), set = ARCHE_TELLS[tier] || ARCHE_TELLS.vague, line = set[cr.arche] || set.drift;
+      line = line.replace("{it}", cap(cr.name));
       // clear/vague are PERCEIVED (seen, OBJ-true); the murky tier reads as a hunch (intuition/SUBJ) — both
       // ALWAYS fire before the commit (the timing is reliable; only the wording's precision scales).
       senses(line, tier === "murky" ? "intuition" : "seen", tier === "murky" ? "SUBJ" : "OBJ");
+    }
+    // GATE 4 R4 — OUT-OF-DEPTH THREAT TELL. A foe too strong for this floor (an out-of-depth spawn one
+    // band over, or a flagged tooTough must-flee foe) is telegraphed as DISPROPORTIONATE the first time
+    // it comes within reveal range — the Per/Intuition read that says "do not fight this here, run."
+    // Per-gated like the intent tells; never a number. (Reads against the character-power surface in
+    // spirit; the explicit power feel-word rides the view.)
+    function threatTell(cr) {
+      if (cr.threatTold) return;
+      cr.threatTold = true;
+      if (intentTier() === "murky") senses("Something near is wrong in scale — every instinct in you says run.", "intuition", "SUBJ");
+      else senses(cap(cr.name) + " is out of all proportion to this floor; you are not meant to fight it here.", "seen", "OBJ");
     }
     // GATE 2 R3 — CRUSH-TELL HOOK (stub). A HEAVY-IMPACT blow landing on tier-4 Regulation Plate makes
     // the shell give inward; fire the GENERATOR'S crush-tell string on the senses channel. The crush
@@ -829,6 +871,7 @@ var TD_MAP = (function () {
       ctrl.creatures.forEach(function (cr) {
         var dist = Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y);
         if (dist > 1) cr.poised = false;                     // out of reach -> must re-telegraph before its next strike
+        if ((cr.tooTough || (cr.band || 1) > curLevel()) && dist <= REVEAL) threatTell(cr);   // R4: a foe too strong for this floor reads as must-flee
         var move = null, a = cr.arche || "drift";            // GATE 3: behaviour by ARCHETYPE
         if (a === "ambush") { if (dist <= REVEAL) move = greedy(cr); }            // wakes only when you're near
         else if (a === "pursue" || a === "skirmish" || a === "rush") move = greedy(cr);   // come straight on (skirmisher's edge is evasion; rush is its speed-by-fragility)
@@ -840,7 +883,10 @@ var TD_MAP = (function () {
             // TELEGRAPH LAW: a stat-blocked foe NEVER commits un-telegraphed. If it has not been poised
             // (e.g. you walked up to a holding warden), it WINDS UP this turn — telegraphs, does not strike
             // — and lands the blow next turn. (Legacy/test foes without a fighter keep the immediate path.)
-            if (cr.fighter && !cr.poised) { telegraphIntent(cr); cr.poised = true; toldIntent = true; return; }
+            // GATE 4 R5: a FIRST-STRIKE foe (a glass cannon) strikes on contact — it has initiative and
+            // is a real threat before it dies. (Its approach still telegraphs at distance 1, below, so the
+            // blow is never wholly unread; first-strike only denies the free wind-up turn.)
+            if (cr.fighter && !cr.poised && !cr.firstStrike) { telegraphIntent(cr); cr.poised = true; toldIntent = true; return; }
             var pf2 = playerFighter();
             if (pf2 && cr.fighter) {                                         // LIVE two-function (feel-words, no numbers)
               cr.poised = false;                                            // struck -> must re-telegraph next time
@@ -1357,6 +1403,11 @@ var TD_MAP = (function () {
             armour: a ? { name: a.tierName || a.name, bulk: a.bulkReadout || null } : null
           };
         })(),
+        // GATE 4 R4 — the FLAGGED character-power surface: a feel-word for how strong the visitor has
+        // grown (the canon had no power/level lane; this is a minimal composite of the combat triangle +
+        // any growth-by-deeds). Lets the player read their standing against the floor's rising danger.
+        // Never a number; null when no stat spine (test harness).
+        power: (ctrl.character && ctrl.character.stats && typeof TD_STATS !== "undefined" && TD_STATS.powerWord) ? TD_STATS.powerWord(ctrl.character.stats, ctrl.character.progress) : null,
         dead: ctrl.dead, won: ctrl.won, cause: ctrl.cause
       };
     }

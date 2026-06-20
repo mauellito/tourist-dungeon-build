@@ -25,32 +25,64 @@ var TD_RESOLVE = (function () {
     // behaviour key (mapmode creaturesStep); `weapon`/`armor` index TD_RESOLVE.GEAR; hp is the pool, dmg
     // the legacy-flat fallback. Numbers never reach the player (mapmode reads stats; tells are feel-words).
     // wanderer/lurker/chaser hp/dmg kept (Gate 1 calibrated); the rest are new distinct identities.
+    // GATE 4 R5 — FIRST BESTIARY of ~two dozen across the STRENGTH x SPEED grid. Each: ten-stat block,
+    // roster gear, behaviour `arche`, glyph, Bureau name, and a depth `band` (the floor it starts
+    // appearing — the R4 spawn table shifts the MIX toward higher bands with depth). `firstStrike` glass
+    // cannons strike on contact (they threaten before dying). `tooTough` = out-of-depth must-flee foes
+    // (telegraphed). Numbers never reach the player (mapmode reads stats; tells are feel-words).
     CREATURES: {
-      wanderer: { hp: 30, dmg: 6,  name: "a shuffling nocent thing",  glyph: "r", arche: "drift",    weapon: "dagger",     armor: "unarmored",
+      // ---- BAND 1: floor-1 fodder (weak; teach the verbs) ----
+      gnat:     { band: 1, hp: 10, dmg: 5,  name: "a gnat-clerk",            glyph: "i", arche: "rush",     weapon: "dagger",     armor: "unarmored", firstStrike: true,
+                  stats: { might: 360, dex: 640, con: 300, int: 300, per: 460, lucky: 520, intuition: 420, appearance: 360, charm: 300, grit: 360 } },
+      wanderer: { band: 1, hp: 30, dmg: 6,  name: "a shuffling nocent thing",glyph: "r", arche: "drift",    weapon: "dagger",     armor: "unarmored",
                   stats: { might: 450, dex: 460, con: 470, int: 300, per: 420, lucky: 500, intuition: 380, appearance: 380, charm: 300, grit: 420 } },
-      lurker:   { hp: 45, dmg: 11, name: "a patient lurker",          glyph: "L", arche: "ambush",   weapon: "shortsword", armor: "light",
-                  stats: { might: 520, dex: 500, con: 540, int: 320, per: 520, lucky: 500, intuition: 460, appearance: 400, charm: 300, grit: 480 } },
-      chaser:   { hp: 26, dmg: 8,  name: "a fervent docent",          glyph: "d", arche: "pursue",   weapon: "dagger",     armor: "unarmored",
+      usher:    { band: 1, hp: 24, dmg: 8,  name: "a brisk usher",           glyph: "u", arche: "pursue",   weapon: "shortsword", armor: "unarmored",
+                  stats: { might: 500, dex: 540, con: 460, int: 360, per: 500, lucky: 500, intuition: 440, appearance: 460, charm: 440, grit: 460 } },
+      chaser:   { band: 1, hp: 26, dmg: 8,  name: "a fervent docent",        glyph: "d", arche: "pursue",   weapon: "dagger",     armor: "unarmored",
                   stats: { might: 490, dex: 640, con: 430, int: 300, per: 480, lucky: 500, intuition: 420, appearance: 400, charm: 300, grit: 460 } },
-      // EVASIVE skirmisher — very high Dex (hard to land on; blade-ACCURACY is the answer), no armour, glassy
-      cutpurse: { hp: 24, dmg: 9,  name: "a quick-fingered cutpurse", glyph: "c", arche: "skirmish", weapon: "sabre",      armor: "unarmored",
+      // ---- BAND 2: the ramp begins (evasive, ambush, a tank, a glass nipper) ----
+      lurker:   { band: 2, hp: 45, dmg: 11, name: "a patient lurker",        glyph: "L", arche: "ambush",   weapon: "shortsword", armor: "light",
+                  stats: { might: 520, dex: 500, con: 540, int: 320, per: 520, lucky: 500, intuition: 460, appearance: 400, charm: 300, grit: 480 } },
+      cutpurse: { band: 2, hp: 24, dmg: 9,  name: "a quick-fingered cutpurse",glyph: "c", arche: "skirmish", weapon: "sabre",     armor: "unarmored",
                   stats: { might: 470, dex: 760, con: 420, int: 360, per: 560, lucky: 560, intuition: 480, appearance: 420, charm: 360, grit: 440 } },
-      // ARMOURED bruiser, IMPACT weapon — slow + plated: fires the player's tier-4 crush-tell, and its own
-      // heavy armour makes impact-CRUSH the meaningful answer (a blade glances)
-      enforcer: { hp: 42, dmg: 14, name: "a Bureau enforcer",         glyph: "E", arche: "slow",     weapon: "mace",       armor: "heavy",
-                  stats: { might: 580, dex: 360, con: 660, int: 340, per: 440, lucky: 480, intuition: 400, appearance: 440, charm: 340, grit: 600 } },   // R3-calibrated: hp/might/weapon down off "damage-sponge" (was hp60/might640/warhammer) — still plated impact
-      // FRAGILE glass cannon — huge Might/impact, no armour, tiny HP: kill it fast or eat a ruinous blow
-      penitent: { hp: 20, dmg: 16, name: "a frenzied penitent",       glyph: "p", arche: "rush",     weapon: "axe",        armor: "unarmored",
-                  stats: { might: 660, dex: 480, con: 360, int: 280, per: 420, lucky: 460, intuition: 360, appearance: 360, charm: 280, grit: 560 } },   // R3: might 760->660 (still a glass burst, no longer a one-shot)
-      // BLOCKER — holds ground (doesn't pursue), reach polearm + mail, tanky, low damage: controls space
-      warden:   { hp: 50, dmg: 7,  name: "a turnstile warden",        glyph: "T", arche: "hold",     weapon: "pike",       armor: "medium",
-                  stats: { might: 520, dex: 420, con: 680, int: 360, per: 520, lucky: 480, intuition: 440, appearance: 440, charm: 340, grit: 640 } },   // R3: hp 70->50 (bound kill-time off "sponge"); still the tanky blocker
-      // ARMOURED shuffler — slow drifter in mail with a mace (impact): a tougher wanderer, crush answers it
-      drone:    { hp: 34, dmg: 10, name: "a sanctioned drone",        glyph: "s", arche: "slow",     weapon: "mace",       armor: "medium",
-                  stats: { might: 520, dex: 380, con: 560, int: 300, per: 440, lucky: 480, intuition: 380, appearance: 400, charm: 300, grit: 520 } },   // R3: hp/might nudged down
-      // EVASIVE duelist — high Dex blade fencer in light armour: fast, accurate, a mobile threat
-      duelist:  { hp: 30, dmg: 11, name: "a fencing clerk",           glyph: "f", arche: "pursue",   weapon: "longsword",  armor: "light",
-                  stats: { might: 540, dex: 660, con: 480, int: 380, per: 540, lucky: 520, intuition: 460, appearance: 460, charm: 400, grit: 500 } }   // R3: hp 35->30
+      nipper:   { band: 2, hp: 16, dmg: 13, name: "a nipper",                glyph: "n", arche: "rush",     weapon: "dagger",     armor: "unarmored", firstStrike: true,
+                  stats: { might: 640, dex: 560, con: 320, int: 280, per: 440, lucky: 460, intuition: 380, appearance: 340, charm: 300, grit: 480 } },
+      porter:   { band: 2, hp: 52, dmg: 9,  name: "a laden porter",          glyph: "P", arche: "slow",     weapon: "mace",       armor: "light",
+                  stats: { might: 560, dex: 360, con: 620, int: 320, per: 420, lucky: 480, intuition: 380, appearance: 420, charm: 360, grit: 540 } },
+      sentry:   { band: 2, hp: 44, dmg: 8,  name: "a corridor sentry",       glyph: "y", arche: "hold",     weapon: "spear",      armor: "light",
+                  stats: { might: 500, dex: 440, con: 560, int: 360, per: 540, lucky: 480, intuition: 440, appearance: 420, charm: 340, grit: 560 } },
+      // ---- BAND 3: real threats (armoured, glass cannon, evasive) ----
+      drone:    { band: 3, hp: 34, dmg: 10, name: "a sanctioned drone",      glyph: "s", arche: "slow",     weapon: "mace",       armor: "medium",
+                  stats: { might: 520, dex: 380, con: 560, int: 300, per: 440, lucky: 480, intuition: 380, appearance: 400, charm: 300, grit: 520 } },
+      duelist:  { band: 3, hp: 30, dmg: 11, name: "a fencing clerk",         glyph: "f", arche: "pursue",   weapon: "longsword",  armor: "light",
+                  stats: { might: 540, dex: 660, con: 480, int: 380, per: 540, lucky: 520, intuition: 460, appearance: 460, charm: 400, grit: 500 } },
+      skirling: { band: 3, hp: 26, dmg: 10, name: "a skirling thief",        glyph: "k", arche: "skirmish", weapon: "sabre",      armor: "unarmored",
+                  stats: { might: 500, dex: 800, con: 420, int: 380, per: 580, lucky: 560, intuition: 500, appearance: 420, charm: 380, grit: 460 } },
+      penitent: { band: 3, hp: 20, dmg: 16, name: "a frenzied penitent",     glyph: "p", arche: "rush",     weapon: "axe",        armor: "unarmored", firstStrike: true,
+                  stats: { might: 680, dex: 480, con: 360, int: 280, per: 420, lucky: 460, intuition: 360, appearance: 360, charm: 280, grit: 560 } },
+      bailiff:  { band: 3, hp: 52, dmg: 12, name: "a ward bailiff",          glyph: "B", arche: "slow",     weapon: "axe",        armor: "medium",
+                  stats: { might: 600, dex: 400, con: 620, int: 340, per: 460, lucky: 480, intuition: 400, appearance: 440, charm: 360, grit: 580 } },
+      // ---- BAND 4: heavy ground (armoured bruiser, fast harrier, tank, blocker) ----
+      enforcer: { band: 4, hp: 42, dmg: 14, name: "a Bureau enforcer",       glyph: "E", arche: "slow",     weapon: "mace",       armor: "heavy",
+                  stats: { might: 580, dex: 360, con: 660, int: 340, per: 440, lucky: 480, intuition: 400, appearance: 440, charm: 340, grit: 600 } },
+      warden:   { band: 4, hp: 50, dmg: 7,  name: "a turnstile warden",      glyph: "T", arche: "hold",     weapon: "pike",       armor: "medium",
+                  stats: { might: 520, dex: 420, con: 680, int: 360, per: 520, lucky: 480, intuition: 440, appearance: 440, charm: 340, grit: 640 } },
+      harrier:  { band: 4, hp: 32, dmg: 12, name: "a harrier",              glyph: "h", arche: "skirmish", weapon: "sabre",      armor: "light",
+                  stats: { might: 540, dex: 820, con: 460, int: 360, per: 600, lucky: 540, intuition: 520, appearance: 440, charm: 380, grit: 500 } },
+      revenant: { band: 4, hp: 58, dmg: 12, name: "a revenant clerk",        glyph: "R", arche: "pursue",   weapon: "longsword",  armor: "medium",
+                  stats: { might: 580, dex: 560, con: 640, int: 360, per: 500, lucky: 480, intuition: 440, appearance: 440, charm: 360, grit: 580 } },
+      // ---- BAND 5: deep danger + the first must-flee out-of-depth foe ----
+      marshal:  { band: 5, hp: 64, dmg: 14, name: "a ward marshal",          glyph: "M", arche: "slow",     weapon: "warhammer",  armor: "heavy",
+                  stats: { might: 660, dex: 380, con: 700, int: 380, per: 480, lucky: 480, intuition: 420, appearance: 460, charm: 400, grit: 660 } },
+      inquisitor:{ band: 5, hp: 38, dmg: 18, name: "an inquisitor",          glyph: "Q", arche: "rush",     weapon: "halberd",    armor: "light",   firstStrike: true,
+                  stats: { might: 760, dex: 560, con: 460, int: 420, per: 560, lucky: 500, intuition: 520, appearance: 480, charm: 440, grit: 640 } },
+      shade:    { band: 5, hp: 48, dmg: 14, name: "a deep shade",            glyph: "S", arche: "skirmish", weapon: "longsword",  armor: "light",
+                  stats: { might: 600, dex: 860, con: 520, int: 420, per: 640, lucky: 560, intuition: 560, appearance: 420, charm: 360, grit: 560 } },
+      juggernaut:{ band: 5, hp: 95, dmg: 16, name: "a Bureau juggernaut",    glyph: "J", arche: "slow",     weapon: "warhammer",  armor: "heavy",   tooTough: true,
+                  stats: { might: 720, dex: 340, con: 800, int: 360, per: 460, lucky: 480, intuition: 420, appearance: 480, charm: 400, grit: 720 } },
+      // ---- BAND 6: the deep — out-of-depth must-flee colossus ----
+      colossus: { band: 6, hp: 120, dmg: 15, name: "a plated colossus",      glyph: "C", arche: "hold",     weapon: "pike",       armor: "heavy",   tooTough: true,
+                  stats: { might: 760, dex: 360, con: 900, int: 360, per: 500, lucky: 480, intuition: 440, appearance: 500, charm: 420, grit: 760 } }
     }
   };
   // one blow against a target: returns its new hp (floored at 0) and whether it died

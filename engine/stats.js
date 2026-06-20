@@ -76,6 +76,16 @@ var TD_STATS = (function () {
     regard:      function (s) { return Math.round((s.appearance - 500) / 25); } // Appearance -> first impressions (stub)
   };
   function derive(stats) { var d = {}; for (var k in DERIVED) d[k] = DERIVED[k](stats); return d; }
+  // GATE 4 R4 — a minimal CHARACTER-POWER surface (FLAGGED: new, derived from the combat stats; the
+  // canon had no power/level lane). Composite of the combat-relevant stats, ~0..1000, so depth can gate
+  // against it (floor danger vs how strong you've grown). Surfaced as a feel-word only, never a number.
+  function power(stats, prog) {
+    var base = (stats.might + stats.dex + stats.con) / 3;                 // the combat triangle
+    var grown = prog ? Object.keys(prog).reduce(function (a, k) { return a + (prog[k] || 0); }, 0) : 0;
+    return Math.max(1, Math.min(1000, Math.round(base + grown)));
+  }
+  var POWER_WORDS = ["a tourist", "a stray", "a survivor", "a hardened hand", "a veteran", "a legend of the commute"];
+  function powerWord(stats, prog) { return POWER_WORDS[Math.min(POWER_WORDS.length - 1, tier(power(stats, prog)))]; }
 
   // ---- GROWTH-BY-DEEDS (scaffold only; no XP bar; realized on REST). PLACEHOLDER. ----
   function newProgress() { return {}; }
@@ -91,7 +101,7 @@ var TD_STATS = (function () {
   return {
     STATS: STATS, NAMES: NAMES, BANDS: BANDS, FEEL: FEEL,
     create: create, bell: bell, tier: tier, feel: feel, surface: surface, crossed: crossed,
-    luckyThumb: luckyThumb, DERIVED: DERIVED, derive: derive,
+    luckyThumb: luckyThumb, DERIVED: DERIVED, derive: derive, power: power, powerWord: powerWord,
     newProgress: newProgress, recordDeed: recordDeed, realizeOnRest: realizeOnRest
   };
 })();
