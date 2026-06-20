@@ -56,8 +56,11 @@
     chosen.forEach(function (t) { S.player.x = t.x; S.player.y = t.y; R.SG.get(S); });
     var a = S.arts[0]; S.player.x = a.x; S.player.y = a.y; R.SG.get(S);   // grab the artifact -> trips collapse + slab
 
-    // en-route combat gauntlet (faithful TD_RESOLVE math; sim decides how many foes)
-    var kinds = Object.keys(R.COMBAT.CREATURES), n = 0, rounds = 0, hpLost = 0, kills = 0;
+    // en-route combat gauntlet (faithful TD_RESOLVE math; sim decides how many foes). This is the §24
+    // SET-PIECE sim — its gauntlet uses the STABLE core trio, decoupled from the live bestiary (Gate 3)
+    // so the set-piece's calibration/regression locks don't move when the bestiary grows. The live
+    // bestiary is calibrated on the COMBAT sim (runCombat) instead.
+    var kinds = ["wanderer", "lurker", "chaser"], n = 0, rounds = 0, hpLost = 0, kills = 0;
     for (var i = 0; i < SIM.MAX_FOES; i++) if (rng.chance(SIM.FOE_CHANCE)) n++;
     for (var c = 0; c < n; c++) {
       var cr = R.COMBAT.CREATURES[rng.pick(kinds)];
@@ -192,12 +195,12 @@
     _floorPool = pool; return pool;
   }
   function creatureFighter(kind) {
-    var c = R.COMBAT.CREATURES[kind];   // synthesize a stat block from the bestiary hp/dmg (PLACEHOLDER sim mapping)
+    var c = R.COMBAT.CREATURES[kind];   // GATE 3: read the foe's REAL stat block + roster gear (synth fallback for stat-less blocks)
     return {
       kind: kind, hp: c.hp,
-      stats: { might: 380 + c.dmg * 14, dex: 470, con: 320 + c.hp * 6, int: 300, per: 420, lucky: 500, intuition: 380, appearance: 400, charm: 300, grit: 420 },
-      weapon: { name: c.name, type: "blade", base: c.dmg, acc: 0 },
-      armor: R.GEAR.ARMOR.light
+      stats: c.stats || { might: 380 + c.dmg * 14, dex: 470, con: 320 + c.hp * 6, int: 300, per: 420, lucky: 500, intuition: 380, appearance: 400, charm: 300, grit: 420 },
+      weapon: c.weapon ? R.GEAR.WEAPONS[c.weapon] : { name: c.name, type: "blade", base: c.dmg, acc: 0 },
+      armor: c.armor ? R.GEAR.ARMOR[c.armor] : R.GEAR.ARMOR.light
     };
   }
   function oneCombatRun(rng, policy, dens, pool) {

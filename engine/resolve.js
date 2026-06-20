@@ -20,10 +20,37 @@ var TD_RESOLVE = (function () {
     // two-function descent combat is winnable by skill (sim: ~50% survive a floor, in the 40-60 band)
     // rather than ~6% brutal. HP unchanged (lowering it shifts the smash-grab escape band). PLAYER_DMG/
     // GEAR unchanged. Numbers never reach the player (feel-words only).
+    // GATE 3 FIRST BESTIARY — ~a dozen real foes with a TEN-STAT block + roster gear, so blade-accuracy,
+    // impact-crush, and the tier-4 crush-tell ACTIVATE against varied armour/evasion. `arche` is the
+    // behaviour key (mapmode creaturesStep); `weapon`/`armor` index TD_RESOLVE.GEAR; hp is the pool, dmg
+    // the legacy-flat fallback. Numbers never reach the player (mapmode reads stats; tells are feel-words).
+    // wanderer/lurker/chaser hp/dmg kept (Gate 1 calibrated); the rest are new distinct identities.
     CREATURES: {
-      wanderer: { hp: 30, dmg: 6, name: "a shuffling nocent thing", glyph: "r" },
-      lurker: { hp: 45, dmg: 11, name: "a patient lurker", glyph: "L" },
-      chaser: { hp: 26, dmg: 8, name: "a fervent docent", glyph: "d" }
+      wanderer: { hp: 30, dmg: 6,  name: "a shuffling nocent thing",  glyph: "r", arche: "drift",    weapon: "dagger",     armor: "unarmored",
+                  stats: { might: 450, dex: 460, con: 470, int: 300, per: 420, lucky: 500, intuition: 380, appearance: 380, charm: 300, grit: 420 } },
+      lurker:   { hp: 45, dmg: 11, name: "a patient lurker",          glyph: "L", arche: "ambush",   weapon: "shortsword", armor: "light",
+                  stats: { might: 520, dex: 500, con: 540, int: 320, per: 520, lucky: 500, intuition: 460, appearance: 400, charm: 300, grit: 480 } },
+      chaser:   { hp: 26, dmg: 8,  name: "a fervent docent",          glyph: "d", arche: "pursue",   weapon: "dagger",     armor: "unarmored",
+                  stats: { might: 490, dex: 640, con: 430, int: 300, per: 480, lucky: 500, intuition: 420, appearance: 400, charm: 300, grit: 460 } },
+      // EVASIVE skirmisher — very high Dex (hard to land on; blade-ACCURACY is the answer), no armour, glassy
+      cutpurse: { hp: 24, dmg: 9,  name: "a quick-fingered cutpurse", glyph: "c", arche: "skirmish", weapon: "sabre",      armor: "unarmored",
+                  stats: { might: 470, dex: 760, con: 420, int: 360, per: 560, lucky: 560, intuition: 480, appearance: 420, charm: 360, grit: 440 } },
+      // ARMOURED bruiser, IMPACT weapon — slow + plated: fires the player's tier-4 crush-tell, and its own
+      // heavy armour makes impact-CRUSH the meaningful answer (a blade glances)
+      enforcer: { hp: 42, dmg: 14, name: "a Bureau enforcer",         glyph: "E", arche: "slow",     weapon: "mace",       armor: "heavy",
+                  stats: { might: 580, dex: 360, con: 660, int: 340, per: 440, lucky: 480, intuition: 400, appearance: 440, charm: 340, grit: 600 } },   // R3-calibrated: hp/might/weapon down off "damage-sponge" (was hp60/might640/warhammer) — still plated impact
+      // FRAGILE glass cannon — huge Might/impact, no armour, tiny HP: kill it fast or eat a ruinous blow
+      penitent: { hp: 20, dmg: 16, name: "a frenzied penitent",       glyph: "p", arche: "rush",     weapon: "axe",        armor: "unarmored",
+                  stats: { might: 660, dex: 480, con: 360, int: 280, per: 420, lucky: 460, intuition: 360, appearance: 360, charm: 280, grit: 560 } },   // R3: might 760->660 (still a glass burst, no longer a one-shot)
+      // BLOCKER — holds ground (doesn't pursue), reach polearm + mail, tanky, low damage: controls space
+      warden:   { hp: 50, dmg: 7,  name: "a turnstile warden",        glyph: "T", arche: "hold",     weapon: "pike",       armor: "medium",
+                  stats: { might: 520, dex: 420, con: 680, int: 360, per: 520, lucky: 480, intuition: 440, appearance: 440, charm: 340, grit: 640 } },   // R3: hp 70->50 (bound kill-time off "sponge"); still the tanky blocker
+      // ARMOURED shuffler — slow drifter in mail with a mace (impact): a tougher wanderer, crush answers it
+      drone:    { hp: 34, dmg: 10, name: "a sanctioned drone",        glyph: "s", arche: "slow",     weapon: "mace",       armor: "medium",
+                  stats: { might: 520, dex: 380, con: 560, int: 300, per: 440, lucky: 480, intuition: 380, appearance: 400, charm: 300, grit: 520 } },   // R3: hp/might nudged down
+      // EVASIVE duelist — high Dex blade fencer in light armour: fast, accurate, a mobile threat
+      duelist:  { hp: 30, dmg: 11, name: "a fencing clerk",           glyph: "f", arche: "pursue",   weapon: "longsword",  armor: "light",
+                  stats: { might: 540, dex: 660, con: 480, int: 380, per: 540, lucky: 520, intuition: 460, appearance: 460, charm: 400, grit: 500 } }   // R3: hp 35->30
     }
   };
   // one blow against a target: returns its new hp (floored at 0) and whether it died

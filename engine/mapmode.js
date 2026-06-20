@@ -40,7 +40,7 @@ var TD_MAP = (function () {
   var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
-  var CREATURE_DENSITY = 0.012, COIN_DENSITY = 0.05;   // GATE 1.1: coin density raised so a full hoard is a real load
+  var CREATURE_DENSITY = 0.006, COIN_DENSITY = 0.05;   // GATE 3: density halved (0.012->0.006) — the real bestiary hits far harder per foe, so fewer, more meaningful encounters keep the win-band
   var GEAR_DENSITY = 0.004;   // GATE 2: weapon/armour drops per walkable cell (rare; a few per floor)
   // GATE 1.1 — coin heaps come in DENOMINATIONS so hoarding has weight. Canon: 25 coins/lb (denomination-
   // blind), 1g=10s=100c by VALUE — so all-gold is the lightest way to hold a value. The floor offers mostly
@@ -734,13 +734,13 @@ var TD_MAP = (function () {
       // action resolves inside, so none ever spawns. (The truce is spatial, not prose.)
       if ((world.nodes[ctrl.node] || {}).dmz) return;
       var n = Math.max(1, Math.round(walkableCount() * CREATURE_DENSITY));   // DENSITY, not a fixed count
-      var kinds = ["wanderer", "lurker", "chaser"];
+      var kinds = Object.keys(CREATURE);                                       // GATE 3: the whole first bestiary
       for (var c = 0; c < n; c++) {
         var kind = kinds[rng.int(0, kinds.length - 1)];
         var spot = pickSpot();
         if (!spot) continue;
         var def = CREATURE[kind];
-        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, fighter: defFighter(def) });
+        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, arche: def.arche, fighter: defFighter(def) });
       }
     }
     function pickSpot() {
@@ -770,13 +770,31 @@ var TD_MAP = (function () {
     var INTENT_TELLS = {
       clear: { wanderer: "The shuffling thing gathers itself and reaches — a blow is a breath away.",
                lurker:   "The lurker coils, its weight tipping to strike; you have one beat to answer.",
-               chaser:   "The docent draws back to lunge — its intent is plain." },
+               chaser:   "The docent draws back to lunge — its intent is plain.",
+               cutpurse: "The cutpurse weaves a feint and sets to dart in — fast, and aimed.",
+               enforcer: "The enforcer plants its feet and hauls the hammer back; a slow, certain ruin is coming.",
+               penitent: "The penitent throws all of itself behind the axe — one blow, and it means to spend it on you.",
+               warden:   "The warden levels the pike along its line; step in and you walk onto it.",
+               drone:    "The drone grinds round and brings the mace to bear — late, but it arrives.",
+               duelist:  "The clerk settles into guard and picks its opening — a clean thrust is queued." },
       vague: { wanderer: "It lurches in close, meaning to land something.",
                lurker:   "The lurker tenses; a strike is gathering.",
-               chaser:   "The docent winds up to lunge." },
+               chaser:   "The docent winds up to lunge.",
+               cutpurse: "It shifts quick on its feet, looking for the gap.",
+               enforcer: "The big one cocks back; something heavy is on the way.",
+               penitent: "It rears to throw everything into one swing.",
+               warden:   "The pike-point swings toward you and holds.",
+               drone:    "It turns, slow, bringing the weight around.",
+               duelist:  "It sets its guard and reads you for an opening." },
       murky: { wanderer: "Something at your side tenses to move.",
                lurker:   "A stillness beside you draws tight — wrong, somehow.",
-               chaser:   "A gathering at your flank; a blow is forming." }
+               chaser:   "A gathering at your flank; a blow is forming.",
+               cutpurse: "A flicker at the edge of you, too quick to fix.",
+               enforcer: "A weight gathers nearby, patient and bad.",
+               penitent: "Something winds up past all sense; it will not hold.",
+               warden:   "A line of threat settles between you and the way on.",
+               drone:    "A slow wrongness grinds toward your side.",
+               duelist:  "A poised attention fixes on you, and waits." }
     };
     function intentTier() {
       var per = (ctrl.character && ctrl.character.stats && typeof ctrl.character.stats.per === "number") ? ctrl.character.stats.per : 500;
@@ -800,18 +818,22 @@ var TD_MAP = (function () {
       var toldIntent = false;   // one telegraph per step keeps the senses panel readable, not spammy
       ctrl.creatures.forEach(function (cr) {
         var dist = Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y);
-        var move = null;
-        if (cr.kind === "lurker") {
-          if (dist <= REVEAL) move = greedy(cr);             // lurker wakes when you're near
-        } else if (cr.kind === "chaser") {
-          move = greedy(cr);                                  // chaser never stops coming
-        } else {
-          move = rng.chance(0.7) ? greedy(cr) : wander(cr);  // wanderer drifts toward you
-        }
+        if (dist > 1) cr.poised = false;                     // out of reach -> must re-telegraph before its next strike
+        var move = null, a = cr.arche || "drift";            // GATE 3: behaviour by ARCHETYPE
+        if (a === "ambush") { if (dist <= REVEAL) move = greedy(cr); }            // wakes only when you're near
+        else if (a === "pursue" || a === "skirmish" || a === "rush") move = greedy(cr);   // come straight on (skirmisher's edge is evasion; rush is its speed-by-fragility)
+        else if (a === "slow") { cr._slow = !cr._slow; if (cr._slow) move = greedy(cr); } // armoured bruiser/drone: advances every OTHER turn
+        else if (a === "hold") { if (dist === 1) move = greedy(cr); }             // blocker: holds ground, strikes only when reached (control space / go around)
+        else move = rng.chance(0.7) ? greedy(cr) : wander(cr);                    // drift
         if (move) {
-          if (move.x === ctrl.player.x && move.y === ctrl.player.y) {        // it reaches you: it bites
+          if (move.x === ctrl.player.x && move.y === ctrl.player.y) {        // it reaches you: it strikes
+            // TELEGRAPH LAW: a stat-blocked foe NEVER commits un-telegraphed. If it has not been poised
+            // (e.g. you walked up to a holding warden), it WINDS UP this turn — telegraphs, does not strike
+            // — and lands the blow next turn. (Legacy/test foes without a fighter keep the immediate path.)
+            if (cr.fighter && !cr.poised) { telegraphIntent(cr); cr.poised = true; toldIntent = true; return; }
             var pf2 = playerFighter();
             if (pf2 && cr.fighter) {                                         // LIVE two-function (feel-words, no numbers)
+              cr.poised = false;                                            // struck -> must re-telegraph next time
               if (TD_RESOLVE.hit(cr.fighter, pf2, rng).hit) {
                 var dmg2 = TD_RESOLVE.damage(cr.fighter, pf2, rng).damage;
                 ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: dmg2, kind: "taken" });
@@ -827,7 +849,7 @@ var TD_MAP = (function () {
           } else {
             cr.x = move.x; cr.y = move.y;
             // poised one step away -> telegraph the strike it will land next turn (hostiles with a stat block)
-            if (!toldIntent && cr.fighter && Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y) === 1) { telegraphIntent(cr); toldIntent = true; }
+            if (cr.fighter && Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y) === 1) { if (!toldIntent) { telegraphIntent(cr); toldIntent = true; } cr.poised = true; }
           }
         }
       });
@@ -857,13 +879,16 @@ var TD_MAP = (function () {
     // fighter reads the character's stat spine + starting gear. When BOTH are present the live combat
     // resolves via TD_RESOLVE.hit()/damage()/read(); otherwise (test harness, no spine) it falls back
     // to the legacy flat path. Numbers never reach the player — combat lines are feel-words.
+    // GATE 3: read the foe's REAL ten-stat block + roster gear when present (the bestiary), so armour/
+    // evasion/weapon-type all bite. Falls back to synthesizing from hp/dmg for stat-less creatures
+    // (test-harness foes set via _setCreatures, or any legacy block) so nothing breaks.
     function defFighter(def) {
       if (typeof TD_RESOLVE === "undefined" || !TD_RESOLVE.GEAR) return null;
-      return {
-        stats: { might: 380 + def.dmg * 14, dex: 470, con: 320 + def.hp * 6, int: 300, per: 420, lucky: 500, intuition: 380, appearance: 400, charm: 300, grit: 420 },
-        weapon: { name: def.name, type: "blade", base: def.dmg, acc: 0 },
-        armor: TD_RESOLVE.GEAR.ARMOR.light
-      };
+      var G = TD_RESOLVE.GEAR;
+      var stats = def.stats || { might: 380 + def.dmg * 14, dex: 470, con: 320 + def.hp * 6, int: 300, per: 420, lucky: 500, intuition: 380, appearance: 400, charm: 300, grit: 420 };
+      var weapon = def.weapon ? G.WEAPONS[def.weapon] : { name: def.name, type: "blade", base: def.dmg, acc: 0 };
+      var armor = def.armor ? G.ARMOR[def.armor] : G.ARMOR.light;
+      return { stats: stats, weapon: weapon || { name: def.name, type: "blade", base: def.dmg, acc: 0 }, armor: armor || G.ARMOR.light };
     }
     // ENCUMBRANCE (R2): the carried loadout (gear + weighty inventory + purse) -> a TD_BURDEN band ->
     // worse EVASION (folded into the player fighter) + slower MOVE/tempo. PLACEHOLDER magnitudes.
@@ -971,13 +996,13 @@ var TD_MAP = (function () {
             var dmg = TD_RESOLVE.damage(pf, cr.fighter, rng).damage;
             ctrl.fx.push({ x: cr.x, y: cr.y, amount: dmg, kind: "dealt" });
             var blow = TD_RESOLVE.strike(cr.hp, dmg); cr.hp = blow.hp; killed = blow.killed;
-            if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
+            if (killed) { dropLoot(cr); removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
             else logMsg("Your " + ((pf.weapon && pf.weapon.verb) || "blow") + " lands on " + cr.name + "; it still stands.", false);
           } else logMsg("You swing at " + cr.name + " and the blow goes wide.", false);
         } else {                                                  // legacy flat fallback (no stat spine / test harness)
           ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt" });
           var fblow = TD_RESOLVE.strike(cr.hp, PLAYER_DMG); cr.hp = fblow.hp; killed = fblow.killed;
-          if (killed) { removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
+          if (killed) { dropLoot(cr); removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
           else logMsg("You serve " + cr.name + " notice; it still stands.", false);
         }
         meterTick("fight");
@@ -1247,6 +1272,17 @@ var TD_MAP = (function () {
       return { opened: true, plain: true };
     }
 
+    // GATE 3 — a kill drops loot into the PROVEN economy: a reason to engage (anti-"walk-around trash"),
+    // while the fight still costs time/HP (the tradeoff stays real). Mostly coin (scaled to the foe's
+    // toughness); occasionally the foe's own weapon (feeds the gear loop). Numbers never surface.
+    function dropLoot(cr) {
+      var k = key(cr.x, cr.y);
+      if (!GEAR || !isFloor(cr.x, cr.y) || ctrl.items[k]) return;
+      var def = CREATURE[cr.kind] || {};
+      if (def.weapon && rng.chance(0.18)) { ctrl.items[k] = weaponItem(GEAR.WEAPONS[def.weapon]); return; }   // its weapon
+      var m = pickCoinDen(rng), tough = Math.max(1, (cr.maxHp || 20) / 30);   // tougher foe -> a touch more coin
+      ctrl.items[k] = makeCoins(m.den, Math.round(rng.int(m.min, m.max) * tough));
+    }
     function removeCreature(cr) { var i = ctrl.creatures.indexOf(cr); if (i >= 0) ctrl.creatures.splice(i, 1); }
 
     function combatCause(src) {
