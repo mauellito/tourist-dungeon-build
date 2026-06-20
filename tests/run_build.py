@@ -18,7 +18,6 @@ SUITES = [
     ("town + forks + signals", "run_game.py"),
     ("UI quality-of-life", "run_ui.py"),
     ("game-feel layer (TD_FEEL)", "run_feel.py"),
-    ("descent contraption invariant (no soft-lock)", "run_contraption.py"),
     ("LIVE juice integration (feel fires in play)", "run_juice.py"),
     ("pure resolution core — combat + smash-grab (TD_RESOLVE)", "run_resolve.py"),
     ("balance sim — per-policy distribution + determinism (tests/sim.js)", "run_sim.py"),

@@ -55,9 +55,8 @@ F.onload=function(){
   try {
     pk('~');   // open the debug overlay so feel.lastHooks is readable after each action
 
-    // ---- DESCEND (town -> dungeon): buy ticket, throw lever, race to the mouth ----
+    // ---- DESCEND (town -> dungeon): buy ticket, walk to the mouth, descend (clean, no contraption) ----
     var ki=find('kiosk'); var kd=goAdjacent(ki[0],ki[1]); press(kd); pk('Enter');     // buy a Standard ticket
-    var lv=find('lever'); var ld=goAdjacent(lv[0],lv[1]); press(ld);                   // throw the contraption
     var mo=findDoor('DUNGEON'); var md=goAdjacent(mo[0],mo[1]); press(md); pk('Enter'); clearMore();   // descend
     ok('LIVE: reached the dungeon', view().phase==='dungeon', 'phase='+view().phase);
     var dh=hooks();

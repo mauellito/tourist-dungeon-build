@@ -98,7 +98,6 @@ var TD_GAME = (function () {
     var lifeN = 0;   // per-life counter so each new character rolls a distinct (deterministic) stat block
 
     function freshCharacter() {
-      if (typeof TD_CONTRAPTION !== "undefined") TD_CONTRAPTION.reset();   // THROWAWAY prototype: each life starts with the descent sealed
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
       character = { ticket: null, signalsSeen: new Set(), events: { clicks: [], brassRejected: false, anchorRejected: false } };
       // TEN-STAT SPINE (combat track R2): each life rolls a bell-curved 1..1000 stat block, surfaced
@@ -215,11 +214,6 @@ var TD_GAME = (function () {
           if (character.ticket) { logMsg("You already hold admission."); break; }
           character.ticket = "standard"; seen("003");
           logMsg("A grey ticket curls from the slot: “" + SIG["003"].t + ".”"); break;   // 003 printed fact -> event
-        case "lever":   // THROWAWAY core-loop prototype: throw the descent contraption
-          if (typeof TD_CONTRAPTION === "undefined") break;
-          logMsg(TD_CONTRAPTION.pull(shared.turn));
-          senses("Gears engage somewhere beneath the plaza; the mouth exhales, and a clock begins.", "heard", "OBJ");
-          break;
         case "hotel":
           meters.comfort += 2; restore(100, 0, 100); seen("006");
           senses("The concierge, without looking up: “" + SIG["006"].t + "”", "said", "SUBJ");  // 006 SUBJ
@@ -364,29 +358,11 @@ var TD_GAME = (function () {
       var dungeonEntrance = null;
       if (mouth) {
         doors[key(mouth.x, mouth.y)] = { to: "DUNGEON", glyph: "Ω", label: "the dungeon mouth. Press Enter to descend.", gate: function () {
+          // GATE 5: a CLEAN ticket-gated descent (the throwaway contraption is gone). A ticketed visitor
+          // is never blocked — the turnstile simply lets them by; the unticketed are sent to the Kiosk.
           if (!character.ticket) return { block: "The gate does not open for the unticketed. Admission is sold at the Kiosk (K) on the plaza." };
-          // THROWAWAY core-loop prototype: seal the descent ONLY when a lever actually spawned this
-          // run (TD_CONTRAPTION.placed) — never fail-closed, or the player would be soft-locked out.
-          if (typeof TD_CONTRAPTION !== "undefined" && TD_CONTRAPTION.placed() && !TD_CONTRAPTION.open(shared.turn)) return { block: "The descent is sealed. Throw the contraption lever (L) near the mouth — then come quickly, before the wicket re-seals." };
           return null; } };
         dungeonEntrance = { rect: [mouth.x, mouth.y, mouth.x, mouth.y] };
-        // THROWAWAY core-loop prototype lever: BFS out from the mouth over WALKABLE cells and place
-        // the lever on the NEAREST reachable free floor at path-distance >= 3 (keeps a real race).
-        // If NO eligible reachable cell exists, place no lever and DO NOT seal (fail-open).
-        if (typeof TD_CONTRAPTION !== "undefined") {
-          TD_CONTRAPTION.setPlaced(false);
-          var lev = null, D8c = [[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]];
-          var lq = [{ x: mouth.x, y: mouth.y, d: 0 }], lseen = {}; lseen[mouth.x + "," + mouth.y] = 1;
-          while (lq.length && !lev) {
-            var lc = lq.shift();
-            if (lc.d >= 3 && grid[lc.y][lc.x] === "." && !features[key(lc.x, lc.y)] && !doors[key(lc.x, lc.y)] && !(lc.x === spawn.x && lc.y === spawn.y)) { lev = { x: lc.x, y: lc.y }; break; }
-            for (var li = 0; li < 8; li++) { var nx = lc.x + D8c[li][0], ny = lc.y + D8c[li][1], lk = nx + "," + ny; if (ny > 0 && ny < Ht && nx > 0 && nx < Wt && !lseen[lk] && grid[ny][nx] === ".") { lseen[lk] = 1; lq.push({ x: nx, y: ny, d: lc.d + 1 }); } }
-          }
-          if (lev) {
-            features[key(lev.x, lev.y)] = { type: "contraption", glyph: "L", col: "signal", label: "the descent contraption", text: "A municipal lever beside a freshly-pasted notice: THROW TO AUTHORISE DESCENT. (Wicket holds " + TD_CONTRAPTION.ARM_TURNS + " turns.)", act: "lever" };
-            TD_CONTRAPTION.setPlaced(true);                 // a reachable lever exists -> the seal is safe to enforce
-          }
-        }
       }
       // TENANT FRONTS (TD_TOWNMAP only): a seed-dealt business sign on a building face.
       // Sits on the building wall cell (bump-to-read; the wall stays solid), coloured by
@@ -543,7 +519,6 @@ var TD_GAME = (function () {
         if (f.act === "lookout") { pendingCounter = null; pendingVendor = false; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
         if (f.act === "look") { pendingCounter = null; pendingVendor = false; senses(f.text, "seen", "OBJ"); if (f.bark) senses(f.bark, "said", "SUBJ"); return { moved: false, interacted: "look", event: lastEvent }; }   // signage (seen) + one voice line (said, in register)
         if (f.act === "shrine") { pendingCounter = null; pendingVendor = false; act("shrine"); return { moved: false, interacted: "shrine", event: lastEvent }; }
-        if (f.act === "lever") { pendingCounter = null; pendingVendor = false; act("lever"); return { moved: false, interacted: "lever", event: lastEvent }; }   // THROWAWAY prototype: bump the contraption to throw it
         // a counter/desk: begin the conversation in the keeper's own voice
         pendingDoor = null; pendingVendor = false; pendingCounter = { act: f.act, x: nx, y: ny };
         var vbc = voice(f.act), spoke = false;
@@ -559,7 +534,6 @@ var TD_GAME = (function () {
       // the road out of town: stepping onto the exit tile prompts a clean leave
       if (P.exit && nx === P.exit.x && ny === P.exit.y) { pendingExit = true; exitReturn = { x: ox, y: oy }; logMsg("The Bureau reminds departing visitors that itineraries, once surrendered, are not reissued. Leave town? (y / n)"); return { moved: true, exitPrompt: true }; }
       shared.turn += 1;
-      if (typeof TD_CONTRAPTION !== "undefined" && TD_CONTRAPTION.tick(shared.turn)) logMsg("The contraption resets with a clang; the wicket re-seals. Throw the lever again.");   // THROWAWAY prototype: the window closed
       walkersStep();
       var dist = districtAt(nx, ny); if (dist) announce(dist);            // E1: crossing into a named district
       // the senses emitter (town): the harbour makes itself heard near the water
@@ -912,7 +886,6 @@ var TD_GAME = (function () {
         grid: P.grid.map(function (r) { return r.join(""); }),
         doors: P.doors, features: P.features, ground: P.ground || {}, items: {}, plain: {},
         buildings: town ? (P.buildings || []) : [], dungeonEntrance: town && P.meta ? P.meta.dungeonEntrance : null,   // E2: read at a glance
-        contraption: (town && typeof TD_CONTRAPTION !== "undefined") ? { armed: TD_CONTRAPTION.armed(), remaining: TD_CONTRAPTION.remaining(shared.turn) } : null,   // THROWAWAY prototype: descent-window countdown
         player: { x: player.x, y: player.y },
         creatures: town
           ? npcs().map(function (n) { return { x: n.x, y: n.y, kind: "npc", glyph: n.glyph, name: n.name, hp: 1, maxHp: 1, dmg: 0, friendly: true }; })

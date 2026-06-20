@@ -27,10 +27,6 @@
   canvas { background:#07060a; border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); }
 
   aside#sidebar { flex:0 0 200px; display:flex; flex-direction:column; gap:8px; }
-  /* the contraption WICKET countdown in the HUD — prominent, reddens under pressure */
-  .wicket { margin:4px 0 2px; padding:5px 8px; border-radius:4px; border:1px solid var(--rule); font:bold 13px "Consolas",monospace; text-align:center; letter-spacing:.5px; background:#2a241a; color:var(--paper); }
-  .wicket.urgent { animation: wickpulse .7s ease-in-out infinite; }
-  @keyframes wickpulse { 0%,100%{ background:#3a0f0a; } 50%{ background:#6a1b12; } }
   /* a compact controls footer (moved out of the prime sidebar — not immediately actionable) */
   .legendfoot { margin-top:10px; }
   .legendfoot .card-b { padding:6px 10px; }
@@ -213,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "949e56d";</script>
+<script>window.__BUILD = "d6c2ecf";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -551,14 +547,6 @@ window.__initPlayMap = function () {
       var sh = act.filter(function (e) { return e.kind === "shimmer"; })[0];
       if (sh) drawShimmer(sh);
     }
-    // THROWAWAY core-loop prototype: the descent-window countdown, top-centre, urgent as it runs out
-    if (vw.contraption && vw.contraption.armed) {
-      var rem = vw.contraption.remaining, urgent = rem <= 6;
-      ctx.save(); ctx.font = "bold 18px Consolas, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "top";
-      ctx.fillStyle = urgent ? P.critical : P.signal;
-      ctx.fillText("DESCENT WICKET OPEN — " + rem + " turn" + (rem === 1 ? "" : "s") + " — REACH THE Ω", cv.width / 2, 8);
-      ctx.restore();
-    }
 
     spawnDamage(vw);
     renderDossier(vw);
@@ -627,16 +615,9 @@ window.__initPlayMap = function () {
     var hpCol = m.hp < 0.25 * m.hpMax ? P.dangerHigh : m.hp < 0.5 * m.hpMax ? P.dangerMed : "#2f6d33";
     var ftCol = m.fatigue > 80 ? P.dangerHigh : m.fatigue > 55 ? P.dangerMed : "#7a5c3a";
     var place = vw.phase === "dungeon" ? ("Level " + vw.level) : (vw.phase === "town" ? (vw.title || "The Harbour") : "Indoors");
-    // the contraption WICKET countdown — surfaced in the HUD, prominent, reddening under pressure
-    var wick = "";
-    if (vw.contraption && vw.contraption.armed) {
-      var rem = vw.contraption.remaining;
-      wick = '<div class="wicket' + (rem <= 6 ? " urgent" : "") + '" id="sb-wicket" style="color:' + (rem <= 6 ? P.critical : P.signal) + '">DESCENT WICKET — ' + rem + ' turn' + (rem === 1 ? "" : "s") + '</div>';
-    }
     var g = vw.gear || {};   // GATE 2 R2: the equip readout — armour BULK as one feel-word dial stop; weapon as name+verb. No numbers.
     dossierEl.innerHTML =
       bar("HP", m.hp, m.hpMax, hpCol, true) +
-      wick +
       bar("Fatigue", m.fatigue, m.fatigueMax, ftCol, false) +
       '<div style="height:5px"></div>' +
       statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
@@ -1034,7 +1015,7 @@ window.__initPlayMap = function () {
   var files = [
     "rng.js", "resolve.js", "stats.js", "burden.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
     "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "mapmode.js",
-    "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js", "contraption.js",
+    "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js",
     "smashgrab.js", "sfx.js", "game.js", "ui.js", "feel.js"
   ];
   var b = window.__BUILD || "dev", done = 0;
