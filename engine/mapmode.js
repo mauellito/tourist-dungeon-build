@@ -511,6 +511,16 @@ var TD_MAP = (function () {
           doors[key(dp.x, dp.y)] = { edgeId: o.id, type: type, takeable: o.takeable, reason: o.reason, one_way: o.one_way, to: o.to, label: o.label, tells: o.tells || [] };
         });
       }
+      // GATE 4 R3 — GUARANTEE A REACHABLE UP-STAIR. The lattice is ~88% down-directed (most nodes have
+      // no up-edge), so descending would otherwise strand you. Wire a RETURN up-stair at the generator's
+      // own (reachable) up-stair cell, back to the node we descended FROM, whenever the graph wired none.
+      if (comp.breadthCells) {
+        var hasUp = Object.keys(doors).some(function (k) { return doors[k].type === "stair_up"; });
+        var back = shared.cameFrom && shared.cameFrom[ctrl.node];
+        if (!hasUp && back && comp.upStair && !doors[key(comp.upStair.x, comp.upStair.y)]) {
+          doors[key(comp.upStair.x, comp.upStair.y)] = { type: "stair_up", returnTo: back, takeable: true, to: back, label: "a stair up", tells: [] };
+        }
+      }
       ctrl.grid = g; ctrl.doors = doors; ctrl.features = {};
       ctrl.items = {}; ctrl.plain = {}; ctrl.secrets = {};
       // v21 — room doorways carry a rendered state (closed / ajar / open) — the GENERATOR'S own door tags.
@@ -1251,12 +1261,21 @@ var TD_MAP = (function () {
       }
       if (Math.max(Math.abs(p.x - ctrl.player.x), Math.abs(p.y - ctrl.player.y)) > 1) { ctrl.pendingDoor = null; return { opened: false }; }
       var d = p.meta;
+      if (d.returnTo) {   // GATE 4 R3: a guaranteed RETURN up-stair (no graph up-edge exists) -> ascend to where we descended from
+        interp.state.node = d.returnTo; ctrl.node = d.returnTo; ctrl.won = false; ctrl.pendingDoor = null;
+        ctrl.lastEvent = null; ctrl.lastUrgent = false; shared.turn += 1; buildView();
+        return { opened: true, ascended: true, traversed: "return:" + d.returnTo, recenter: true, to: ctrl.node };
+      }
       if (onCross) { var oc = onCross(d, ctrl); if (oc && oc.block) { logMsg(oc.block, false); return { opened: false, blocked: oc.block }; } }
+      var fromNode = ctrl.node, fromLevel = curLevel();
       var r = interp.choose(d.edgeId);
       if (!r.ok) { logMsg(d.reason || "the way is barred", false); return { opened: false, blocked: ctrl.lastEvent }; }
       if (d.type === "oneway") { logMsg("The way seals behind you with a click. It will not open from this side.", true); senses("A click, behind and below; the way has closed.", "heard", "OBJ"); }
       else { ctrl.lastEvent = null; ctrl.lastUrgent = false; }
       ctrl.node = interp.state.node; ctrl.won = !!r.complete; ctrl.pendingDoor = null;
+      if (!shared.cameFrom) shared.cameFrom = {};
+      if ((world.nodes[ctrl.node] || {}).level > fromLevel) shared.cameFrom[ctrl.node] = fromNode;   // descended -> remember the climb back (unless a one-way sealed it)
+      if (d.type === "oneway") delete shared.cameFrom[ctrl.node];                                     // a one-way stair clicks shut: no return
       shared.turn += 1;
       buildView();
       return { opened: true, traversed: d.edgeId, recenter: true, won: ctrl.won, to: ctrl.node };
