@@ -633,12 +633,15 @@ window.__initPlayMap = function () {
       var rem = vw.contraption.remaining;
       wick = '<div class="wicket' + (rem <= 6 ? " urgent" : "") + '" id="sb-wicket" style="color:' + (rem <= 6 ? P.critical : P.signal) + '">DESCENT WICKET — ' + rem + ' turn' + (rem === 1 ? "" : "s") + '</div>';
     }
+    var g = vw.gear || {};   // GATE 2 R2: the equip readout — armour BULK as one feel-word dial stop; weapon as name+verb. No numbers.
     dossierEl.innerHTML =
       bar("HP", m.hp, m.hpMax, hpCol, true) +
       wick +
       bar("Fatigue", m.fatigue, m.fatigueMax, ftCol, false) +
       '<div style="height:5px"></div>' +
       statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
+      statrow("Armour", '<span id="sb-armour">' + (g.armour ? escapeHTML((g.armour.bulk || "—") + " · " + g.armour.name) : "—") + "</span>") +
+      statrow("Weapon", '<span id="sb-weapon">' + (g.weapon ? escapeHTML(g.weapon.name + " — you " + g.weapon.verb) : "—") + "</span>") +
       statrow("Ticket", '<span id="sb-ticket">' + escapeHTML(vw.ticket || "none") + "</span>") +
       statrow("Place", '<span id="sb-place">' + escapeHTML(place) + "</span>") +
       statrow("Turn", '<span id="sb-turn">' + (vw.turn || 0) + "</span>") +

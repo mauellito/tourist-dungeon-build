@@ -1284,6 +1284,15 @@ var TD_MAP = (function () {
         compSource: ctrl.composition ? ctrl.composition.source : null,
         discoveries: discoveries, lastEvent: ctrl.lastEvent, lastUrgent: ctrl.lastUrgent,
         pendingDoor: ctrl.pendingDoor ? key(ctrl.pendingDoor.x, ctrl.pendingDoor.y) : null,
+        // GATE 2 R2 — the equip/character readout: gear as FEEL-WORDS only (name + type-verb; armour bulk
+        // as ONE dial stop Unhindered/Cushioned/Shelled/Encased). NO numbers ever surface here.
+        gear: (function () {
+          var ch = ctrl.character, w = ch && ch.weapon, a = ch && ch.armor, WT = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) ? TD_RESOLVE.GEAR.WEAPON_TYPES : {};
+          return {
+            weapon: w ? { name: w.name, verb: w.verb || (WT[w.type] || {}).verb || "strike" } : null,
+            armour: a ? { name: a.tierName || a.name, bulk: a.bulkReadout || null } : null
+          };
+        })(),
         dead: ctrl.dead, won: ctrl.won, cause: ctrl.cause
       };
     }
