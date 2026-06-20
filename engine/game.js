@@ -103,9 +103,13 @@ var TD_GAME = (function () {
       character = { ticket: null, signalsSeen: new Set(), events: { clicks: [], brassRejected: false, anchorRejected: false } };
       // TEN-STAT SPINE (combat track R2): each life rolls a bell-curved 1..1000 stat block, surfaced
       // to the player as FEEL-WORDS ONLY. Deeds accrue and realize on rest (scaffold). Numbers never leak.
-      // The Con->HP derived effect lives in TD_STATS.DERIVED.hpMax; live HP wire-in is deferred to the
-      // descent-slice pass so existing meters/tests are unchanged this round.
-      if (typeof TD_STATS !== "undefined") { lifeN += 1; character.stats = TD_STATS.create(TD_RNG.make((lifeN * 2654435761) >>> 0 || 1)); character.progress = TD_STATS.newProgress(); }
+      // GATE 1 R1: Con -> live HP. The pool is now TD_STATS.DERIVED.hpMax(stats) (Con-derived), so combat
+      // numbers land against a real body, not a flat 100. No-spine harnesses keep 100/100 (guard below).
+      if (typeof TD_STATS !== "undefined") {
+        lifeN += 1; character.stats = TD_STATS.create(TD_RNG.make((lifeN * 2654435761) >>> 0 || 1)); character.progress = TD_STATS.newProgress();
+        var hpm = TD_STATS.DERIVED.hpMax(character.stats);   // Con -> HP (internal number; never shown — feel-words only on surface)
+        meters.hp = hpm; meters.hpMax = hpm;
+      }
       // starting gear (combat track phase 3): a weapon + armour the player carries; both feed combat
       // and encumbrance. PLACEHOLDER loadout from the roster (rosters/shops are a later directive).
       if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.weapon = TD_RESOLVE.GEAR.WEAPONS.shortsword; character.armor = TD_RESOLVE.GEAR.ARMOR.light; }
