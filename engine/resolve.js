@@ -95,7 +95,7 @@ var TD_RESOLVE = (function () {
       axe:        { name: "an axe",        type: "impact",  base: 15, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.55 },
       flail:      { name: "a flail",       type: "impact",  base: 14, acc: -2, weight: 7, bulk: 5, verb: "crush",  crush: 0.5 },
       // POLEARMS — reach -> POSITIONING (opening strike now-resolvable; full positioning a HOOK)
-      spear:      { name: "a spear",       type: "polearm", base: 14, acc: 1,  weight: 4, bulk: 5, verb: "skewer", reach: true, opening: 3 },  // GATE 2 R3: polearm base lifted off "strictly dominated" -> a reach GENERALIST (full positioning edge is a deferred spatial HOOK)
+      spear:      { name: "a spear",       type: "polearm", base: 15, acc: 1,  weight: 4, bulk: 5, verb: "skewer", reach: true, opening: 3 },  // GATE 4 R2: +1 base so the reach GENERALIST wins the NORMAL foe (its niche); full positioning edge still a deferred spatial HOOK
       halberd:    { name: "a halberd",     type: "polearm", base: 16, acc: 0,  weight: 7, bulk: 6, verb: "skewer", reach: true, opening: 2 },
       pike:       { name: "a pike",        type: "polearm", base: 14, acc: 0,  weight: 8, bulk: 8, verb: "skewer", reach: true, opening: 4 }   // longest reach -> biggest opening
     },
@@ -134,6 +134,7 @@ var TD_RESOLVE = (function () {
   };
   GEAR.ARMOR.none = GEAR.ARMOR.unarmored;   // alias so older callers (fighter default, tests) keep working
   function _S() { return (typeof TD_STATS !== "undefined") ? TD_STATS : null; }
+  var ENC_EV_PENALTY = 2.5;   // GATE 4 R2: armour encumbrance -> evasion penalty multiplier. Heavy (enc6) => -15 EV, enough to cancel even a high-Dex dodge: you pick light-and-dodge OR heavy-and-absorb, never both.
   function fighter(stats, weapon, armor) { return { stats: stats, weapon: weapon || GEAR.WEAPONS.longsword, armor: armor || GEAR.ARMOR.none }; }
 
   // HIT: gap = attacker accuracy - defender evasion. The roll is GAP-SCALED — a clear gap is reliable
@@ -144,7 +145,7 @@ var TD_RESOLVE = (function () {
     var S = _S(); if (!S) return { hit: true, p: 1, gap: 0 };
     var acc = S.DERIVED.accuracy(att.stats) + ((att.weapon && att.weapon.acc) || 0);
     if (opts && opts.opening && att.weapon && att.weapon.reach) acc += (att.weapon.opening || 0);   // polearm opening strike
-    var eva = S.DERIVED.evasion(def.stats) - ((def.armor && def.armor.encumbrance) || 0);   // bulky armour dulls evasion
+    var eva = S.DERIVED.evasion(def.stats) - ((def.armor && def.armor.encumbrance) || 0) * ENC_EV_PENALTY;   // GATE 4 R2: bulky armour dulls evasion HARD — no EV+AC stacking (heavy negates the dodge)
     var gap = acc - eva;
     var p = 1 / (1 + Math.exp(-gap * 0.15));                       // PLACEHOLDER slope: clear gap -> reliable, gap~0 -> swingy
     p = Math.max(0.02, Math.min(0.98, p + S.luckyThumb(att.stats)));   // Lucky's universal thumb (+/-10% human)
