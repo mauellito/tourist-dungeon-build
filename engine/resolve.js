@@ -16,10 +16,14 @@ var TD_RESOLVE = (function () {
   var COMBAT = {
     PLAYER_DMG: 20, FALL_DMG: 25, STARVE_HP: 2, EXHAUST_HP: 1,
     // creature stats (the single source of truth; glyph/name are content carried alongside)
+    // GATE 1 R2 calibration: creature DMG tuned down ~0.70 (8->6, 16->11, 11->8) so the live
+    // two-function descent combat is winnable by skill (sim: ~50% survive a floor, in the 40-60 band)
+    // rather than ~6% brutal. HP unchanged (lowering it shifts the smash-grab escape band). PLAYER_DMG/
+    // GEAR unchanged. Numbers never reach the player (feel-words only).
     CREATURES: {
-      wanderer: { hp: 30, dmg: 8, name: "a shuffling nocent thing", glyph: "r" },
-      lurker: { hp: 45, dmg: 16, name: "a patient lurker", glyph: "L" },
-      chaser: { hp: 26, dmg: 11, name: "a fervent docent", glyph: "d" }
+      wanderer: { hp: 30, dmg: 6, name: "a shuffling nocent thing", glyph: "r" },
+      lurker: { hp: 45, dmg: 11, name: "a patient lurker", glyph: "L" },
+      chaser: { hp: 26, dmg: 8, name: "a fervent docent", glyph: "d" }
     }
   };
   // one blow against a target: returns its new hp (floored at 0) and whether it died

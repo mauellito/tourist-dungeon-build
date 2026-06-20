@@ -28,7 +28,7 @@ function flee(S){ var path=bfs(S,S.player.x,S.player.y,SG.layout.EXIT.x,SG.layou
 try{
   // ---- COMBAT: constants unchanged + the pure ops ----
   ok('COMBAT constants unchanged (PLAYER_DMG/FALL/STARVE/EXHAUST)', C.PLAYER_DMG===20&&C.FALL_DMG===25&&C.STARVE_HP===2&&C.EXHAUST_HP===1, [C.PLAYER_DMG,C.FALL_DMG,C.STARVE_HP,C.EXHAUST_HP].join(','));
-  ok('CREATURE stats unchanged', C.CREATURES.wanderer.hp===30&&C.CREATURES.wanderer.dmg===8&&C.CREATURES.lurker.hp===45&&C.CREATURES.lurker.dmg===16&&C.CREATURES.chaser.hp===26&&C.CREATURES.chaser.dmg===11);
+  ok('CREATURE stats (Gate 1 R2: dmg calibrated 6/11/8, hp 30/45/26 unchanged)', C.CREATURES.wanderer.hp===30&&C.CREATURES.wanderer.dmg===6&&C.CREATURES.lurker.hp===45&&C.CREATURES.lurker.dmg===11&&C.CREATURES.chaser.hp===26&&C.CREATURES.chaser.dmg===8);
   ok('strike(): blow lands, floors at 0, flags the kill', T.strike(30,20).hp===10&&T.strike(30,20).killed===false&&T.strike(20,20).killed===true&&T.strike(10,20).hp===0&&T.strike(10,20).killed===true);
   ok('applyDamage(): player hp floored + death flag', T.applyDamage(100,25).hp===75&&T.applyDamage(100,25).dead===false&&T.applyDamage(20,25).hp===0&&T.applyDamage(20,25).dead===true);
   ok('ttk(): exact turns-to-kill at fixed damage', T.ttk(30,20)===2&&T.ttk(45,20)===3&&T.ttk(26,20)===2&&T.ttk(100,0)===Infinity);
