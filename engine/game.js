@@ -941,6 +941,9 @@ var TD_GAME = (function () {
       v.invOpen = invOpen; v.invSel = invSel;
       v.look = { active: look.active, x: look.x, y: look.y };
       v.hunger = TD_MAP.hungerStage(meters);
+      // GATE 4.1 — the ten-stat SHEET as feel-words for the Visitor Dossier (digit-safe: surface()
+      // emits words only, never numbers). Rebuilt each view so growth-by-deeds (crossed() words) shows live.
+      v.stats = (typeof TD_STATS !== "undefined" && character && character.stats) ? TD_STATS.surface(character.stats) : null;
       // the latest log line is the unified "current event", whoever wrote it
       // (town counters, dungeon controller, or the top-level verbs here).
       var lastM = shared.messages.length ? shared.messages[shared.messages.length - 1] : null;
