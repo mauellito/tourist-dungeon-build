@@ -515,11 +515,26 @@ var TD_MAP = (function () {
       // no up-edge), so descending would otherwise strand you. Wire a RETURN up-stair at the generator's
       // own (reachable) up-stair cell, back to the node we descended FROM, whenever the graph wired none.
       if (comp.breadthCells) {
-        var hasUp = Object.keys(doors).some(function (k) { return doors[k].type === "stair_up"; });
         var back = shared.cameFrom && shared.cameFrom[ctrl.node];
-        if (!hasUp && back && comp.upStair && !doors[key(comp.upStair.x, comp.upStair.y)]) {
-          doors[key(comp.upStair.x, comp.upStair.y)] = { type: "stair_up", returnTo: back, takeable: true, to: back, label: "a stair up", tells: [] };
+        // place a RETURN stair to where we came from unless a door already leads there (a pocket up-edge
+        // elsewhere does NOT count — it doesn't go home). Prefer the floor's up-stair cell; else any spare
+        // breadth cell; else FLAG. This makes the climb-home / flee-up retreat ALWAYS available.
+        var hasBack = Object.keys(doors).some(function (k) { return doors[k].to === back; });
+        if (back && !hasBack) {
+          var cell = (comp.upStair && !doors[key(comp.upStair.x, comp.upStair.y)]) ? comp.upStair : null;
+          if (!cell) { for (var ci = comp.breadthCells.length - 1; ci >= 0; ci--) { var bc = comp.breadthCells[ci]; if (!doors[key(bc.x, bc.y)]) { cell = bc; break; } } }
+          if (cell) doors[key(cell.x, cell.y)] = { type: "stair_up", returnTo: back, takeable: true, to: back, label: "a stair up (the way you came)", tells: [] };
+          else console.warn("GATE 5: no spare cell for the return stair at " + ctrl.node + " (FLAGGED).");
         }
+      }
+      // GATE 5 R2 — THE WAY UP TO TOWN. At the dungeon entrance (the top of the dive, world.start),
+      // place an exit back to the surface so the town<->descent LOOP closes: climb all the way up and
+      // step out into the harbour. Sits on the floor's own up-stair cell; flagged toTown for the game
+      // controller to hand back to the town screen. (No graph edge — the surface is not a lattice node.)
+      if (comp.breadthCells && ctrl.node === world.start) {
+        var townCell = comp.upStair || (comp.breadthCells.length ? comp.breadthCells[comp.breadthCells.length - 1] : null);
+        if (townCell && !doors[key(townCell.x, townCell.y)]) doors[key(townCell.x, townCell.y)] = { type: "stair_up", toTown: true, takeable: true, to: "TOWN", label: "the way up — back to the surface (Town)", tells: [] };
+        else if (!townCell) console.warn("GATE 5: entrance node had no free cell for the town exit (FLAGGED).");
       }
       ctrl.grid = g; ctrl.doors = doors; ctrl.features = {};
       ctrl.items = {}; ctrl.plain = {}; ctrl.secrets = {};
@@ -1307,6 +1322,10 @@ var TD_MAP = (function () {
       }
       if (Math.max(Math.abs(p.x - ctrl.player.x), Math.abs(p.y - ctrl.player.y)) > 1) { ctrl.pendingDoor = null; return { opened: false }; }
       var d = p.meta;
+      if (d.toTown) {   // GATE 5 R2: the WAY UP to the surface — hand back to the town controller (no graph edge); freeze the dungeon where we stand so a re-descent resumes here
+        ctrl.pendingDoor = null; ctrl.lastEvent = null; ctrl.lastUrgent = false;
+        return { opened: true, toTown: true, exited: true, to: "TOWN" };
+      }
       if (d.returnTo) {   // GATE 4 R3: a guaranteed RETURN up-stair (no graph up-edge exists) -> ascend to where we descended from
         interp.state.node = d.returnTo; ctrl.node = d.returnTo; ctrl.won = false; ctrl.pendingDoor = null;
         ctrl.lastEvent = null; ctrl.lastUrgent = false; shared.turn += 1; buildView();
@@ -1320,7 +1339,11 @@ var TD_MAP = (function () {
       else { ctrl.lastEvent = null; ctrl.lastUrgent = false; }
       ctrl.node = interp.state.node; ctrl.won = !!r.complete; ctrl.pendingDoor = null;
       if (!shared.cameFrom) shared.cameFrom = {};
-      if ((world.nodes[ctrl.node] || {}).level > fromLevel) shared.cameFrom[ctrl.node] = fromNode;   // descended -> remember the climb back (unless a one-way sealed it)
+      // GATE 5 R2 — BREADCRUMB EVERY step (not just descents): the lattice's down-edges are directional
+      // and some up-edges only pop into sealed pockets, so a descent-only trail leaves no way home from a
+      // same-level spine node. Recording the way-you-came at each traversal lets the return stair chain
+      // ALWAYS retrace the route to the surface (the climb-home / flee-up escape valve never breaks).
+      if (ctrl.node !== fromNode) shared.cameFrom[ctrl.node] = fromNode;
       if (d.type === "oneway") delete shared.cameFrom[ctrl.node];                                     // a one-way stair clicks shut: no return
       shared.turn += 1;
       buildView();

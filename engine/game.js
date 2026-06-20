@@ -430,8 +430,22 @@ var TD_GAME = (function () {
 
     // ---- dungeon ---------------------------------------------------------
     function enterDungeon() {
-      dungeon = TD_MAP.create(world, { shared: shared, decorate: decorate, onCross: onCross });
+      // GATE 5 R2 — PERSIST the dungeon within a life: a re-descent RESUMES the same dungeon (frozen
+      // where you climbed out), so the dive-and-return rhythm carries you deeper, not back to scratch.
+      // freshCharacter() nulls `dungeon`, so a NEW life always gets a fresh dive.
+      if (!dungeon) dungeon = TD_MAP.create(world, { shared: shared, decorate: decorate, onCross: onCross });
       placeId = "DUNGEON";
+    }
+    // GATE 5 R2 — climb out of the dungeon back into TOWN (the loop's return leg). The dungeon object is
+    // KEPT (frozen at the entrance) so the next descent resumes; only control + the player return to town.
+    function exitFromDungeon() {
+      placeId = returnScreen || START_SCREEN;
+      var P = places[placeId] || places[START_SCREEN];
+      player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: P.spawn.x, y: P.spawn.y };
+      pendingDoor = null; pendingCounter = null; pendingVendor = false; lastDungeonLevel = null;
+      logMsg("You climb the last stair into daylight; the harbour takes you back, indifferent as ever.");
+      announce(P.title || "The Harbour");
+      return view();
     }
     function levelOf(node) { return (world.nodes[node] || {}).level || 0; }
     function decorate(ctrl, helpers) {
@@ -713,7 +727,7 @@ var TD_GAME = (function () {
     }
 
     function commit() {       // Enter / o
-      if (placeId === "DUNGEON") { var rd = dungeon.open(); afterDungeon(); return rd; }
+      if (placeId === "DUNGEON") { var rd = dungeon.open(); if (rd && rd.toTown) return exitFromDungeon(); afterDungeon(); return rd; }
       // a pending hot-dog sale closes here, while still beside the cart
       if (pendingVendor) {
         if (!vendor || cheby(vendor, player) > 1) { pendingVendor = false; }
@@ -855,7 +869,7 @@ var TD_GAME = (function () {
     }
 
     function transition(to, doorPos) {
-      if (to === "DUNGEON") { returnScreen = placeId; act("gate"); return; }                  // enterDungeon + line
+      if (to === "DUNGEON") { returnScreen = placeId; returnTile = { x: player.x, y: player.y }; act("gate"); return; }   // enterDungeon + remember where to surface back to
       if (to === "TOWN") { placeId = returnScreen; player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: places[returnScreen].spawn.x, y: places[returnScreen].spawn.y }; logMsg("You step back out into the harbour."); return; }
       if (to === "redlit") { senses("A red lamp, a velvet rope, and a card: “Closed for renovations.” The Quay's End keeps its counsel.", "seen", "OBJ"); return; }   // exterior only
       if (to === "locked") { logMsg("The door is locked; no one answers. (A stub, for now.)"); return; }   // filler stub
