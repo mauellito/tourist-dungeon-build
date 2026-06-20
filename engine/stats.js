@@ -20,7 +20,13 @@ var TD_STATS = (function () {
 
   // ---- internal scale: 1..1000, bell-curved around ~500 (human range) ----
   function bell(rng) { var s = 0, n = 3; for (var i = 0; i < n; i++) s += rng.next(); return Math.max(1, Math.min(1000, Math.round((s / n) * 1000))); }
-  function create(rng) { var st = {}; for (var i = 0; i < STATS.length; i++) st[STATS[i]] = bell(rng); return st; }
+  // GATE 4 R1 — a rolled character needs a real SPREAD: peaks and valleys, not a uniform middle. The
+  // 3-sample bell clusters ~340-660 (every stat reads "sturdy/strong"); STRETCH it around 500 so stats
+  // span the feel range and a build's strengths/weaknesses are legible. Still a bell around 500 (canon),
+  // just wider. SPREAD is what makes Dex/Might/Con visibly DECIDE combat.
+  var SPREAD = 1.7;
+  function roll(rng) { return Math.max(1, Math.min(1000, Math.round(500 + (bell(rng) - 500) * SPREAD))); }
+  function create(rng) { var st = {}; for (var i = 0; i < STATS.length; i++) st[STATS[i]] = roll(rng); return st; }
   function clamp(v) { return Math.max(1, Math.min(1000, v)); }
 
   // ---- FEEL-WORDS (player surface). Six tiers; thresholds PLACEHOLDER on 1..1000. ----
