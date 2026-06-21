@@ -67,17 +67,21 @@ var TD_STATS = (function () {
   // ---- FEEL-WORDS (player surface). Six tiers; thresholds PLACEHOLDER on 1..1000. ----
   var BANDS = [1, 170, 330, 500, 670, 840];                 // tier i = highest band <= value
   function tier(v) { var t = 0; for (var i = 0; i < BANDS.length; i++) if (v >= BANDS[i]) t = i; return t; }
+  // FIX — RE-CENTERED so AVERAGE reads AVERAGE. 100% of base rolls land in tiers ③(330-499) and
+  // ④(500-669): those bands are deliberately NEUTRAL ("middling" at ③, on-voice — the Bureau finds
+  // everyone middling); flattering words are reserved for ⑤(670-839) and ⑥(840+). Wording is
+  // operator-owned (FLAG: red-pen specific words). Re-centers the WORDS, not the stat VALUES.
   var FEEL = {
-    might:      ["feeble", "slight", "sturdy", "strong", "powerful", "titanic"],
-    dex:        ["clumsy", "stiff", "steady", "nimble", "deft", "uncanny"],
-    con:        ["frail", "delicate", "hale", "tough", "hardy", "ironclad"],
-    int:        ["dim", "plain", "sharp", "clever", "brilliant", "luminous"],
-    per:        ["oblivious", "dull", "attentive", "keen", "piercing", "all-seeing"],
+    might:      ["feeble", "weak", "middling", "solid", "powerful", "titanic"],
+    dex:        ["clumsy", "stiff", "middling", "steady", "deft", "uncanny"],
+    con:        ["frail", "delicate", "middling", "sound", "hardy", "ironclad"],
+    int:        ["dim", "plain", "middling", "sharp", "brilliant", "luminous"],
+    per:        ["oblivious", "dull", "middling", "attentive", "piercing", "all-seeing"],
     lucky:      ["cursed", "unlucky", "even", "fortunate", "blessed", "fated"],
-    intuition:  ["clueless", "uncertain", "sensible", "intuitive", "prescient", "oracular"],
-    appearance: ["wretched", "plain", "presentable", "handsome", "striking", "resplendent"],
-    charm:      ["off-putting", "awkward", "affable", "charming", "magnetic", "mesmerizing"],
-    grit:       ["fragile", "timid", "composed", "steadfast", "unshakable", "adamant"]
+    intuition:  ["clueless", "uncertain", "middling", "sensible", "prescient", "oracular"],
+    appearance: ["wretched", "plain", "middling", "comely", "striking", "resplendent"],
+    charm:      ["off-putting", "awkward", "middling", "affable", "magnetic", "mesmerizing"],
+    grit:       ["fragile", "timid", "middling", "composed", "unshakable", "adamant"]
   };
   // the ONLY player-facing read of a stat — a word, never a number.
   function feel(stat, value) { var f = FEEL[stat] || FEEL.might; return f[Math.min(f.length - 1, tier(value))]; }

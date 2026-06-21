@@ -41,6 +41,22 @@ try{
   ok('LUCKY ~0 at the human midpoint, signed at the tails', Math.abs(S.luckyThumb({lucky:500}))<0.001 && S.luckyThumb({lucky:1000})>0.09 && S.luckyThumb({lucky:1})<-0.09);
   ok('supernatural OVERFLOW can exceed the human +/-10% (rides on top)', S.luckyThumb({lucky:1000},0.15)>0.10);
 
+  // ---- FIX: feel-words RE-CENTERED — an AVERAGE character reads AVERAGE, not a compliment deck ----
+  var FLATTER={}, NEUTRAL={};
+  S.STATS.forEach(function(k){ var f=S.FEEL[k]; FLATTER[f[4]]=1; FLATTER[f[5]]=1; NEUTRAL[f[2]]=1; NEUTRAL[f[3]]=1; });
+  var rB=RNG.make(4242), bsum=0, bn=0, flatHits=0, midHits=0, total=0, sampleWords=null;
+  for(var i=0;i<300;i++){ var bc=S.createBase(rB), sw=S.surface(bc);
+    if(!sampleWords) sampleWords=sw.map(function(e){return e.stat+':'+e.word;}).join(' ');
+    sw.forEach(function(e,j){ var k=S.STATS[j]; bsum+=bc[k]; bn++; total++; if(FLATTER[e.word])flatHits++; if(NEUTRAL[e.word])midHits++; }); }
+  var bmean=bsum/bn;
+  ok('base VALUES unchanged: roll still centered (mean ~501)', bmean>480&&bmean<520, 'mean='+Math.round(bmean));
+  // the canonical AVERAGE character: every stat exactly at the mean -> every word must be NEUTRAL (no compliment)
+  var meanCh={}; S.STATS.forEach(function(k){ meanCh[k]=500; }); var meanSurf=S.surface(meanCh);
+  var meanFlat=meanSurf.filter(function(e){return FLATTER[e.word];});
+  ok('a mean (~500) character reads ALL-neutral — no flattering word anywhere', meanFlat.length===0, meanSurf.map(function(e){return e.word;}).join(','));
+  ok('the middle bands dominate the average read (>=99% neutral; only rare tail rolls flatter)', midHits/total>0.99 && flatHits/total<0.01, Math.round(100*midHits/total)+'% neutral, '+flatHits+'/'+total+' tail-flatter');
+  ok('a base surface reads middling, not a deck of compliments', /middling|even/.test(sampleWords), sampleWords);
+
   // ---- DERIVED registry (internal numbers; never shown) ----
   var d=S.derive(st);
   ok('derived registry yields the combat inputs (might/dex/con/grit/per/intuition...)', typeof d.damageBonus==='number'&&typeof d.accuracy==='number'&&typeof d.evasion==='number'&&typeof d.hpMax==='number'&&typeof d.mindResist==='number'&&typeof d.perceive==='number'&&typeof d.interpret==='number');

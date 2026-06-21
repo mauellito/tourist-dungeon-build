@@ -22,9 +22,9 @@
   .verify { font-size:12px; border:1px solid var(--rule); background:var(--panel); border-radius:4px; padding:5px 10px; margin:0 0 10px; }
   .verify .ok { color:var(--good); } .verify .no { color:var(--bad); font-weight:bold; }
 
-  #game { display:flex; gap:16px; align-items:flex-start; justify-content:center; }
-  .stage { position:relative; flex:0 0 auto; }
-  canvas { background:#07060a; border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); }
+  #game { display:flex; gap:16px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }   /* FIX: wrap the sidebar below on narrow windows */
+  .stage { position:relative; flex:0 1 auto; max-width:100%; }
+  canvas { background:#07060a; border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); max-width:100%; height:auto; }   /* FIX: never force horizontal overflow */
 
   aside#sidebar { flex:0 0 200px; display:flex; flex-direction:column; gap:8px; }
   /* a compact controls footer (moved out of the prime sidebar — not immediately actionable) */
@@ -119,10 +119,13 @@
     text-shadow:0 1px 2px #000; transform:translate(-50%,0); animation: dmgrise 0.95s ease-out forwards; }
   @keyframes dmgrise { 0%{opacity:0;transform:translate(-50%,4px) scale(.8);} 18%{opacity:1;} 100%{opacity:0;transform:translate(-50%,-22px) scale(1.05);} }
 
-  .overlay-host { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:30; }
+  /* FIX (viewport fit): modals center in the WINDOW (fixed), never inside the possibly-tall canvas/stage,
+     so a tall modal (esp. the ALLOCATE/distribute stage) is always reachable. */
+  .overlay-host { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:50; }
   .overlay-host:empty { display:none; }
-  .scrim { position:absolute; inset:0; background:rgba(16,14,10,.78); display:flex; align-items:center; justify-content:center; }
-  .panel { background:var(--panel); border:2px solid var(--ink); padding:16px 18px; max-width:430px; position:relative; }
+  .scrim { position:fixed; inset:0; background:rgba(16,14,10,.78); display:flex; align-items:center; justify-content:center; padding:2vh 2vw; box-sizing:border-box; }
+  /* FIX: every modal fits the window height and SCROLLS if taller (budget meter + per-stat +/- always usable). */
+  .panel { background:var(--panel); border:2px solid var(--ink); padding:16px 18px; max-width:min(440px,94vw); max-height:92vh; overflow-y:auto; position:relative; }
   .panel .head { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--faint); }
   .panel .ttl { font-size:18px; font-variant:small-caps; margin:2px 0 10px; }
   .panel.win .ttl { color:var(--good); }
@@ -209,7 +212,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "d8e62ea";</script>
+<script>window.__BUILD = "edee049";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1194,7 +1197,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Master fix — creation up-front, Agency guaranteed, shops capped, smoke test added";
+  var VERSION = "Fix — feel-words re-centered, M/F only, viewport fits";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

@@ -290,7 +290,7 @@ var TD_GAME = (function () {
       if (!intakeOpen || !CS || !CS.VISAS[id]) return { declared: false };
       if (!intakeBase) intakeBase = TD_STATS.createBase(TD_RNG.make(((lifeN * 2654435761) ^ ((CS.VISAS[id].order + 1) * 40503)) >>> 0 || 1));
       if (!character.sign) character.sign = CS.assignDay(TD_RNG.make(((lifeN * 7919) ^ 0x12345) >>> 0 || 1), CS.signList()[0].id);
-      if (!character.sex) character.sex = CS.sexSeed("other");   // direct path: default to the inert allotment unless one was set
+      if (!character.sex) { var sf = TD_RNG.make(((lifeN * 374761393) ^ 0x5f356495) >>> 0 || 1); character.sex = CS.sexSeed(sf.int(0, 1) ? "female" : "male"); }   // FIX: M/F only — default is a coin-flip, never a silent third state
       pickVisa(id);                                   // applies stats+signature+gear+identity, advances to 'allocate'
       character.horoscope = CS.pullHoroscope(TD_RNG.make(((lifeN * 2246822519) ^ 0xfeed) >>> 0 || 1));
       CS.applyHoroscope(character.stats, character.sheet, character.horoscope);

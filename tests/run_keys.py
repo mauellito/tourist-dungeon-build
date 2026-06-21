@@ -95,8 +95,16 @@ F.onload = function(){
     ok('a new game opens the creation flow up front (welcome stage)', !!(view().intake && view().intake.open && view().intake.stage==='welcome'));
     pk('1');   // welcome -> Apply for a visa -> sign
     ok('Apply advances into the staged flow (birth sign)', view().intake && view().intake.stage==='sign');
-    pk('Enter'); pk('Enter'); pk('Enter');   // sign -> sex -> visa -> allocate
+    pk('Enter');   // sign -> sex
+    ok('the SEX stage offers exactly TWO options (Male/Female, no Other)', view().intake && view().intake.stage==='sex' && (view().intake.list||[]).length===2, ((view().intake.list||[]).map(function(o){return o.id;})).join(','));
+    pk('Enter'); pk('Enter');   // sex -> visa -> allocate
     ok('the ALLOCATE (stat-pool) stage is reachable', view().intake && view().intake.stage==='allocate');
+    // R3 — the DISTRIBUTE panel renders fully WITHIN the window (budget meter present; fits + scrolls if tall)
+    var apanel=doc.querySelector('#overlay .panel'), arect=apanel?apanel.getBoundingClientRect():null;
+    ok('the DISTRIBUTE panel renders with a working budget meter', !!apanel && /Budget/.test(apanel.textContent) && !!apanel.querySelector('.meter-track'));
+    ok('the DISTRIBUTE panel fits the window (not clipped) and scrolls if tall',
+       !!arect && win.getComputedStyle(apanel).overflowY==='auto' && arect.top>=-1 && arect.bottom<=win.innerHeight+1,
+       arect?('top='+Math.round(arect.top)+' bottom='+Math.round(arect.bottom)+' winH='+win.innerHeight):'no panel');
     pk('ArrowRight');   // spend from the pool on the first stat
     ok('the stat pool spends in allocate (budget falls below full)', view().intake.budget < 1);
     pk('Enter'); pk('Enter');   // allocate -> horoscope -> admitted
@@ -106,6 +114,8 @@ F.onload = function(){
     ok('newCharacter re-opens creation up front', !!(view().intake && view().intake.open));
     pk('2');   // welcome -> Skip — admit me as I am
     ok('Skip yields a playable random character with a Standard ticket', (!view().intake || !view().intake.open) && view().ticket==='standard');
+    var skSex=(win.__TD_SIM()._character().sex||{}).box;
+    ok('Skip/quick-start resolves sex to MALE or FEMALE (never a missing third state)', skSex==='male'||skSex==='female', 'sex='+skSex);
     // reset to the random/ticketless boot the remaining tests were written against
     win.__TD_SIM().newCharacter(); var gI=0; while(view().intake && view().intake.open && gI++<8){ pk('Escape'); }
     // ============================ R4 DEAD-SPEC AUDIT =======================

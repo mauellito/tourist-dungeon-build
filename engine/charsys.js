@@ -203,10 +203,10 @@ var TD_CHARSYS = (function () {
   // FEMALE nets more total than MALE -> may read as the stronger general pick; the R3 asymmetry rebalance
   // and the infatuation tax are PINNED, not built.)
   var ALLOT_U = 25;
+  // FIX — MALE / FEMALE ONLY. "Other (Supplementary Form 9)" removed; no code path resolves to it.
   var ALLOTMENTS = {
     male:   { order: 0, name: "Male", note: "Allotment per ordinance: a labourer's frame.", stats: { might: 2 * ALLOT_U, con: 2 * ALLOT_U } },
-    female: { order: 1, name: "Female", note: "Allotment per ordinance: deftness, bearing, and address.", stats: { might: ALLOT_U, con: ALLOT_U, dex: ALLOT_U, charm: ALLOT_U, appearance: ALLOT_U } },
-    other:  { order: 2, name: "Other (see Supplementary Form 9)", note: "The Bureau records the entry and, with practiced indifference, allots nothing.", stats: {} }
+    female: { order: 1, name: "Female", note: "Allotment per ordinance: deftness, bearing, and address.", stats: { might: ALLOT_U, con: ALLOT_U, dex: ALLOT_U, charm: ALLOT_U, appearance: ALLOT_U } }
   };
   function allotmentList() { return Object.keys(ALLOTMENTS).map(function (id) { var a = ALLOTMENTS[id]; return { id: id, name: a.name, note: a.note, order: a.order }; }).sort(function (x, y) { return x.order - y.order; }); }
   function applyAllotment(stats, sexId) { var a = ALLOTMENTS[sexId]; if (!a || !stats) return stats; for (var k in a.stats) if (typeof stats[k] === "number") stats[k] = clamp1k(stats[k] + a.stats[k]); return stats; }
