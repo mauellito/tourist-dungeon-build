@@ -212,7 +212,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "08f9daa";</script>
+<script>window.__BUILD = "14b770f";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -700,6 +700,8 @@ window.__initPlayMap = function () {
     var ftWord = (vw.metabolism && vw.metabolism.fatigue) || (ftFrac < 0.2 ? "fresh" : ftFrac < 0.45 ? "winded" : ftFrac < 0.7 ? "tiring" : ftFrac < 0.95 ? "flagging" : "spent");
     var burden = vw.metabolism ? vw.metabolism.burden : null;
     var wt = (vw.metabolism && vw.metabolism.weight) ? vw.metabolism.weight : null;
+    // GATE 3 R2 — colour-code the burden BAND by severity so the load reads at a glance (in-voice word, no digit).
+    var bCol = /Unencumbered/i.test(burden || "") ? "#2f6d33" : /Laden/i.test(burden || "") ? P.dangerLow : /Strained/i.test(burden || "") ? P.dangerMed : /Overloaded/i.test(burden || "") ? P.dangerHigh : "#8a7c66";
     var place = vw.phase === "dungeon" ? ("Sublevel " + vw.level) : (vw.phase === "town" ? (vw.title || "The Harbour") : "Indoors");
     dossierEl.innerHTML =
       section("Vitals") +
@@ -710,7 +712,7 @@ window.__initPlayMap = function () {
       // mass) sits BESIDE the burden BAND feel-word. Object mass may be numeric; the condition stays a word.
       (burden ? statrow("Carrying",
         (wt ? '<span id="sb-weight" style="color:#cdbf9f">' + escapeHTML(wt.label) + "</span> " : "") +
-        '<span id="sb-burden" style="color:#8a7c66">· ' + escapeHTML(burden) + "</span>") : "") +
+        '<span id="sb-burden" style="color:' + bCol + '">· ' + escapeHTML(burden) + "</span>") : "") +
       // GATE 9 (C) — the equipment paperdoll (all 11 slots) replaces the single Armour/Weapon readout.
       paperdoll(vw.equipment, vw.gear) +
       // GATE 4.1/6 — the declared IDENTITY + the ten-stat CONSTITUTION sheet (feel-words, digit-safe).
@@ -1203,7 +1205,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Town character — varied silhouettes, district texture, church landmark";
+  var VERSION = "UI — fits, scrolls, legible HUD";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
