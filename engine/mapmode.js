@@ -35,8 +35,12 @@ var TD_MAP = (function () {
   var CREATURE = TD_RESOLVE.COMBAT.CREATURES;
   // generous slack: walking is cheap, fighting costs, resting recovers fatigue,
   // and a full belly carries you across several levels before food matters.
-  var FATIGUE_PER_STEP = 0.5, FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4;
-  var SATIATION_PER_STEP = 0.3, STARVE_HP = TD_RESOLVE.COMBAT.STARVE_HP, EXHAUST_HP = TD_RESOLVE.COMBAT.EXHAUST_HP;
+  var FATIGUE_PER_STEP = 0.5, FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4, FATIGUE_PER_SPRINT = 1.5;   // GATE 8 (B): sprint is the costliest pace (3x a walk)
+  // GATE 8 (B): base satiation drain LOWERED (0.30 -> 0.14) so an UNBURDENED ~6-floor dive ends
+  // Hungry/Famished, not Starving; the per-step drain is multiplied by the TD_BURDEN band (heavier =
+  // hungrier faster). Town recovery fully resets (the retreat is never punished).
+  var SATIATION_PER_STEP = 0.14, STARVE_HP = TD_RESOLVE.COMBAT.STARVE_HP, EXHAUST_HP = TD_RESOLVE.COMBAT.EXHAUST_HP;
+  var SATIATION_BAND = { unencumbered: 1.0, laden: 1.6, strained: 2.4, overloaded: 3.5 };   // burden -> hunger multiplier
   var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
@@ -813,9 +817,9 @@ var TD_MAP = (function () {
     function enemiesVisible() { var vis = visibleSet(); return ctrl.creatures.some(function (c) { return vis.has(key(c.x, c.y)); }); }
 
     // ---- the world acts only when the player acts (turn-based) ---------------
-    function endTurn(mode) {
-      meterTick(mode);
-      if (!ctrl.dead) creaturesStep();
+    function endTurn(mode, noWorld) {
+      meterTick(mode, noWorld);
+      if (!noWorld && !ctrl.dead) creaturesStep();   // GATE 8 (B): a SPRINT skips the world's step (you dart ahead) at a high fatigue cost
       shared.turn += 1;
     }
 
@@ -993,8 +997,18 @@ var TD_MAP = (function () {
       if (bnd) { var pen = ENC_EVASION[bnd.band.key] || 0; if (pen) armor = { name: armor.name, robustness: armor.robustness, encumbrance: (armor.encumbrance || 0) + pen, heavy: armor.heavy, crushTell: armor.crushTell }; }   // burden dulls evasion
       return TD_RESOLVE.fighter(ch.stats, lo.weapon, armor);
     }
+    // GATE 8 (B): fatigue RESISTANCE — Con + Grit + Might make you tire slower (a multiplier on all
+    // fatigue GAIN). avg 500 = neutral (x1); hardy/willful/strong (high avg) tire far slower; the frail
+    // and faint tire faster. Surfaced as a feel-word stage, never a number.
+    function fatigueResist() {
+      var s = ctrl.character && ctrl.character.stats; if (!s) return 1;
+      var avg = (s.con + s.grit + s.might) / 3;
+      return Math.max(0.45, Math.min(1.6, 1 - (avg - 500) / 1000));
+    }
+    var FATIGUE_STAGES = ["fresh", "winded", "tiring", "flagging", "spent"];
+    function fatigueStage() { var m = ctrl.meters, p = m.fatigueMax ? m.fatigue / m.fatigueMax : 0; return p < 0.2 ? "fresh" : p < 0.45 ? "winded" : p < 0.7 ? "tiring" : p < 0.95 ? "flagging" : "spent"; }
     // feel-word on a band CROSSING (no number) + a tempo penalty when slow (the world gains a step on you).
-    function updateBand() {
+    function updateBand(noWorld) {
       var bnd = playerBand(); if (!bnd) return;
       var key = bnd.band.key;
       if (ctrl.lastBand == null) { ctrl.lastBand = key; }
@@ -1005,7 +1019,7 @@ var TD_MAP = (function () {
       }
       var deficit = (100 - bnd.band.speed) / 100;                 // 0 .. 0.5 : how much slower than full speed
       ctrl.slowDebt = (ctrl.slowDebt || 0) + deficit;
-      if (ctrl.slowDebt >= 1 && !ctrl.dead) { ctrl.slowDebt -= 1; creaturesStep(); }   // you are slow -> the world takes an extra step
+      if (!noWorld && ctrl.slowDebt >= 1 && !ctrl.dead) { ctrl.slowDebt -= 1; creaturesStep(); }   // slow -> the world takes an extra step (NOT while sprinting)
     }
     function lowHP() { return ctrl.meters.hp > 0 && ctrl.meters.hp < 0.25 * ctrl.meters.hpMax; }
     function hurt(amount, source) {
@@ -1016,12 +1030,15 @@ var TD_MAP = (function () {
 
     // body meters tick on each dungeon action (bible §4.13 anti-scum).
     // mode: "step" (walk), "fight", "rest" (wait — recovers fatigue if safe).
-    function meterTick(mode) {
+    function meterTick(mode, noWorld) {
       if (!inDungeon()) return;
       var m = ctrl.meters;
+      // FATIGUE: rest recovers; otherwise gain by pace (sprint > fight > walk), scaled by stat resistance.
       if (mode === "rest") { if (!enemiesVisible()) m.fatigue = Math.max(0, m.fatigue - REST_RECOVER); }
-      else m.fatigue = Math.min(m.fatigueMax, m.fatigue + (mode === "fight" ? FATIGUE_PER_FIGHT : FATIGUE_PER_STEP));
-      m.satiation = Math.max(0, m.satiation - SATIATION_PER_STEP);
+      else { var base = mode === "fight" ? FATIGUE_PER_FIGHT : mode === "sprint" ? FATIGUE_PER_SPRINT : FATIGUE_PER_STEP; m.fatigue = Math.min(m.fatigueMax, m.fatigue + base * fatigueResist()); }
+      // HUNGER: base drain multiplied by the burden band (heavier = hungrier faster). Sprint costs a touch more food.
+      var bnd = playerBand(), smul = (bnd && SATIATION_BAND[bnd.band.key]) || 1;
+      m.satiation = Math.max(0, m.satiation - SATIATION_PER_STEP * smul * (mode === "sprint" ? 1.4 : 1));
 
       // hunger-ladder transitions (announce only on the way DOWN; STARVING is critical)
       var st = hungerStage(m).stage;
@@ -1037,7 +1054,7 @@ var TD_MAP = (function () {
         if (!ctrl.wasExhausted) { logMsg("You are spent past prudence; exhaustion sets in.", true); ctrl.wasExhausted = true; }
         hurt(EXHAUST_HP, { name: "exhaustion", exhaust: true });
       } else { ctrl.wasExhausted = false; }
-      updateBand();   // encumbrance: band feel-word on crossing + tempo penalty when slow
+      updateBand(noWorld);   // encumbrance: band feel-word on crossing + tempo penalty when slow (skipped on a sprint)
     }
 
     function move(dir) {
@@ -1156,6 +1173,28 @@ var TD_MAP = (function () {
       if (onWater) endTurn("step");                      // WATER slows: the world gets an extra beat
       emitSenses(); emitSecretTells();
       return { moved: true, dead: ctrl.dead, feature: f || undefined, item: it || undefined, water: onWater };
+    }
+
+    // GATE 8 (B) — SPRINT: the costliest pace, always available, AIDS FLEEING. On a clear floor cell you
+    // dart ahead and the world does NOT take its step this turn (you gain ground), at a high fatigue cost
+    // (and a touch more hunger). Onto anything special (a foe, a door, water, a chasm, a wall) it is just a
+    // normal step — you cannot sprint THROUGH the world, only across open floor.
+    function sprint(dir) {
+      ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
+      if (ctrl.dead || ctrl.won || !DIRS[dir]) return { moved: false };
+      var nx = ctrl.player.x + DIRS[dir][0], ny = ctrl.player.y + DIRS[dir][1];
+      var clear = inb(nx, ny) && ctrl.grid[ny] && ctrl.grid[ny][nx] === "." && !creatureAt(nx, ny) && !ctrl.doors[key(nx, ny)] && !plainAt(nx, ny) && !(ctrl.roomDoors && ctrl.roomDoors[key(nx, ny)]) && !isChasm(nx, ny) && !isWater(nx, ny);
+      if (!clear) return move(dir);   // can't sprint into the world — a normal step
+      ctrl.player.x = nx; ctrl.player.y = ny; ctrl.pendingDoor = null; ctrl.pendingFall = null;
+      reveal(nx, ny);
+      var f = featureAt(nx, ny);
+      if (f) {
+        if (f.survey && !shared.surveyed) { shared.surveyed = true; logMsg("BUREAU SURVEY FILED. Itinerary amended: ascend, and report at the surface.", false); senses("The marker hums under your palm; far below, something the size of the whole route shifts once, and is still.", "seen", "OBJ"); senses("A certainty you cannot account for — this deep floor is only the porch of something much larger.", "intuition", "SUBJ"); }
+        if (f.id) ctrl.character.signalsSeen.add(f.id); if (f.kind) senses(f.text, f.kind, f.obj); else logMsg(f.text, false);
+      }
+      endTurn("sprint", true);   // high fatigue + hunger; the world does NOT act -> you gain a step on it
+      emitSenses(); emitSecretTells();
+      return { moved: true, sprinted: true, dead: ctrl.dead };
     }
 
     // wait a turn: the world acts, you do not move. With no enemy in sight this
@@ -1430,6 +1469,8 @@ var TD_MAP = (function () {
       var iv = interp.view();
       return {
         w: W, h: H, phase: "dungeon",
+        // GATE 8 (B) — the metabolism state as FEEL-WORDS (hunger stage, fatigue stage, burden band). No numbers.
+        metabolism: { hunger: hungerStage(ctrl.meters).stage, fatigue: fatigueStage(), burden: (function () { var b = playerBand(); return b ? b.band.word : "unburdened"; })() },
         grid: ctrl.grid.map(function (r) { return r.join(""); }),
         doors: ctrl.doors, features: ctrl.features,
         roomDoors: (function () { var o = {}; Object.keys(ctrl.roomDoors || {}).forEach(function (k) { if (vis.has(k)) o[k] = ctrl.roomDoors[k]; }); return o; })(),
@@ -1474,7 +1515,7 @@ var TD_MAP = (function () {
 
     var api = {
       world: world, state: ctrl, interp: interp,
-      move: move, open: openDoor, view: view, postmortem: postmortem,
+      move: move, sprint: sprint, open: openDoor, view: view, postmortem: postmortem,
       wait: wait, get: get, dropItem: dropItem, search: search, closeDoor: closeDoor, equipFromPack: equipFromPack,
       openDoorDir: openDoorDir, openDoorAuto: openDoorAuto, closeDoorDir: closeDoorDir, closeDoorAuto: closeDoorAuto,
       toggleAutoOpen: toggleAutoOpen, setAutoOpen: setAutoOpen, autoOpen: function () { return ctrl.autoOpenDoors; },
@@ -1486,6 +1527,8 @@ var TD_MAP = (function () {
       _creatures: function () { return ctrl.creatures; },
       _setCreatures: function (list) { ctrl.creatures = list.slice(); },
       _meters: function () { return ctrl.meters; },
+      _meterTick: function (mode) { meterTick(mode); return ctrl.meters; },   // GATE 8 (B) test hook: run one live metabolism tick
+      _fatigueResist: function () { return fatigueResist(); },
       _character: function () { return ctrl.character; },
       _band: function () { return playerBand(); },
       _playerFighter: function () { return playerFighter(); },

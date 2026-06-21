@@ -548,6 +548,12 @@ var TD_GAME = (function () {
         offer: "Buy a meal, with rations for the road? — Enter to accept; step away to decline." }
     };
 
+    // GATE 8 (B) — SPRINT (dungeon only; in town it's just a step). Highest-cost pace, aids fleeing.
+    function sprint(dir) {
+      if (!DIRS[dir]) return { moved: false };
+      if (placeId === "DUNGEON") { var rs = dungeon.sprint(dir); afterDungeon(); return rs; }
+      return move(dir);
+    }
     function move(dir) {
       if (!DIRS[dir]) return { moved: false };
       if (placeId === "DUNGEON") { var rd = dungeon.move(dir); afterDungeon(); return rd; }
@@ -1031,7 +1037,7 @@ var TD_GAME = (function () {
 
     return {
       world: world, session: session,
-      move: move, open: commit, commit: commit, view: view, postmortem: postmortem, newCharacter: newCharacter,
+      move: move, sprint: sprint, open: commit, commit: commit, view: view, postmortem: postmortem, newCharacter: newCharacter,
       wait: wait, get: get, search: search, closeDoor: closeDoor,
       openDoorAuto: openDoorAuto, openDoorDir: openDoorDir, closeDoorAuto: closeDoorAuto, closeDoorDir: closeDoorDir, toggleAutoOpen: toggleAutoOpen,
       toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected,

@@ -299,7 +299,7 @@ F.onload = function(){
     else { ok('damage number (skipped: no floor neighbour to fight into)', true); }
 
     // THE --more-- STOP — a critical halts the game until acknowledged
-    D._setCreatures([]); D._meters().hp=90; D._meters().satiation=5.2;
+    D._setCreatures([]); D._meters().hp=90; D._meters().satiation=5.1;   // just above the 5% Starving line; one wait drains across (Gate 8 lower drain >= 0.14)
     pk('.');                                               // wait drains into STARVING (critical)
     ok('a CRITICAL event raises the --more-- halt', moreShown());
     var hx=view().player.x, hy=view().player.y; press('left');
