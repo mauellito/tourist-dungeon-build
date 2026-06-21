@@ -46,7 +46,10 @@ var TD_UI = (function () {
     water:      "#1d3346", waterGlyph:  "#6fa0c4",
     // C3 ground surfaces (functional terrain texture, one meaning each)
     cobble:     "#8d8a82", dirt: "#8a6f4a", stone: "#a6a29a", grass: "#5a8a4a", sand: "#c2a86a", plank: "#9a7d50",
-    doorBg:     "#403225", pendingBg:   "#7a5f1e",
+    doorBg:     "#403225", pendingBg:   "#7a5f1e", stoopBg: "#5a4a1f",
+    // TOWN A — building CATEGORY hues (TUNABLE): civic slate-blue, commerce warm tan, food+lodging amber/gold,
+    // vice/red-light magenta, maritime sea-teal. (civic + vice already above; food + maritime added here.)
+    food:       "#d9a441", maritime: "#3fa3a3",
     // danger tints for the threats panel (severity, a defined meaning)
     dangerHigh: "#ff2d1f", dangerMed: "#e0902a", dangerLow: "#caa15a"
   };
@@ -215,14 +218,22 @@ var TD_UI = (function () {
   // E2 — classify a building by FUNCTION so its glyph can be coloured by kind
   // (civic / lodging / faith / commerce / vice). Glyph still tells the specific
   // building; colour tells the category at a glance.
+  // TOWN A — five legible CATEGORIES (redundant cue: this colour + the glyph + the named sign). Glyph still
+  // tells the specific building; colour tells the category at a glance. Editable.
   var BUILDING_KIND = {
-    church: "faith",
-    hotel: "lodging", motel: "lodging",
-    bank: "civic", agency: "civic", kiosk: "civic", tim: "civic", DUNGEON: "civic", office: "civic",
-    bodega: "vice", redshop: "vice", redlit: "vice", palmreader: "vice"
+    // CIVIC (slate-blue)
+    bank: "civic", customs: "civic", church: "civic", agency: "civic", kiosk: "civic", tim: "civic", office: "civic", DUNGEON: "civic", boat: "civic",
+    // FOOD + LODGING (amber/gold)
+    tavern: "food", saloon: "food", restaurant: "food", coffee: "food", chinese: "food", hotel: "food", motel: "food",
+    // VICE / RED-LIGHT (magenta)
+    redlit: "vice", redshop: "vice", palmreader: "vice", bodega: "vice",
+    // MARITIME (sea-teal)
+    chandlery: "maritime", warehouse: "maritime", clamshack: "maritime", spa: "maritime"
+    // everything else (store/apothecary/tailor/cobbler/barber/bakery/grocer/tattoo/blacksmith/gift…) = COMMERCE (warm tan)
   };
+  var CATEGORY_COLOR = { civic: "civic", food: "food", vice: "vice", maritime: "maritime", commerce: "storefront", faith: "civic", lodging: "food" };
   function buildingCategory(id) { return BUILDING_KIND[id] || "commerce"; }   // commerce is the default frontage
-  function buildingColor(id) { var c = buildingCategory(id); return c === "commerce" ? PALETTE.storefront : (c === "vice" ? PALETTE.vice : PALETTE[c]); }
+  function buildingColor(id) { return PALETTE[CATEGORY_COLOR[buildingCategory(id)] || "storefront"]; }
 
   return {
     PALETTE: PALETTE, CATEGORY_KEYS: CATEGORY_KEYS,
