@@ -38,6 +38,7 @@ var TD_FEEL = (function () {
   // tuning: durations (ms) and shake magnitudes (px) per intensity — all feedback resolves < 200ms
   var DUR = { flash: 140, float: 950, pop: 160, shake: 180, vignette: 220, step: 90, shimmer: 700 };
   var SHAKE = { soft: 2, med: 4, hard: 7 };
+  var PULSE_GAP = 120;   // ms between banded hit-pulses (quick, sequential, never a strobe)
 
   // ---- the TESTABLE CORE: which hooks fire for an action event ----
   // ev fields (all optional, booleans unless noted): moved, attacked, killed, got, descended,
@@ -77,7 +78,15 @@ var TD_FEEL = (function () {
       if (!enabled) return;
       var kind = h.split(":")[0], arg = h.split(":")[1];
       if (kind === "shake") push("shake", now, DUR.shake, { mag: SHAKE[arg] || SHAKE.soft });
-      else if (kind === "flash") push("flash", now, DUR.flash, { tile: arg === "self" ? self : tgt, color: ev.killed ? "critical" : "player" });
+      else if (kind === "flash") {
+        var ft = arg === "self" ? self : tgt, col = ev.killed ? "critical" : "player";
+        if (arg === "target" && typeof ev.band === "number") {
+          // BANDED HIT-PULSE: N quick tile-pulses by damage as % of target max HP (1..5, capped).
+          // band 0 == fully absorbed / de-minimis => one MUTED tick (deliberately NOT a band-1 pulse).
+          if (ev.band <= 0) push("flash", now, DUR.flash, { tile: ft, color: "muted" });
+          else { var nb = ev.band > 5 ? 5 : ev.band; for (var bi = 0; bi < nb; bi++) push("flash", now + bi * PULSE_GAP, DUR.flash, { tile: ft, color: col }); }
+        } else push("flash", now, DUR.flash, { tile: ft, color: col });
+      }
       else if (kind === "vignette") push("vignette", now, DUR.vignette, {});
       else if (kind === "pop") push("pop", now, DUR.pop, { tile: self });
       else if (kind === "step") push("step", now, DUR.step, {});
@@ -95,7 +104,9 @@ var TD_FEEL = (function () {
   // guard: false => the renderer holds a single static frame (no rAF, no animation).
   function active(now) {
     var out = [];
-    for (var i = 0; i < effects.length; i++) { var e = effects[i], p = (now - e.t0) / e.dur; if (p < 1) { var o = {}; for (var k in e) o[k] = e[k]; o.p = p < 0 ? 0 : p; out.push(o); } }
+    // p<0 => not started yet (a scheduled/staggered effect): hold it OUT until its t0, so banded
+    // hit-pulses fire SEQUENTIALLY rather than all-at-once. p>=1 => finished.
+    for (var i = 0; i < effects.length; i++) { var e = effects[i], p = (now - e.t0) / e.dur; if (p >= 0 && p < 1) { var o = {}; for (var k in e) o[k] = e[k]; o.p = p; out.push(o); } }
     return out;
   }
   // floats are CSS-driven (the DOM handles their rise/fade), so they do NOT keep the canvas loop

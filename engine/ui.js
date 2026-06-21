@@ -51,7 +51,10 @@ var TD_UI = (function () {
     // vice/red-light magenta, maritime sea-teal. (civic + vice already above; food + maritime added here.)
     food:       "#d9a441", maritime: "#3fa3a3",
     // danger tints for the threats panel (severity, a defined meaning)
-    dangerHigh: "#ff2d1f", dangerMed: "#e0902a", dangerLow: "#caa15a"
+    dangerHigh: "#ff2d1f", dangerMed: "#e0902a", dangerLow: "#caa15a",
+    // COMBAT JUICE: the MUTED hit-tick (a blow fully absorbed / de-minimis) — a quiet grey pulse,
+    // deliberately colourless so it reads as "nothing got through", distinct from the player/critical hues.
+    muted: "#6a6356"
   };
   // the category hues that the Brogue rule requires to be distinct
   var CATEGORY_KEYS = ["player", "creature", "item", "door", "signal", "critical"];

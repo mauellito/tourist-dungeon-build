@@ -1108,13 +1108,13 @@ var TD_MAP = (function () {
           var h = TD_RESOLVE.hit(pf, cr.fighter, rng, { opening: op }); connected = h.hit;
           if (h.hit) {
             var dmg = TD_RESOLVE.damage(pf, cr.fighter, rng).damage;
-            ctrl.fx.push({ x: cr.x, y: cr.y, amount: dmg, kind: "dealt" });
+            ctrl.fx.push({ x: cr.x, y: cr.y, amount: dmg, kind: "dealt", max: cr.maxHp || cr.hp });   // max -> hit-pulse band (render only)
             var blow = TD_RESOLVE.strike(cr.hp, dmg); cr.hp = blow.hp; killed = blow.killed;
             if (killed) { dropLoot(cr); removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
             else logMsg("Your " + ((pf.weapon && pf.weapon.verb) || "blow") + " lands on " + cr.name + "; it still stands.", false);
           } else logMsg("You swing at " + cr.name + " and the blow goes wide.", false);
         } else {                                                  // legacy flat fallback (no stat spine / test harness)
-          ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt" });
+          ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt", max: cr.maxHp || cr.hp });
           var fblow = TD_RESOLVE.strike(cr.hp, PLAYER_DMG); cr.hp = fblow.hp; killed = fblow.killed;
           if (killed) { dropLoot(cr); removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
           else logMsg("You serve " + cr.name + " notice; it still stands.", false);

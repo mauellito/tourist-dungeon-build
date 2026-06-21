@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "fbc0e4b";</script>
+<script>window.__BUILD = "22a5128";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -261,11 +261,21 @@ window.__initPlayMap = function () {
   function camXOf() { return camXs == null ? 0 : Math.round(camXs); }
   function camYOf() { return camYs == null ? 0 : Math.round(camYs); }
   // fire the feel hooks for a completed action, then render
+  // COMBAT JUICE — hit-pulse band: how many quick tile-pulses a blow throws, by damage as a % of
+  // the TARGET's MAX HP. <10%->1, 10-20%->2, 20-30%->3, 30-40%->4, 40%+->5 (capped). A blow that is
+  // fully absorbed / de-minimis (<=1) returns 0 -> a single MUTED tick. Render only: reads the
+  // already-computed damage; touches no combat magnitude. (% never shown.)
+  function hitBand(amount, max) {
+    if (typeof amount !== "number" || amount <= 1 || !max) return 0;            // absorbed / de-minimis -> muted tick
+    var pct = amount / max;
+    return pct < 0.10 ? 1 : pct < 0.20 ? 2 : pct < 0.30 ? 3 : pct < 0.40 ? 4 : 5;
+  }
+  window.__TD_HITBAND = hitBand;   // exposed for the hit-pulse band proof (harness only)
   function fireFeel(res) {
     var vw = sim.view(), pl = vw.player || { x: 0, y: 0 }, ev = { self: { x: pl.x, y: pl.y } };
     if (res) { ev.moved = !!res.moved; ev.attacked = !!res.attacked; ev.killed = !!res.killed; ev.got = !!res.got; }
     ev.dead = !!vw.dead; ev.crit = !!vw.lastUrgent;
-    (vw.events || []).forEach(function (fx) { if (fx.kind === "taken") ev.tookDamage = true; if (fx.kind === "dealt") { ev.attacked = true; ev.target = { x: fx.x, y: fx.y }; ev.amount = fx.amount; ev.glancing = (typeof fx.amount === "number" && fx.amount <= 2); } });
+    (vw.events || []).forEach(function (fx) { if (fx.kind === "taken") ev.tookDamage = true; if (fx.kind === "dealt") { ev.attacked = true; ev.target = { x: fx.x, y: fx.y }; ev.amount = fx.amount; ev.glancing = (typeof fx.amount === "number" && fx.amount <= 2); ev.band = hitBand(fx.amount, fx.max); } });
     if ((prevPhase !== "dungeon" && vw.phase === "dungeon") || (vw.phase === "dungeon" && vw.level > prevLevel)) ev.descended = true;
     prevPhase = vw.phase; prevLevel = (vw.phase === "dungeon" ? vw.level : -1);
     lastFeelHooks = TD_FEEL.apply(ev, nowMs(), vw.turn || 0);
@@ -1124,7 +1134,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Town C.1 — RLD: constant red pulse, no interiors (open dusk pocket)";
+  var VERSION = "Combat juice — hit pulses scale 1→5 by damage% (capped, deadpan)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
