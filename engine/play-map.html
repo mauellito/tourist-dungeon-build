@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "d0cb12b";</script>
+<script>window.__BUILD = "d995eab";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -623,6 +623,8 @@ window.__initPlayMap = function () {
       statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
       statrow("Armour", '<span id="sb-armour">' + (g.armour ? escapeHTML((g.armour.bulk || "—") + " · " + g.armour.name) : "—") + "</span>") +
       statrow("Weapon", '<span id="sb-weapon">' + (g.weapon ? escapeHTML(g.weapon.name + " — you " + g.weapon.verb) : "—") + "</span>") +
+      // GATE 5 R3 — the slice objective (Bureau itinerary). Feel-words only; colour shifts on progress.
+      (vw.objective ? statrow("Itinerary", '<span id="sb-objective" style="color:' + (vw.objective.stage === "filed" ? "#2f6d33" : vw.objective.stage === "surveyed" ? P.signal : "#8a7c66") + '">' + escapeHTML(vw.objective.line) + "</span>") : "") +
       // GATE 4.1 — the visitor's CONSTITUTION (the ten stats) as feel-words only (TD_STATS.surface,
       // digit-safe). Updates live as growth-by-deeds crosses a band. Placed under the gear rows.
       statSheet(vw.stats) +

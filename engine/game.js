@@ -445,7 +445,20 @@ var TD_GAME = (function () {
       pendingDoor = null; pendingCounter = null; pendingVendor = false; lastDungeonLevel = null;
       logMsg("You climb the last stair into daylight; the harbour takes you back, indifferent as ever.");
       announce(P.title || "The Harbour");
+      // GATE 5 R3 — the SLICE WIN: surveyed the bottom AND returned to the surface alive. (Dying instead
+      // banks knowledge and starts a new visitor — the existing postmortem path.)
+      if (shared.surveyed && !won) {
+        won = true;
+        logMsg("OBJECTIVE FILED: you surveyed the deep sublevel and returned alive. The Bureau stamps your report and, for once, says nothing.", true);
+      }
       return view();
+    }
+    // GATE 5 R3 — the Bureau-framed slice objective, surfaced in the dossier (feel-words only, no number).
+    function sliceObjective() {
+      var depth = (world.meta && world.meta.depth) || 6;
+      if (won) return { line: "Report filed — survey complete.", stage: "filed" };
+      if (shared.surveyed) return { line: "Surveyed. Ascend and report at the surface.", stage: "surveyed" };
+      return { line: "Survey the deep sublevel (the Sub-Registry) and return alive.", stage: "pending" };
     }
     function levelOf(node) { return (world.nodes[node] || {}).level || 0; }
     function decorate(ctrl, helpers) {
@@ -454,6 +467,21 @@ var TD_GAME = (function () {
       if (levelOf(ctrl.node) === 1) {
         var px = helpers.CX - 3, py = helpers.CY - 2;
         if (helpers.isFloor(px, py)) ctrl.features[helpers.key(px, py)] = { id: "011", channel: "OBJ", glyph: "¶", label: "plaque", text: SIG["011"].t };
+      }
+      // GATE 5 R3 — the SLICE MILESTONE: a Bureau survey marker on the deepest sublevel (the set-piece
+      // that reads as the hint of the deeper game). Stepping on it files the survey (mapmode handles it).
+      if (world.meta && levelOf(ctrl.node) === world.meta.depth) {
+        var sx = helpers.CX, sy = helpers.CY, placed = false;
+        for (var rad = 0; rad < 6 && !placed; rad++) {
+          for (var oy = -rad; oy <= rad && !placed; oy++) for (var ox = -rad; ox <= rad && !placed; ox++) {
+            var mx = sx + ox, my = sy + oy;
+            if (helpers.isFloor(mx, my) && !ctrl.features[helpers.key(mx, my)] && !ctrl.doors[helpers.key(mx, my)]) {
+              ctrl.features[helpers.key(mx, my)] = { survey: true, glyph: "‡", col: "signal", label: "a Bureau survey marker",
+                kind: "seen", obj: "OBJ", text: "A surveyor's benchmark bolted to the deep floor — a sigil, a date in a calendar you do not keep, and a notice you are not yet cleared to read." };
+              placed = true;
+            }
+          }
+        }
       }
     }
     function onCross(doorMeta, ctrl) {
@@ -931,6 +959,7 @@ var TD_GAME = (function () {
       // GATE 4.1 — the ten-stat SHEET as feel-words for the Visitor Dossier (digit-safe: surface()
       // emits words only, never numbers). Rebuilt each view so growth-by-deeds (crossed() words) shows live.
       v.stats = (typeof TD_STATS !== "undefined" && character && character.stats) ? TD_STATS.surface(character.stats) : null;
+      v.objective = sliceObjective();   // GATE 5 R3 — the slice goal, Bureau register, surfaced in the dossier
       // the latest log line is the unified "current event", whoever wrote it
       // (town counters, dungeon controller, or the top-level verbs here).
       var lastM = shared.messages.length ? shared.messages[shared.messages.length - 1] : null;

@@ -1127,7 +1127,17 @@ var TD_MAP = (function () {
       ctrl.pendingDoor = null; ctrl.pendingFall = null;
       reveal(nx, ny);
       var f = featureAt(nx, ny);
-      if (f) { if (f.id) ctrl.character.signalsSeen.add(f.id); if (f.kind) senses(f.text, f.kind, f.obj); else logMsg(f.text, false); }
+      if (f) {
+        // GATE 5 R3 — the SLICE MILESTONE: stepping on the deep survey marker files the survey (the
+        // half of the objective that needs the bottom). The rest is ascending alive to report it.
+        if (f.survey && !shared.surveyed) {
+          shared.surveyed = true;
+          logMsg("BUREAU SURVEY FILED. Itinerary amended: ascend, and report at the surface.", false);
+          senses("The marker hums under your palm; far below, something the size of the whole route shifts once, and is still.", "seen", "OBJ");
+          senses("A certainty you cannot account for — this deep floor is only the porch of something much larger.", "intuition", "SUBJ");
+        }
+        if (f.id) ctrl.character.signalsSeen.add(f.id); if (f.kind) senses(f.text, f.kind, f.obj); else logMsg(f.text, false);
+      }
       var it = itemAt(nx, ny);
       if (it) logMsg("Here lies " + it.name + ". Press g to take it.", false);
       if (onWater) logMsg("You wade in; it is slow going.", false);
