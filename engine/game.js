@@ -48,7 +48,7 @@ var TD_GAME = (function () {
       sign: ["THE SPA", "Emerge improved. Emerge, regrettably, announced."] },
     tavern: { title: "The Rusty Anchor", glyph: "T", act: "food", counter: "the bar",
       sign: ["THE RUSTY ANCHOR", "Dim, sticky, and unimpressed by you — which is the entire point."] },
-    saloon: { title: "The Saloon", glyph: "S", act: "food", counter: "the long bar", sign: ["THE SALOON", "Swinging doors, municipal whiskey, a piano nobody admits to playing."] },
+    saloon: { title: "The Saloon", glyph: "S", act: "food", counter: "the long bar", sign: ["THE SALOON", "Swinging doors, cheap whiskey, a piano nobody admits to playing."] },
     restaurant: { title: "The Restaurant", glyph: "E", act: "food", counter: "the table", sign: ["THE RESTAURANT", "Prix fixe, prix steep. The fish is local, allegedly."] },
     coffee: { title: "The Coffee Shop", glyph: "O", act: "food", counter: "the counter", sign: ["THE COFFEE SHOP", "Opens early, on the days that have a morning."] },
     bodega: { title: "The Bodega", glyph: "D", act: "shop", counter: "the register", sign: ["THE BODEGA", "Everything, a little dear, all hours."] },
@@ -60,9 +60,9 @@ var TD_GAME = (function () {
     tim: { title: "Tim's Tour Guide", glyph: "G", act: "tim", counter: "the desk", sign: ["TIM'S TOUR GUIDE", "Hints sold here. (Closed.)"] },
     tattoo: { title: "The Tattoo Parlor", glyph: "Z", act: "flavor", counter: "the table", sign: ["THE TATTOO PARLOR", "Permanent souvenirs of a temporary visit."] },
     boat: { title: "Boat Rental", glyph: "Y", act: "boat", counter: "the dock desk", sign: ["BOAT RENTAL", "Rent a boat. The boat goes where the boat goes."] },
-    redshop: { title: "the Red Light Shop", glyph: "x", act: "flavor", counter: "the curtained counter", sign: ["THE RED LIGHT SHOP", "Discreet sundries for the discerning visitor. The Bureau files it under 'sundry'."] },
-    palmreader: { title: "the Palm Reader", glyph: "&", act: "flavor", counter: "the velvet table", sign: ["PALM READING", "Your fortune, read in the municipal manner. The Bureau makes no representations as to the future, or the hand."] },
-    chinese: { title: "the Golden Turnstile", glyph: "N", act: "food", counter: "the takeout window", sign: ["THE GOLDEN TURNSTILE", "Takeout. Fast, municipal, faintly suspicious of you."] },
+    redshop: { title: "the Red Light Shop", glyph: "x", act: "flavor", counter: "the curtained counter", sign: ["THE RED LIGHT SHOP", "Discreet sundries for the discerning visitor."] },
+    palmreader: { title: "the Palm Reader", glyph: "&", act: "flavor", counter: "the velvet table", sign: ["PALM READING", "Your fortune read; no promises made about the future, or the hand."] },
+    chinese: { title: "the Golden Turnstile", glyph: "N", act: "food", counter: "the takeout window", sign: ["THE GOLDEN TURNSTILE", "Takeout. Fast, cheap, faintly suspicious of you."] },
     clamshack: { title: "the Clam Shack", glyph: "F", act: "food", counter: "the shucking counter", sign: ["THE CLAM SHACK", "Fried, by the water, no questions asked."] },
     gift1: { title: "Ye Olde Dungeon Gifte", glyph: "1", act: "flavor", counter: "the till", sign: ["YE OLDE DUNGEON GIFTE", "Genuine artefacts, genuinely. Ignore the shop next door."] },
     gift2: { title: "Authentic Dungeon Souvenirs", glyph: "2", act: "flavor", counter: "the till", sign: ["AUTHENTIC DUNGEON SOUVENIRS", "The REAL souvenirs. That other place is a tourist trap."] },
@@ -70,12 +70,12 @@ var TD_GAME = (function () {
     // bark). act:"flavor" = browse, nothing changes hands (the economy is the next gate).
     store: { title: "The Outfitter", glyph: "o", act: "shop", counter: "the counter", sign: ["THE OUTFITTER", "Lanterns, rope, and regret. Going down? Take two."] },
     apothecary: { title: "The Apothecary", glyph: "a", act: "shop", counter: "the dispensary", sign: ["THE APOTHECARY", "Tinctures, poultices, and a great many drawers."] },
-    bookstore: { title: "The Used Book Store", glyph: "b", act: "shop", counter: "the lore desk", sign: ["THE USED BOOK STORE", "Knowledge, secondhand and slightly foxed. The Bureau approves of an informed visitor, in principle."] },
+    bookstore: { title: "The Used Book Store", glyph: "b", act: "shop", counter: "the lore desk", sign: ["THE USED BOOK STORE", "Knowledge, secondhand and slightly foxed."] },
     fence: { title: "The Pawnbroker", glyph: "p", act: "shop", counter: "the barred window", sign: ["THE PAWNBROKER", "Off-book valuations. No questions, no receipts, no generosity."] },
     tailor: { title: "The Tailor", glyph: "u", act: "flavor", counter: "the cutting table", sign: ["THE TAILOR", "Mended, fitted, and quietly judged."] },
     cobbler: { title: "The Cobbler", glyph: "j", act: "flavor", counter: "the last", sign: ["THE COBBLER", "Soles resoled. Souls, regrettably, not our department."] },
     bakery: { title: "The Bakery", glyph: "q", act: "flavor", counter: "the case", sign: ["THE BAKERY", "Bread by weight, gossip by the loaf."] },
-    grocer: { title: "The Grocer", glyph: "g", act: "flavor", counter: "the scale", sign: ["THE GROCER", "Greens, mostly. The Bureau inspects the rest."] },
+    grocer: { title: "The Grocer", glyph: "g", act: "flavor", counter: "the scale", sign: ["THE GROCER", "Greens, mostly. Best not ask about the rest."] },
     warehouse: { title: "The Warehouse", glyph: "W", act: "flavor", counter: "the loading desk", sign: ["THE WAREHOUSE", "Crates, manifests, and a man with a clipboard who'd rather you left."] },
     chandlery: { title: "The Ship Chandlery", glyph: "d", act: "flavor", counter: "the chart table", sign: ["THE CHANDLERY", "Rope, tar, lamp-oil, and the smell of going to sea."] },
     customs: { title: "The Customs House", glyph: "X", act: "flavor", counter: "the inspection desk", sign: ["THE CUSTOMS HOUSE", "Declare everything. Especially the things you forgot."] },
@@ -352,7 +352,7 @@ var TD_GAME = (function () {
     }
     function senses(t, kind, obj, urgent) { logMsg(t, !!urgent, { ch: "senses", kind: kind, obj: obj }); }
     function makeRation() { return TD_MAP.makeItem("ration"); }
-    function makeHotDog() { return { kind: "ration", glyph: "%", name: "a hot dog", desc: "A street hot dog, Bureau-permitted (permit eleven-and-three-quarters). A solid climb up the hunger ladder.", use: "eat", food: 60 }; }
+    function makeHotDog() { return { kind: "ration", glyph: "%", name: "a hot dog", desc: "A street hot dog of uncertain provenance. A solid climb up the hunger ladder.", use: "eat", food: 60 }; }
 
     // session-scoped voice boxes (a line used this session is retired; the NPC
     // "remembers" across lives, which is what famous-from-deaths is built on)
@@ -473,10 +473,10 @@ var TD_GAME = (function () {
       waterskin: { kind: "waterskin", glyph: "%", name: "a waterskin",       weight: 1,   desc: "Holds water. Drink it before the dark does." },
       sack:      { kind: "sack",      glyph: "(", name: "a burlap sack",     weight: 0.5, desc: "For carrying off what isn't nailed down." },
       bandage:   { kind: "bandage",   glyph: "!", name: "a roll of bandage", weight: 0.2, desc: "Stops the bleeding, mostly." },
-      tincture:  { kind: "tincture",  glyph: "!", name: "a green tincture",  weight: 0.2, desc: "Tastes of municipal regret; mends a little." },
+      tincture:  { kind: "tincture",  glyph: "!", name: "a green tincture",  weight: 0.2, desc: "Bitter and green; mends a little." },
       antidote:  { kind: "antidote",  glyph: "!", name: "an antidote vial",  weight: 0.2, desc: "For when the dark bites back." },
       salve:     { kind: "salve",     glyph: "!", name: "a tin of salve",    weight: 0.2, desc: "Greasy, effective, faintly fishy." },
-      ration:    { kind: "ration",    glyph: "*", name: "a field ration",    weight: 0.5, desc: "Edible. The Bureau will not be drawn further." },
+      ration:    { kind: "ration",    glyph: "*", name: "a field ration",    weight: 0.5, desc: "Edible, and not much more than that." },
       hotdog:    { kind: "hotdog",    glyph: "*", name: "a hot dog",         weight: 0.3, desc: "Provenance unconfirmed. Filling, regardless." },
       biscuit:   { kind: "biscuit",   glyph: "*", name: "a hard biscuit",    weight: 0.2, desc: "Keeps forever. Tastes it." },
       candle:    { kind: "candle",    glyph: "/", name: "a tallow candle",   weight: 0.1, desc: "A small, brief honesty against the dark." },
@@ -554,10 +554,10 @@ var TD_GAME = (function () {
     // the FRONT — a deadpan paid service, no interior, no content modelled. Tenants/business drive which. ----
     function serviceFor(business) { return business === "redlit" ? "membership" : business === "palmreader" ? "palmreading" : business === "redshop" ? "redshop" : "rldservice"; }
     var SERVICE_LINE = {
-      membership: "A discreet hand takes the fee and returns a numbered token. Membership, the Bureau notes, confers nothing it will confirm.",
+      membership: "A discreet hand takes the fee and returns a numbered token. Membership confers nothing anyone will confirm.",
       palmreading: "She turns your palm to the lamp, charges you, and tells you a future indistinguishable from the present.",
-      redshop: "Sundries change hands at the curtained window. The Bureau files the entire exchange under 'sundry'.",
-      rldservice: "Coin changes hands at the front; the service, such as it is, is rendered with municipal efficiency."
+      redshop: "Sundries change hands at the curtained window, and no one writes anything down.",
+      rldservice: "Coin changes hands at the front; the service, such as it is, is rendered without ceremony."
     };
     function payService(s) {
       var pr = TD_ECON.servicePrice(s.id, null);   // reaction RESERVED (tax-agnostic)
@@ -651,7 +651,7 @@ var TD_GAME = (function () {
           else if (t === "landmark") features[key(x, y)] = { type: "view", glyph: "☼", col: "signal", label: "a district landmark", text: "A weenie the quarter gathers around. (Its content arrives with the interiors pass.)", act: "look" };
           else if (t === "notice") features[key(x, y)] = { type: "notice", glyph: "¶", label: "a Bureau notice", text: "A Bureau notice, freshly pasted and already contradicting the one beside it.", act: "read" };
           else if (t === "vendor") features[key(x, y)] = { type: "view", glyph: "₪", col: "signal", label: "a street vendor", text: "A vendor's cart, permits fluttering. The goods are flavour for now; the till is firewalled.", act: "look" };
-          else if (t === "npc") { var ac = npcAccent(x, y); features[key(x, y)] = { type: "view", glyph: "o", col: "npc", label: "a townsperson", text: "A townsperson going about Bureau-sanctioned business.", bark: townBark(ac, x + y), accent: ac, act: "look" }; }
+          else if (t === "npc") { var ac = npcAccent(x, y); features[key(x, y)] = { type: "view", glyph: "o", col: "npc", label: "a townsperson", text: "A townsperson going about their own business.", bark: townBark(ac, x + y), accent: ac, act: "look" }; }
           else if (t === "kiosk") features[key(x, y)] = { type: "counter", glyph: "K", col: "signal", label: "the Kiosk — admission to the dungeon", text: "The Kiosk. Admission to the commute is sold here (a stub for now).", act: "kiosk" };
         }
         grid.push(row);
@@ -725,7 +725,7 @@ var TD_GAME = (function () {
         if (!cc || features[key(cc.x, cc.y)] || (cc.x === spawn.x && cc.y === spawn.y)) continue;
         if (mouth && Math.abs(cc.x - mouth.x) + Math.abs(cc.y - mouth.y) < 3) continue;   // keep the mouth approach clear
         var fac = npcAccent(cc.x, cc.y);
-        features[key(cc.x, cc.y)] = { type: "view", glyph: "o", col: "npc", label: "a townsperson", text: "A townsperson going about Bureau-sanctioned business.", bark: townBark(fac, cc.x + cc.y), accent: fac, act: "look" };
+        features[key(cc.x, cc.y)] = { type: "view", glyph: "o", col: "npc", label: "a townsperson", text: "A townsperson going about their own business.", bark: townBark(fac, cc.x + cc.y), accent: fac, act: "look" };
         folk++;
       }
       cells = cells.filter(function (c) { return !features[key(c.x, c.y)]; });   // folk cells are bump-to-read, not walk-through

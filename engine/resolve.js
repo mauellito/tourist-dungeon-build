@@ -142,27 +142,27 @@ var TD_RESOLVE = (function () {
     // wear/examine/weightFeel/struckFeel strings are DRAFT in the municipal Bureau register, PENDING the
     // verbatim §2 text (data — swap in trivially when §2 lands). `name` kept for back-compat (combat/tests).
     ARMOR: {
-      unarmored: { tier: 1, name: "unarmoured", tierName: "Attire As Presented", bulkReadout: "Unhindered", robustness: 0, encumbrance: 0,
-        wear: "You go as you came. The Bureau notes Attire As Presented and declines to comment.",                 // DRAFT pending §2
-        examine: "Your own clothes, logged as 'Attire As Presented.' They flatter no one and stop nothing.",        // DRAFT pending §2
-        weightFeel: "nothing worth the mention",                                                                    // DRAFT pending §2
-        struckFeel: "Nothing stands between you and the world; the world notices." },                               // DRAFT pending §2
-      light: { tier: 2, name: "padded leather", tierName: "Visitor's Padding (Issued)", bulkReadout: "Cushioned", robustness: 3, encumbrance: 1,
-        wear: "You shrug into the Visitor's Padding, Issued — faintly damp, and certain it has met worse than you.", // DRAFT pending §2
-        examine: "Quilted municipal padding, Issued to every ticketed guest. It has stopped worse, and says so.",   // DRAFT pending §2
-        weightFeel: "a coat's worth, no more",                                                                      // DRAFT pending §2
-        struckFeel: "The padding takes the blow and complains softly on your behalf." },                            // DRAFT pending §2
-      medium: { tier: 3, name: "mail", tierName: "Protective Equipment, Sanctioned", bulkReadout: "Shelled", robustness: 6, encumbrance: 3,
-        wear: "You buckle on the Sanctioned Protective Equipment. The straps know their business better than you.",  // DRAFT pending §2
-        examine: "Sanctioned Protective Equipment, per regulation. Heavier promises; it intends to keep them.",     // DRAFT pending §2
-        weightFeel: "a steady, earned weight",                                                                      // DRAFT pending §2
-        struckFeel: "The blow lands on sanctioned steel and is told to wait its turn." },                           // DRAFT pending §2
-      heavy: { tier: 4, name: "plate", tierName: "Regulation Plate (Ceremonial)", bulkReadout: "Encased", robustness: 10, encumbrance: 6,
-        wear: "You don the Regulation Plate. Ceremonial, they insist — though it has seen ceremonies end badly.",   // DRAFT pending §2
-        examine: "Full Regulation Plate, Ceremonial grade. It encases you in the Bureau's own idea of safety.",     // DRAFT pending §2
-        weightFeel: "the weight of an office you did not apply for",                                                // DRAFT pending §2
-        struckFeel: "The blow rings off the Regulation Plate and the courtyard hears it.",                          // DRAFT pending §2
-        crushTell: "you feel the shell give inward" }                                                               // VERBATIM (directive R3 crush-tell)
+      unarmored: { tier: 1, name: "unarmoured", tierName: "your own clothes", bulkReadout: "Unhindered", robustness: 0, encumbrance: 0,
+        wear: "You go as you came — flattering no one, stopping nothing.",
+        examine: "Your own clothes. They stop nothing, but they are yours.",
+        weightFeel: "nothing worth the mention",
+        struckFeel: "Nothing stands between you and the world; the world notices." },
+      light: { tier: 2, name: "padded leather", tierName: "padded leather", bulkReadout: "Cushioned", robustness: 3, encumbrance: 1,
+        wear: "You shrug into the padded leather, faintly damp and certain it has met worse than you.",
+        examine: "Quilted padding. It has stopped worse, and rather says so.",
+        weightFeel: "a coat's worth, no more",
+        struckFeel: "The padding takes the blow and complains softly on your behalf." },
+      medium: { tier: 3, name: "mail", tierName: "mail", bulkReadout: "Shelled", robustness: 6, encumbrance: 3,
+        wear: "You buckle on the mail; the straps know their business better than you do.",
+        examine: "Mail — heavier promises, and it means to keep them.",
+        weightFeel: "a steady, earned weight",
+        struckFeel: "The blow lands on steel and is told to wait its turn." },
+      heavy: { tier: 4, name: "plate", tierName: "plate", bulkReadout: "Encased", robustness: 10, encumbrance: 6,
+        wear: "You don the plate — heavy as an office you never applied for.",
+        examine: "Full plate. It encases you in someone's idea of safety.",
+        weightFeel: "a serious, deliberate weight",
+        struckFeel: "The blow rings off the plate and the courtyard hears it.",
+        crushTell: "you feel the shell give inward" }                                                               // VERBATIM (crush-tell)
     }
   };
   GEAR.ARMOR.none = GEAR.ARMOR.unarmored;   // alias so older callers (fighter default, tests) keep working
