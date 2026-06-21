@@ -26,8 +26,38 @@ var TD_STATS = (function () {
   // just wider. SPREAD is what makes Dex/Might/Con visibly DECIDE combat.
   var SPREAD = 1.7;
   function roll(rng) { return Math.max(1, Math.min(1000, Math.round(500 + (bell(rng) - 500) * SPREAD))); }
-  function create(rng) { var st = {}; for (var i = 0; i < STATS.length; i++) st[STATS[i]] = roll(rng); return st; }
   function clamp(v) { return Math.max(1, Math.min(1000, v)); }
+  // GATE 6 — create() takes an OPTIONAL stat-BIAS map (a declared background): each rolled stat is shifted
+  // by bias[stat] then clamped, so a background lands a visibly different feel-word sheet while still
+  // rolling a real spread. No bias = the generic quick-start roll (unchanged). NO point-buy — the bias is
+  // fixed per background; the player never allocates anything.
+  function create(rng, bias) {
+    var st = {};
+    for (var i = 0; i < STATS.length; i++) { var v = roll(rng); if (bias && typeof bias[STATS[i]] === "number") v = clamp(v + bias[STATS[i]]); st[STATS[i]] = v; }
+    return st;
+  }
+  // GATE 6 — the declared BACKGROUNDS (the Bureau admission intake). Each is a fixed stat-bias profile +
+  // a starting gear loadout (GEAR keys, resolved by game.js) + a one-line disposition + a Bureau-voice
+  // name/description. DISTINCT by design — each maps onto a real combat axis; none is a strict no-brainer
+  // (imbalance/difficulty IS the slider). `order` drives the form; daytripper is the recommended default.
+  var BACKGROUNDS = {
+    daytripper: { order: 0, name: "Day-Tripper", disposition: "Balanced — the gentle way in.",
+      desc: "An ordinary visitor on an ordinary outing. No particular aptitude, no particular handicap — the Bureau's recommended admission.",
+      weapon: "shortsword", armor: "light", bias: { con: 90, grit: 70, lucky: 60 } },
+    surveyor: { order: 1, name: "Ward Surveyor", disposition: "Reads the route — sharper warnings, softer blows.",
+      desc: "Trained to read a route and file it in triplicate. Sees what others miss; strikes softer than most.",
+      weapon: "dagger", armor: "light", bias: { per: 220, int: 170, intuition: 140, might: -90, con: -50 } },
+    stevedore: { order: 2, name: "Harbour Stevedore", disposition: "Heavy and slow — hard to kill, hard to miss.",
+      desc: "Hired muscle off the docks, admitted on a labourer's pass. Built to carry and to take a blow; armoured, and slow with it.",
+      weapon: "mace", armor: "heavy", bias: { might: 200, con: 190, grit: 90, dex: -190, per: -70 } },
+    cutpurse: { order: 3, name: "Light-Fingered Visitor", disposition: "Fast and fragile — hard to hit, quick to fall.",
+      desc: "Admitted under a name not quite their own. Quick of hand and quicker of foot; easily hurt once caught.",
+      weapon: "sabre", armor: "unarmored", bias: { dex: 230, per: 90, lucky: 70, might: -110, con: -130 } },
+    penitent: { order: 4, name: "Penitent Exile", disposition: "Glass and fury — hits hard, dies easy. (Hard.)",
+      desc: "Here to atone, and equipped accordingly. All conviction and no constitution — admission stamped 'at own risk.'",
+      weapon: "axe", armor: "unarmored", bias: { might: 230, grit: 150, con: -210, dex: -70, charm: -130, appearance: -110 } }
+  };
+  function backgroundList() { return Object.keys(BACKGROUNDS).map(function (k) { var b = BACKGROUNDS[k]; return { id: k, name: b.name, disposition: b.disposition, desc: b.desc, weapon: b.weapon, armor: b.armor, order: b.order }; }).sort(function (a, b) { return a.order - b.order; }); }
 
   // ---- FEEL-WORDS (player surface). Six tiers; thresholds PLACEHOLDER on 1..1000. ----
   var BANDS = [1, 170, 330, 500, 670, 840];                 // tier i = highest band <= value
@@ -102,7 +132,8 @@ var TD_STATS = (function () {
     STATS: STATS, NAMES: NAMES, BANDS: BANDS, FEEL: FEEL,
     create: create, bell: bell, tier: tier, feel: feel, surface: surface, crossed: crossed,
     luckyThumb: luckyThumb, DERIVED: DERIVED, derive: derive, power: power, powerWord: powerWord,
-    newProgress: newProgress, recordDeed: recordDeed, realizeOnRest: realizeOnRest
+    newProgress: newProgress, recordDeed: recordDeed, realizeOnRest: realizeOnRest,
+    BACKGROUNDS: BACKGROUNDS, backgroundList: backgroundList
   };
 })();
 
