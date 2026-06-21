@@ -96,8 +96,14 @@ var TD_GAME = (function () {
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
     var invOpen, invSel, look, sensedWater, vendor, pendingVendor, pendingExit, exitReturn, left, returnScreen, lastDungeonLevel;
     var intakeOpen, intakeSel;   // GATE 6 — the Bureau admission intake (background declaration) state
+    var intakeStage, intakeBase, alloc;   // CHARACTER E — the staged creation flow (sign->visa->allocate->horoscope) + the pool-spend state
     var lifeN = 0;   // per-life counter so each new character rolls a distinct (deterministic) stat block
 
+    // CHARACTER E — a Bureau-assigned visitor NAME (stored for the PINNED name-based Easter-egg hooks;
+    // interactive name-entry is deferred — the hook only needs the name stored, not yet used).
+    var NAME_FIRST = ["Aldo", "Bex", "Cass", "Dorn", "Edda", "Finn", "Gale", "Hett", "Isla", "Jor", "Kit", "Lune", "Mott", "Nell", "Osk", "Pell", "Quin", "Rute", "Sable", "Tov", "Una", "Vesh", "Wren", "Yarl"];
+    var NAME_LAST = ["Quay", "Marsh", "Holt", "Vane", "Crane", "Pike", "Sloe", "Drift", "Welk", "Brine", "Cobble", "Fenn", "Garr", "Halt", "Ives"];
+    function makeVisitorName(rng) { return NAME_FIRST[rng.int(0, NAME_FIRST.length - 1)] + " " + NAME_LAST[rng.int(0, NAME_LAST.length - 1)]; }
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
       character = { ticket: null, background: null, signalsSeen: new Set(), events: { clicks: [], brassRejected: false, anchorRejected: false } };
@@ -120,6 +126,7 @@ var TD_GAME = (function () {
         }
         var hpm = TD_STATS.DERIVED.hpMax(character.stats);   // Con -> HP (internal; never shown)
         meters.hp = hpm; meters.hpMax = hpm;
+        character.name = makeVisitorName(crng);   // CHARACTER E — stored for the pinned name Easter eggs
       }
       // starting gear: a weapon + armour across the 11 slots (Gate 7 A).
       if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("light", "shortsword"); }
@@ -128,7 +135,7 @@ var TD_GAME = (function () {
       // message log, one turn counter, across town and dungeon.
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
       placeId = START_SCREEN; dungeon = null; dead = false; won = false; returnScreen = START_SCREEN;
-      invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 }; intakeOpen = false; intakeSel = 0;
+      invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 }; intakeOpen = false; intakeSel = 0; intakeStage = null; alloc = null;
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; pendingExit = false; exitReturn = null; left = false;
       lastDungeonLevel = null; announcedAt = {};
       buildPlaces();
@@ -139,40 +146,133 @@ var TD_GAME = (function () {
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
 
-    // CHARACTER B — the admission intake declares a VISA (bonuses-only). The Agency opens the form (act
-    // 'agency'); declaring a visa rolls the base stat block, applies the visa's stat BONUSES (never a
-    // penalty), grants its signature aptitude(s) to the character sheet, takes its loadout, records the
-    // identity, and issues the Guided Package. Feel-words only. (Supersedes the Gate-6 background biases.)
-    function intakeList() { return (typeof TD_CHARSYS !== "undefined" && TD_CHARSYS.visaList) ? TD_CHARSYS.visaList() : []; }
-    function chooseBackground(id) {
-      if (!intakeOpen) return { declared: false };
-      var v = (typeof TD_CHARSYS !== "undefined" && TD_CHARSYS.VISAS) ? TD_CHARSYS.VISAS[id] : null;
-      if (!v) return { declared: false };
-      character.sheet = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS.grantVisaSignature(TD_CHARSYS.blankSheet(), id) : null;
-      if (typeof TD_STATS !== "undefined") {
-        character.stats = TD_STATS.createBase ? TD_STATS.createBase(TD_RNG.make(((lifeN * 2654435761) ^ ((v.order + 1) * 40503)) >>> 0 || 1)) : TD_STATS.create(TD_RNG.make(1));   // CHARACTER C average base
-        TD_CHARSYS.applyVisa(character.stats, id);                                                  // bonuses only
-        if (character.sign) TD_CHARSYS.applySign(character.stats, character.sign.id);               // re-apply the (freshCharacter) birth sign
-        if (character.horoscope) TD_CHARSYS.applyHoroscope(character.stats, character.sheet, character.horoscope);   // re-apply the fixed horoscope
-        character.progress = TD_STATS.newProgress();
-        var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hp = hpm; meters.hpMax = hpm;   // Con -> HP, re-derived
+    // CHARACTER E — the staged CREATION FLOW at the Agency: WELCOME -> sign -> visa -> allocate the pool
+    // -> horoscope -> enter. Each stage is a modal selection; the allocation spends the ~20-pt pool with a
+    // budget meter + escalating cost (feel-words only; lowering refunds). The Kiosk is the quick-start
+    // (no flow). Editable registries throughout. (Supersedes the Gate-6 single-form intake.)
+    var CS = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS : null;
+    function intakeListFor(stage) { if (!CS) return []; if (stage === "sign") return CS.signList(); if (stage === "visa") return CS.visaList(); return []; }
+    function intakeList() { return intakeListFor("visa"); }   // back-compat: _backgrounds() = the visas
+    function startIntake() {
+      if (!CS) return;
+      intakeOpen = true; intakeStage = "sign"; intakeSel = 0;
+      intakeBase = TD_STATS.createBase(TD_RNG.make(((lifeN * 2654435761) ^ 0x5bd1e995) >>> 0 || 1));   // the base the flow will shape
+      character.stats = cloneStats(intakeBase); character.sheet = CS.blankSheet();
+      character.sign = null; character.visa = null; character.background = null;
+      alloc = { pointsLeft: CS.POOL.POINTS, deltas: {}, picks: {}, base: null };
+      logMsg("Welcome to Harbordtown. Apply for a visa? First, declare your birth sign. (↑/↓ · Enter · Esc to step away)");
+    }
+    function cloneStats(s) { var o = {}; for (var k in s) o[k] = s[k]; return o; }
+    function recomputeStats() {   // base -> sign sidegrade -> visa bonuses (allocation rides on top via allocBase)
+      character.stats = cloneStats(intakeBase);
+      if (character.sign) CS.applySign(character.stats, character.sign.id);
+      if (character.visa) CS.applyVisa(character.stats, character.visa);
+    }
+    // ---- stage 1: SIGN (player chooses; the game assigns a day + stores the day-seed) ----
+    function pickSign(id) {
+      if (!CS.SIGNS[id]) return; character.sign = CS.assignDay(TD_RNG.make(((lifeN * 7919) ^ 0x9e3779b9) >>> 0 || 1), id);
+      recomputeStats(); intakeStage = "visa"; intakeSel = 0;
+      logMsg("Born under " + character.sign.name + ". Now declare your visa. (↑/↓ · Enter)");
+    }
+    // ---- stage 2: VISA (bonuses-only) -> grants signature + loadout, snapshots the allocation base ----
+    function pickVisa(id) {
+      var v = CS.VISAS[id]; if (!v) return;
+      character.visa = id; recomputeStats();
+      character.sheet = CS.grantVisaSignature(CS.blankSheet(), id);
+      character.equipment = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) ? TD_RESOLVE.GEAR.startingSet(v.armor, v.weapon) : character.equipment;
+      character.background = { id: id, name: v.name, disposition: v.disposition };
+      alloc = { pointsLeft: CS.POOL.POINTS, deltas: {}, picks: {}, base: cloneStats(character.stats) };   // allocation rides on the post-visa stats
+      intakeStage = "allocate"; intakeSel = 0;
+      logMsg(v.name + " declared. Now allocate your particulars: raise or lower stats, take aptitudes; mind the budget. (↑/↓ select · ←/− lower · →/+ raise · r reset · Enter done)");
+    }
+    // ---- stage 3: ALLOCATE the pool (stats: +/- with escalating cost + refund; picks: toggle) ----
+    function statValNow(stat) { return (alloc.base[stat] || 500) + (alloc.deltas[stat] || 0) * CS.POOL.STEP; }
+    function allocRaise(stat) {
+      if (intakeStage !== "allocate") return; var cur = statValNow(stat); if (cur + CS.POOL.STEP > CS.POOL.CEIL) return;
+      var cost = CS.POOL.raiseCost(cur); if (alloc.pointsLeft < cost - 1e-9) return;
+      alloc.pointsLeft -= cost; alloc.deltas[stat] = (alloc.deltas[stat] || 0) + 1; character.stats[stat] = cur + CS.POOL.STEP;
+      var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hpMax = hpm; meters.hp = hpm;
+    }
+    function allocLower(stat) {
+      if (intakeStage !== "allocate") return; var cur = statValNow(stat); if (cur - CS.POOL.STEP < CS.POOL.FLOOR) return;
+      alloc.pointsLeft += CS.POOL.lowerRefund(cur); alloc.deltas[stat] = (alloc.deltas[stat] || 0) - 1; character.stats[stat] = cur - CS.POOL.STEP;
+      var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hpMax = hpm; meters.hp = hpm;
+    }
+    // the pool's aptitude picks (toggles): weapon proficiencies + skills + talents + abilities (bounded chunks).
+    function allocPickList() {
+      var out = [];
+      ["blade", "impact", "polearm"].forEach(function (id) { out.push({ cat: "proficiency", id: id, name: CS.PROFICIENCIES[id].name + " proficiency", cost: CS.pickCost("proficiency") }); });
+      Object.keys(CS.SKILLS).forEach(function (id) { out.push({ cat: "skill", id: id, name: CS.SKILLS[id].name, cost: CS.pickCost("skill") }); });
+      Object.keys(CS.TALENTS).forEach(function (id) { out.push({ cat: "talent", id: id, name: CS.TALENTS[id].name, cost: CS.pickCost("talent") }); });
+      Object.keys(CS.ABILITIES).forEach(function (id) { if (id !== "sprint") out.push({ cat: "ability", id: id, name: CS.ABILITIES[id].name, cost: CS.pickCost("ability") }); });
+      return out;
+    }
+    function allocPick(cat, id) {
+      if (intakeStage !== "allocate") return; var cost = CS.pickCost(cat), pk = cat + ":" + id;
+      if (alloc.picks[pk]) {   // un-pick -> refund (only if it wasn't part of the visa signature)
+        alloc.pointsLeft += cost; delete alloc.picks[pk];
+        var bucket = { proficiency: "proficiencies", skill: "skills", talent: "talents", ability: "abilities" }[cat];
+        if (character.sheet[bucket]) delete character.sheet[bucket][id];
+      } else if (alloc.pointsLeft >= cost - 1e-9 && !CS.has(character.sheet, cat, id)) {   // buy (a baseline rank / owned)
+        alloc.pointsLeft -= cost; alloc.picks[pk] = 1; CS.grant(character.sheet, cat, id);
       }
-      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) character.equipment = TD_RESOLVE.GEAR.startingSet(v.armor, v.weapon);
-      character.background = { id: id, name: v.name, disposition: v.disposition };   // the declared identity (dossier)
-      character.visa = id;
-      character.ticket = "agency"; character.signalsSeen.add("001"); intakeOpen = false;
+    }
+    function allocReset() {
+      if (intakeStage !== "allocate" || !alloc) return;
+      character.stats = cloneStats(alloc.base); character.sheet = CS.grantVisaSignature(CS.blankSheet(), character.visa);
+      alloc.pointsLeft = CS.POOL.POINTS; alloc.deltas = {}; alloc.picks = {};
+      var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hpMax = hpm; meters.hp = hpm;
+    }
+    function allocFinish() {   // -> pull the horoscope, then show it
+      if (intakeStage !== "allocate") return;
+      character.horoscope = CS.pullHoroscope(TD_RNG.make(((lifeN * 2246822519) ^ 0xdeadbeef) >>> 0 || 1));
+      CS.applyHoroscope(character.stats, character.sheet, character.horoscope);
+      var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hpMax = hpm; meters.hp = hpm;
+      intakeStage = "horoscope"; intakeSel = 0;
+      logMsg("The clerk consults the almanac. " + character.horoscope.line + " (Enter to be admitted)");
+    }
+    function finalizeIntake() {
+      character.progress = TD_STATS.newProgress();
+      character.ticket = "agency"; character.signalsSeen.add("001"); intakeOpen = false; intakeStage = null;
       senses("The clerk stamps the form without quite reading it: “" + SIG["001"].t + ".”", "said", "OBJ");
-      logMsg("Declared: " + v.name + " — " + v.disposition + " A Guided Package is stamped into your hand.");
-      return { declared: true, visa: id, background: id, event: lastEvent };
+      logMsg("Admitted: " + (character.background ? character.background.name : "a visitor") + ". A Guided Package is stamped into your hand.");
+      return { declared: true, visa: character.visa, background: character.visa, event: lastEvent };
+    }
+    // a DIRECT one-shot visa declaration (API/tests + the visa-stage number keys): roll, ensure a sign,
+    // apply visa + sign + horoscope, finalize. Equivalent to the old single-form intake.
+    function chooseBackground(id) {
+      if (!intakeOpen || !CS || !CS.VISAS[id]) return { declared: false };
+      if (!intakeBase) intakeBase = TD_STATS.createBase(TD_RNG.make(((lifeN * 2654435761) ^ ((CS.VISAS[id].order + 1) * 40503)) >>> 0 || 1));
+      if (!character.sign) character.sign = CS.assignDay(TD_RNG.make(((lifeN * 7919) ^ 0x12345) >>> 0 || 1), CS.signList()[0].id);
+      pickVisa(id);                                   // applies stats+signature+gear+identity, advances to 'allocate'
+      character.horoscope = CS.pullHoroscope(TD_RNG.make(((lifeN * 2246822519) ^ 0xfeed) >>> 0 || 1));
+      CS.applyHoroscope(character.stats, character.sheet, character.horoscope);
+      var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hpMax = hpm; meters.hp = hpm;
+      return finalizeIntake();
     }
     function intakeMove(dir) {
       if (!intakeOpen) return { moved: false };
-      var n = intakeList().length; if (!n) return { moved: false };
+      var n = (intakeStage === "allocate") ? (TD_STATS.STATS.length + allocPickList().length) : intakeListFor(intakeStage).length;
+      if (!n) return { moved: false };
       if (dir === "up") intakeSel = (intakeSel - 1 + n) % n; else if (dir === "down") intakeSel = (intakeSel + 1) % n;
       return { moved: true, sel: intakeSel };
     }
-    function intakeChoose() { if (!intakeOpen) return { declared: false }; var b = intakeList()[intakeSel]; return b ? chooseBackground(b.id) : { declared: false }; }
-    function intakeCancel() { if (!intakeOpen) return { cancelled: false }; intakeOpen = false; logMsg("You step back from the desk; the clerk reshelves the form with visible relief."); return { cancelled: true }; }
+    function intakeAdjust(dir) {   // allocate stage: +/- on the selected row
+      if (intakeStage !== "allocate") return { moved: false };
+      var nStats = TD_STATS.STATS.length;
+      if (intakeSel < nStats) { var stat = TD_STATS.STATS[intakeSel]; if (dir > 0) allocRaise(stat); else allocLower(stat); }
+      else { var p = allocPickList()[intakeSel - nStats]; if (p) allocPick(p.cat, p.id); }   // a pick is a toggle (dir ignored)
+      return { adjusted: true };
+    }
+    function intakeChoose() {
+      if (!intakeOpen) return { declared: false };
+      if (intakeStage === "sign") { var s = intakeListFor("sign")[intakeSel]; if (s) pickSign(s.id); return { staged: "visa" }; }
+      if (intakeStage === "visa") { var v = intakeListFor("visa")[intakeSel]; if (v) pickVisa(v.id); return { staged: "allocate" }; }
+      if (intakeStage === "allocate") { allocFinish(); return { staged: "horoscope" }; }
+      if (intakeStage === "horoscope") return finalizeIntake();
+      return { declared: false };
+    }
+    function intakeCancel() { if (!intakeOpen) return { cancelled: false }; intakeOpen = false; intakeStage = null; alloc = null; logMsg("You step back from the desk; the clerk reshelves the form with visible relief."); return { cancelled: true }; }
 
     // every line declares a CHANNEL (Channel Law, CLAUDE.md). "event" = mechanical
     // truth; "senses" = perceived (heard/said/seen true; intuition may mislead).
@@ -252,11 +352,11 @@ var TD_GAME = (function () {
         case "lookout": seen("012"); senses(SIG["012"].t, "seen", "OBJ"); break;
         case "agency":
           if (character.ticket) { logMsg("You already hold admission."); break; }
-          // GATE 6 — the booking desk is the ADMISSION INTAKE: open the declaration of particulars
-          // (pick a background). The ticket is issued only when a background is declared (intakeChoose).
-          intakeOpen = true; intakeSel = 0; seen("002");
+          // CHARACTER E — the booking desk launches the staged CREATION FLOW (welcome -> sign -> visa ->
+          // allocate -> horoscope -> enter). The ticket is issued only at the end of the flow.
+          seen("002");
           senses("The clerk slides a form across the marble: “" + SIG["002"].t + "”", "said", "SUBJ");
-          logMsg("ADMISSION INTAKE — declare your particulars. (↑/↓ to consider, Enter to declare, Esc to step away.)"); break;
+          startIntake(); break;
         case "kiosk":
           if (character.ticket) { logMsg("You already hold admission."); break; }
           character.ticket = "standard"; seen("003");
@@ -1014,7 +1114,18 @@ var TD_GAME = (function () {
       v.stats = (typeof TD_STATS !== "undefined" && character && character.stats) ? TD_STATS.surface(character.stats) : null;
       v.objective = sliceObjective();   // GATE 5 R3 — the slice goal, Bureau register, surfaced in the dossier
       v.background = character.background || null;                                  // GATE 6 — the declared identity (dossier)
-      v.intake = intakeOpen ? { open: true, sel: intakeSel, list: intakeList() } : null;   // GATE 6 — the admission form, while open
+      // CHARACTER E — the creation flow surface (staged). Feel-words only; the budget is a fraction (bar), never a number.
+      v.intake = intakeOpen ? (function () {
+        var o = { open: true, stage: intakeStage, sel: intakeSel };
+        if (intakeStage === "sign" || intakeStage === "visa") o.list = intakeListFor(intakeStage);
+        else if (intakeStage === "allocate") {
+          o.budget = alloc ? Math.max(0, Math.min(1, alloc.pointsLeft / CS.POOL.POINTS)) : 0;
+          o.spent = alloc ? alloc.pointsLeft <= 0.001 : false;
+          o.stats = TD_STATS.STATS.map(function (k) { var cur = statValNow(k); return { stat: k, name: TD_STATS.NAMES[k], word: TD_STATS.feel(k, character.stats[k]), canRaise: (cur + CS.POOL.STEP <= CS.POOL.CEIL) && alloc.pointsLeft >= CS.POOL.raiseCost(cur) - 1e-9, dear: CS.POOL.raiseCost(cur) >= 2.0 }; });
+          o.picks = allocPickList().map(function (p) { return { cat: p.cat, id: p.id, name: p.name, taken: !!(alloc && alloc.picks[p.cat + ":" + p.id]) }; });
+        } else if (intakeStage === "horoscope") o.horoscope = character.horoscope ? character.horoscope.line : "";
+        return o;
+      })() : null;
       // GATE 6 — surface the carried loadout in TOWN too (the dungeon view already carries it), so the
       // declared background's gear reads in the dossier the moment you've declared. Feel-words only.
       if (!v.gear && typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR && character.equipment) {
@@ -1024,6 +1135,7 @@ var TD_GAME = (function () {
       }
       v.equipment = character.equipment || null;   // GATE 7 (A) — raw slots, for the Phase-C paperdoll
       v.charsheet = (typeof TD_CHARSYS !== "undefined" && character.sheet) ? TD_CHARSYS.surface(character.sheet) : null;   // Character A — aptitudes as feel-words
+      v.name = character.name || null;   // Character E — the visitor's name (stored; surfaced as identity)
       v.sign = character.sign ? { name: character.sign.name, day: character.sign.day } : null;   // Character C — birth sign + assigned day (feel-words; day is a date, not a stat)
       v.horoscope = character.horoscope ? { line: character.horoscope.line } : null;             // Character C — the run's fixed horoscope (Bureau flavour)
       // the latest log line is the unified "current event", whoever wrote it
@@ -1063,7 +1175,8 @@ var TD_GAME = (function () {
       lookToggle: lookToggle, lookMove: lookMove,
       confirmExit: confirmExit, cancelExit: cancelExit,
       intakeMove: intakeMove, intakeChoose: intakeChoose, intakeCancel: intakeCancel, chooseBackground: chooseBackground,
-      _intakeOpen: function () { return intakeOpen; }, _backgrounds: function () { return intakeList(); },
+      intakeAdjust: intakeAdjust, allocReset: allocReset, pickSign: pickSign, pickVisa: pickVisa,
+      _intakeOpen: function () { return intakeOpen; }, _intakeStage: function () { return intakeStage; }, _backgrounds: function () { return intakeList(); },
       say: function (t) { logMsg(t); },   // the Bureau speaks during play (presentation flavour)
       isDead: function () { return dead; }, isComplete: function () { return won; },
       SIG: SIG, brassTarget: brassTarget,

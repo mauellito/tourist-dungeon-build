@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "bc813a5";</script>
+<script>window.__BUILD = "fd261c6";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -666,7 +666,7 @@ window.__initPlayMap = function () {
       // GATE 9 (C) — the equipment paperdoll (all 11 slots) replaces the single Armour/Weapon readout.
       paperdoll(vw.equipment, vw.gear) +
       // GATE 4.1/6 — the declared IDENTITY + the ten-stat CONSTITUTION sheet (feel-words, digit-safe).
-      statSheet(vw.stats, vw.background) +
+      statSheet(vw.stats, vw.background, vw.name) +
       // CHARACTER C — birth sign (name only; the assigned day is stored, never surfaced) + the run's horoscope.
       (vw.sign ? statrow("Born under", '<span id="sb-sign">' + escapeHTML(vw.sign.name) + "</span>") : "") +
       (vw.horoscope ? '<div id="sb-horoscope" style="font-size:11px;color:' + P.signal + ';margin:1px 0 2px">' + escapeHTML(vw.horoscope.line) + "</div>" : "") +
@@ -680,11 +680,12 @@ window.__initPlayMap = function () {
   }
   // GATE 4.1 — render the ten-stat sheet from the digit-safe surface (NAME: feel-word per stat). The
   // surface carries words only; we never print a stat number. Empty string when no spine (legacy harness).
-  function statSheet(stats, bg) {
-    // GATE 6 — the declared IDENTITY (background name + disposition) sits above the stat sheet, so the
-    // player reads who they chose to be. Quick-start (no background) reads as an unspecialised walk-in.
+  function statSheet(stats, bg, name) {
+    // GATE 6 / CHARACTER E — the IDENTITY (visitor name + declared visa + disposition) above the stat
+    // sheet. Quick-start (no visa) reads as an unspecialised walk-in.
     var ident = '<div style="margin:6px 0 2px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#8a7c66">Visitor</div>' +
-      '<div id="sb-bg" style="color:#cdbf9f"><b>' + escapeHTML(bg ? bg.name : "Walk-in (unspecialised)") + "</b>" +
+      (name ? '<div id="sb-name" style="color:#f3ecda"><b>' + escapeHTML(name) + "</b></div>" : "") +
+      '<div id="sb-bg" style="color:#cdbf9f">' + escapeHTML(bg ? bg.name : "Walk-in (unspecialised)") +
       (bg && bg.disposition ? '<div style="font-size:11px;opacity:.8">' + escapeHTML(bg.disposition) + "</div>" : "") + "</div>";
     if (!stats || !stats.length) return ident;
     var rows = stats.map(function (s) {
@@ -886,20 +887,37 @@ window.__initPlayMap = function () {
       '<div class="desc">' + desc + "</div>" +
       '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div></div>';
   }
-  // GATE 6 — the Bureau admission form: declare a background (a run-shaping particular). Bureau register,
-  // feel-words only (the resulting stat sheet reads in the dossier once declared). Esc -> use the Kiosk.
+  // CHARACTER E — the staged creation flow overlay (sign -> visa -> allocate -> horoscope). Bureau
+  // register, feel-words only (the budget is a bar, never a number). Esc -> step away (use the Kiosk).
+  function intakeRow(label, sub, on, idx) {
+    return '<div style="padding:6px 10px;border-radius:4px;margin:2px 0;border:1px solid ' + (on ? "#8a7c66" : "transparent") + ";" +
+      (on ? "background:#3a3324;color:#f3ecda;" : "color:#cdbf9f;") + '">' + (idx != null ? "<b>" + idx + ". </b>" : "") + "<b>" + escapeHTML(label) + "</b>" +
+      (sub ? '<span style="font-size:11px;opacity:.8"> — ' + escapeHTML(sub) + "</span>" : "") + "</div>";
+  }
   function renderIntake(vw) {
-    var list = (vw.intake && vw.intake.list) || [], sel = (vw.intake && vw.intake.sel) || 0;
-    var rows = list.map(function (b, i) {
-      var on = i === sel;
-      return '<div style="padding:7px 10px;border-radius:4px;margin:3px 0;border:1px solid ' + (on ? "#8a7c66" : "transparent") + ';' +
-        (on ? "background:#3a3324;color:#f3ecda;" : "color:#cdbf9f;") + '">' +
-        '<b>' + (i + 1) + ". " + escapeHTML(b.name) + "</b>" +
-        '<div style="font-size:12px;opacity:.85;margin-top:2px">' + escapeHTML(b.disposition) + "</div></div>";
-    }).join("");
-    overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">Bureau Admission — Declaration of Particulars</div>' +
-      '<div class="ttl">Declare one. It will shape your visit.</div>' + rows +
-      '<div class="hint">&uarr;/&darr; consider &nbsp;·&nbsp; <b>1&ndash;' + list.length + '</b> or <b>Enter</b> declare &nbsp;·&nbsp; <b>Esc</b> step away (the Kiosk offers a quick-start)</div></div></div>';
+    var it = vw.intake, st = it.stage, sel = it.sel || 0, body = "", head = "Bureau Admission", hint = "";
+    if (st === "sign" || st === "visa") {
+      var list = it.list || [];
+      body = list.map(function (b, i) { return intakeRow(b.name, b.disposition || b.blurb, i === sel, i + 1); }).join("");
+      head = (st === "sign") ? "Welcome to Harbordtown — Declare your Birth Sign" : "Declaration of Visa";
+      hint = "&uarr;/&darr; &nbsp;·&nbsp; <b>1&ndash;" + list.length + "</b> or <b>Enter</b> &nbsp;·&nbsp; <b>Esc</b> step away";
+    } else if (st === "allocate") {
+      head = "Allocate your Particulars";
+      var bud = Math.round((it.budget || 0) * 100);
+      body = '<div class="ttl">Budget</div><div class="meter-track" style="height:8px;margin:2px 0 6px"><div class="meter-fill" style="width:' + bud + '%;background:' + P.signal + '"></div></div>';
+      (it.stats || []).forEach(function (s, i) {
+        var on = i === sel, mark = !s.canRaise ? " (at the cap)" : s.dear ? " (dear)" : "";
+        body += '<div style="padding:3px 10px;border-radius:3px;' + (on ? "background:#3a3324;color:#f3ecda;" : "color:#cdbf9f;") + '"><span style="display:inline-block;width:96px">' + escapeHTML(s.name) + "</span>" + (on ? "− " : "&nbsp;&nbsp;") + escapeHTML(s.word) + (on ? " +" : "") + '<span style="font-size:10px;opacity:.6">' + mark + "</span></div>";
+      });
+      var ns = (it.stats || []).length;
+      body += '<div class="ttl" style="margin-top:5px">Aptitudes</div>';
+      (it.picks || []).forEach(function (p, i) { var on = (ns + i) === sel; body += intakeRow((p.taken ? "✓ " : "  ") + p.name, null, on, null); });
+      hint = "&uarr;/&darr; select &nbsp;·&nbsp; &larr;/&rarr; lower/raise (toggle) &nbsp;·&nbsp; <b>r</b> reset &nbsp;·&nbsp; <b>Enter</b> admit";
+    } else if (st === "horoscope") {
+      head = "The Almanac"; body = '<div class="ttl">Your horoscope, for this visit</div><p style="color:' + P.signal + '">' + escapeHTML(it.horoscope || "") + "</p>";
+      hint = "<b>Enter</b> to be admitted";
+    }
+    overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">' + head + "</div>" + body + '<div class="hint">' + hint + "</div></div></div>";
   }
   function showPostmortem() {
     var pm = sim.postmortem();
@@ -1032,14 +1050,21 @@ window.__initPlayMap = function () {
       if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.invSelect(k.charCodeAt(0) - 97); draw(); return; }
       return;
     }
-    // GATE 6 — the ADMISSION INTAKE is modal: pick a background (↑/↓ or 1–N), Enter declares, Esc steps away.
+    // CHARACTER E — the staged CREATION FLOW is modal: sign -> visa -> allocate -> horoscope.
     if (vw.intake && vw.intake.open) {
+      var ist = vw.intake.stage;
+      if (k === "Escape") { e.preventDefault(); sim.intakeCancel(); draw(); return; }
       if (k === "ArrowUp") { e.preventDefault(); sim.intakeMove("up"); draw(); return; }
       if (k === "ArrowDown") { e.preventDefault(); sim.intakeMove("down"); draw(); return; }
-      if (k === "Enter") { e.preventDefault(); sim.intakeChoose(); draw(); return; }
-      if (k === "Escape") { e.preventDefault(); sim.intakeCancel(); draw(); return; }
-      if (/^[1-9]$/.test(k)) { e.preventDefault(); var bl = vw.intake.list || [], bi = (+k) - 1; if (bl[bi]) sim.chooseBackground(bl[bi].id); draw(); return; }
-      return;   // modal: the form swallows other input
+      if (k === "Enter") { e.preventDefault(); sim.intakeChoose(); draw(); return; }   // advance the stage / be admitted
+      if (ist === "allocate") {
+        if (k === "ArrowRight" || k === "+" || k === "=") { e.preventDefault(); sim.intakeAdjust(1); draw(); return; }
+        if (k === "ArrowLeft" || k === "-" || k === "_") { e.preventDefault(); sim.intakeAdjust(-1); draw(); return; }
+        if (k === "r") { e.preventDefault(); sim.allocReset(); draw(); return; }
+      } else if ((ist === "sign" || ist === "visa") && /^[1-9]$/.test(k)) {
+        e.preventDefault(); var bl = vw.intake.list || [], bi = (+k) - 1; if (bl[bi]) { if (ist === "sign") sim.pickSign(bl[bi].id); else sim.pickVisa(bl[bi].id); } draw(); return;
+      }
+      return;   // modal: the flow swallows other input
     }
     // door command awaiting a direction (o/c then a direction key); Esc / any other key cancels
     if (doorCmd) {
@@ -1072,7 +1097,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Character D — unified allocation pool (escalating, not gameable)";
+  var VERSION = "Character E — creation flow: welcome, sign, visa, allocation, horoscope";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
