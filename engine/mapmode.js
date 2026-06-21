@@ -739,17 +739,18 @@ var TD_MAP = (function () {
     // feel-words (NEVER a number): a weapon's weight in the hand, an armour tier's heft.
     function weightWord(w) { return w <= 2 ? "light in the hand" : w <= 4 ? "a fair heft" : w <= 7 ? "heavy" : "a burden to swing"; }
     function heftWord(spec) { var e = spec.encumbrance || 0; return e <= 1 ? "barely there" : e <= 3 ? "a steady weight" : "ponderous on the shoulders"; }
-    function weaponItem(spec) { var v = (GEAR && GEAR.WEAPON_TYPES[spec.type]) ? GEAR.WEAPON_TYPES[spec.type].verb : spec.verb; return { kind: "weapon", slot: "weapon", glyph: ")", name: spec.name, weight: spec.weight, bulk: spec.bulk, type: spec.type, verb: spec.verb || v, spec: spec, desc: "A " + spec.type + " weapon — you " + (spec.verb || v) + " with it. It is " + weightWord(spec.weight) + "." }; }
-    function armorItem(spec) { return { kind: "armor", slot: "armor", glyph: "[", name: spec.name, weight: armorCarryWeight(spec), bulk: 4, spec: spec, desc: spec.name + " — it sits " + heftWord(spec) + "." }; }
+    function weaponItem(spec) { var v = (GEAR && GEAR.WEAPON_TYPES[spec.type]) ? GEAR.WEAPON_TYPES[spec.type].verb : spec.verb; return { kind: "weapon", slot: "rightHand", glyph: ")", name: spec.name, weight: spec.weight, bulk: spec.bulk, type: spec.type, hands: spec.hands || 1, verb: spec.verb || v, spec: spec, desc: "A " + (((spec.hands || 1) === 2) ? "two-handed " : "") + spec.type + " weapon — you " + (spec.verb || v) + " with it. It is " + weightWord(spec.weight) + "." }; }
+    // GATE 7 (A): an armour piece is slot-bound (it equips to its own slot, e.g. a helm -> head).
+    function armorItem(spec) { return { kind: "armor", slot: spec.slot || "body", glyph: "[", name: spec.name, weight: spec.weight || armorCarryWeight(spec), bulk: 4, spec: spec, desc: spec.name + " (" + (spec.slot || "armour") + ") — it sits " + heftWord(spec) + "." }; }
     function spawnGear() {
       if (!GEAR || !inDungeon() || (world.nodes[ctrl.node] || {}).dmz) return;
-      var wkeys = Object.keys(GEAR.WEAPONS), akeys = ["light", "medium", "heavy"];   // unarmoured isn't a drop
+      var wkeys = Object.keys(GEAR.WEAPONS), akeys = ["light", "medium", "heavy"], aslots = ["head", "body", "hands", "feet", "waist", "back"];   // GATE 7 (A): armour drops as SLOT PIECES
       var n = Math.round(walkableCount() * GEAR_DENSITY);
       for (var i = 0; i < n; i++) {
         var spot = pickSpot();
         if (!spot || itemAt(spot.x, spot.y) || creatureAt(spot.x, spot.y)) continue;
         if (rng.chance(0.7)) ctrl.items[key(spot.x, spot.y)] = weaponItem(GEAR.WEAPONS[rng.pick(wkeys)]);   // weapons more common than armour
-        else ctrl.items[key(spot.x, spot.y)] = armorItem(GEAR.ARMOR[rng.pick(akeys)]);
+        else ctrl.items[key(spot.x, spot.y)] = armorItem(GEAR.armorPiece(rng.pick(aslots), rng.pick(akeys)));
       }
     }
     // GATE 4 R4 — DEPTH-BANDED SPAWN TABLE. Danger rises with depth by shifting the foe MIX toward
@@ -878,8 +879,10 @@ var TD_MAP = (function () {
     // MAGNITUDE stays QB's (damage() already carries the crush term); this is only the tell. The hook is
     // DORMANT in normal play (no impact-wielding foe exists yet) — it lights up when one does.
     function crushTell(attWeapon) {
-      var arm = ctrl.character && ctrl.character.armor;
-      if (attWeapon && attWeapon.type === "impact" && arm && arm.tier === 4 && arm.crushTell) senses(arm.crushTell, "heard", "OBJ");
+      // GATE 7 (A): the player's armour is now AGGREGATED across slots — the crush-tell fires when the worn
+      // set includes plate (a heavy piece) and an impact blow lands on it.
+      var arm = playerArmor();
+      if (attWeapon && attWeapon.type === "impact" && arm && arm.heavy && arm.crushTell) senses(arm.crushTell, "heard", "OBJ");
     }
     function creaturesStep() {
       var toldIntent = false;   // one telegraph per step keeps the senses panel readable, not spammy
@@ -964,9 +967,17 @@ var TD_MAP = (function () {
     // ENCUMBRANCE (R2): the carried loadout (gear + weighty inventory + purse) -> a TD_BURDEN band ->
     // worse EVASION (folded into the player fighter) + slower MOVE/tempo. PLACEHOLDER magnitudes.
     var ENC_EVASION = { unencumbered: 0, laden: 2, strained: 5, overloaded: 9 };   // band -> evasion-dulling (placeholder)
+    // GATE 7 (A): the player's effective {weapon, armor} aggregated from the 11-slot equipment.
+    function playerLoadout() {
+      var ch = ctrl.character;
+      if (!ch || typeof TD_RESOLVE === "undefined" || !TD_RESOLVE.GEAR || !TD_RESOLVE.GEAR.aggregate) return null;
+      return TD_RESOLVE.GEAR.aggregate(ch.equipment || {});
+    }
+    function playerArmor() { var lo = playerLoadout(); return lo ? lo.armor : null; }
     function carriedItems() {
-      var its = [], ch = ctrl.character;
-      if (ch && ch.weapon) its.push(ch.weapon);
+      var its = [], ch = ctrl.character, G = (typeof TD_RESOLVE !== "undefined") ? TD_RESOLVE.GEAR : null;
+      var eq = ch && ch.equipment;   // every worn/wielded piece carries weight toward the burden band
+      if (eq && G) G.SLOTS.forEach(function (s) { var p = eq[s]; if (p && typeof p.weight === "number" && (s !== "leftHand" || p !== eq.rightHand)) its.push(p); });
       (ctrl.inventory || []).forEach(function (it) { if (it && typeof it.weight === "number") its.push(it); });
       return its;
     }
@@ -976,11 +987,11 @@ var TD_MAP = (function () {
       return TD_BURDEN.compute(ctrl.character.stats, carriedItems(), playerPurse());
     }
     function playerFighter() {
-      var ch = ctrl.character;
-      if (!ch || !ch.stats || typeof TD_RESOLVE === "undefined" || typeof TD_RESOLVE.fighter !== "function") return null;
-      var armor = ch.armor, bnd = playerBand();
-      if (bnd) { var pen = ENC_EVASION[bnd.band.key] || 0; if (pen) armor = { name: armor ? armor.name : "unarmoured", robustness: armor ? armor.robustness : 0, encumbrance: (armor ? armor.encumbrance : 0) + pen }; }   // burden dulls evasion
-      return TD_RESOLVE.fighter(ch.stats, ch.weapon, armor);
+      var ch = ctrl.character, lo = playerLoadout();
+      if (!ch || !ch.stats || !lo || typeof TD_RESOLVE === "undefined" || typeof TD_RESOLVE.fighter !== "function") return null;
+      var armor = lo.armor, bnd = playerBand();
+      if (bnd) { var pen = ENC_EVASION[bnd.band.key] || 0; if (pen) armor = { name: armor.name, robustness: armor.robustness, encumbrance: (armor.encumbrance || 0) + pen, heavy: armor.heavy, crushTell: armor.crushTell }; }   // burden dulls evasion
+      return TD_RESOLVE.fighter(ch.stats, lo.weapon, armor);
     }
     // feel-word on a band CROSSING (no number) + a tempo penalty when slow (the world gains a step on you).
     function updateBand() {
@@ -1181,18 +1192,27 @@ var TD_MAP = (function () {
     // GATE 2 — equip a gear item off the floor; the displaced piece falls to the pack (its weight now
     // rides the burden band). Feel-words only: name + type-verb + weight/heft, never an integer.
     function equipFromFloor(it) {
-      var ch = ctrl.character;
+      var ch = ctrl.character; if (!ch.equipment) ch.equipment = {}; var eq = ch.equipment, spec = it.spec;
       if (it.kind === "weapon") {
-        if (ch.weapon) ctrl.inventory.push(weaponItem(ch.weapon));     // old weapon -> pack (carried weight)
-        ch.weapon = it.spec;
+        var twoH = (spec.hands || 1) === 2;
+        if (twoH) {                                                    // a 2H fills BOTH hands; displace whatever was held
+          if (eq.rightHand) ctrl.inventory.push(weaponItem(eq.rightHand));
+          if (eq.leftHand && eq.leftHand !== eq.rightHand) ctrl.inventory.push(weaponItem(eq.leftHand));
+          eq.rightHand = spec; eq.leftHand = spec;
+        } else if (eq.rightHand && eq.rightHand === eq.leftHand) {     // was holding a 2H -> pack it, take this in the right
+          ctrl.inventory.push(weaponItem(eq.rightHand)); eq.leftHand = null; eq.rightHand = spec;
+        } else if (!eq.rightHand) { eq.rightHand = spec; }
+        else if (!eq.leftHand && (eq.rightHand.hands || 1) === 1) { eq.leftHand = spec; logMsg("You take up " + it.name + " in your off hand — two blades now.", false); updateBand(); return { got: true, equipped: true, slot: "leftHand", dual: true, item: it, event: ctrl.lastEvent }; }   // DUAL-WIELD
+        else { ctrl.inventory.push(weaponItem(eq.rightHand)); eq.rightHand = spec; }
         logMsg("You take up " + it.name + "; you " + (it.verb || "strike") + " with it. It feels " + weightWord(it.weight) + ".", false);
       } else {
-        if (ch.armor && ch.armor.name !== "unarmoured") ctrl.inventory.push(armorItem(ch.armor));   // old armour -> pack
-        ch.armor = it.spec;
-        logMsg("You don " + it.name + "; it sits " + heftWord(it.spec) + ".", false);
+        var slot = spec.slot || it.slot || "body";                    // an armour piece equips to ITS OWN slot
+        if (eq[slot]) ctrl.inventory.push(armorItem(eq[slot]));
+        eq[slot] = spec;
+        logMsg("You don " + it.name + "; it sits " + heftWord(spec) + ".", false);
       }
       updateBand();                                                    // the displaced piece may cross a band
-      return { got: true, equipped: true, slot: it.slot, item: it, event: ctrl.lastEvent };
+      return { got: true, equipped: true, slot: (spec && spec.slot) || it.slot, item: it, event: ctrl.lastEvent };
     }
     // GATE 2 — re-equip a backup from the pack ('u' on a weapon/armour). Swaps with the held piece.
     function equipFromPack(it) {
@@ -1430,12 +1450,17 @@ var TD_MAP = (function () {
         // GATE 2 R2 — the equip/character readout: gear as FEEL-WORDS only (name + type-verb; armour bulk
         // as ONE dial stop Unhindered/Cushioned/Shelled/Encased). NO numbers ever surface here.
         gear: (function () {
-          var ch = ctrl.character, w = ch && ch.weapon, a = ch && ch.armor, WT = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) ? TD_RESOLVE.GEAR.WEAPON_TYPES : {};
+          // GATE 7 (A): read the AGGREGATE loadout (11 slots). weapon = the wielded/effective weapon;
+          // armour = one bulk feel-word over total worn robustness + the signature body piece. No numbers.
+          var ch = ctrl.character, eq = ch && ch.equipment, G = (typeof TD_RESOLVE !== "undefined") ? TD_RESOLVE.GEAR : null;
+          if (!eq || !G || !G.aggregate) return { weapon: null, armour: null };
+          var ag = G.aggregate(eq);
           return {
-            weapon: w ? { name: w.name, verb: w.verb || (WT[w.type] || {}).verb || "strike" } : null,
-            armour: a ? { name: a.tierName || a.name, bulk: a.bulkReadout || null } : null
+            weapon: ag.weapon ? { name: ag.weapon.name, verb: ag.weapon.verb || "strike" } : null,
+            armour: { name: eq.body ? eq.body.name : "unarmoured", bulk: G.bulkWord(ag.armor.robustness) }
           };
         })(),
+        equipment: ctrl.character ? ctrl.character.equipment : null,   // GATE 7 (A) — raw slots, for the Phase-C paperdoll
         // GATE 4 R4 — the FLAGGED character-power surface: a feel-word for how strong the visitor has
         // grown (the canon had no power/level lane; this is a minimal composite of the combat triangle +
         // any growth-by-deeds). Lets the player read their standing against the floor's rising danger.

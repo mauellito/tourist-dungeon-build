@@ -40,8 +40,11 @@ function TD_GAME_TESTS() {
     assert(cut.dex > generic.dex && cut.con < generic.con, "Cutpurse biases Dex up, Con down");
     // declaring assigns the background's loadout
     var g = game(); g._interact("agency"); g.chooseBackground("stevedore");
-    eq(g._character().weapon.name, TD_RESOLVE.GEAR.WEAPONS.mace.name);
-    eq(g._character().armor.name, TD_RESOLVE.GEAR.ARMOR.heavy.name);
+    var eqp = g._character().equipment;   // GATE 7 (A): the loadout is now across the 11 slots
+    eq(eqp.rightHand.name, TD_RESOLVE.GEAR.WEAPONS.mace.name);
+    eq(eqp.body.tier, "heavy");                                  // a full plate set across the armour slots
+    var agg = TD_RESOLVE.GEAR.aggregate(eqp);
+    assert(agg.armor.robustness >= 9 && agg.armor.robustness <= 11, "the full plate set aggregates to ~the old heavy tier (rob 10)");
     assert(g._character().background.id === "stevedore", "the declared background id is recorded");
     // a quick-start (kiosk) carries no declared background
     var q = game(); q._interact("kiosk");

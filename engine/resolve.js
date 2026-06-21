@@ -115,21 +115,22 @@ var TD_RESOLVE = (function () {
     // encumbrance bands (wire-in NEXT). Verbs wired: blades add acc in hit(); impact's `crush`
     // reduces the defender's effective robustness in damage(); polearms carry `reach` + an
     // `opening` strike (now-resolvable on the first exchange) — full positioning is a LIVE HOOK.
+    // GATE 7 (A): each weapon declares `hands` (1 = one-handed, 2 = two-handed, takes both hands).
     WEAPONS: {
       // BLADES — fast, light, accuracy-leaning -> HIT
-      dagger:     { name: "a dagger",      type: "blade",   base: 6,  acc: 5,  weight: 1, bulk: 1, verb: "cut",    firstStrike: true },  // lightest, highest acc, lowest base; first-strike (initiative HOOK)
-      shortsword: { name: "a shortsword",  type: "blade",   base: 9,  acc: 3,  weight: 2, bulk: 2, verb: "cut" },
-      longsword:  { name: "a longsword",   type: "blade",   base: 12, acc: 2,  weight: 4, bulk: 3, verb: "cut" },
-      sabre:      { name: "a sabre",       type: "blade",   base: 10, acc: 4,  weight: 3, bulk: 2, verb: "cut" },
+      dagger:     { name: "a dagger",      type: "blade",   base: 6,  acc: 5,  weight: 1, bulk: 1, hands: 1, verb: "cut",    firstStrike: true },  // lightest, highest acc, lowest base; first-strike (initiative HOOK)
+      shortsword: { name: "a shortsword",  type: "blade",   base: 9,  acc: 3,  weight: 2, bulk: 2, hands: 1, verb: "cut" },
+      longsword:  { name: "a longsword",   type: "blade",   base: 12, acc: 2,  weight: 4, bulk: 3, hands: 1, verb: "cut" },
+      sabre:      { name: "a sabre",       type: "blade",   base: 10, acc: 4,  weight: 3, bulk: 2, hands: 1, verb: "cut" },
       // HEAVY / IMPACT — slow, heavy, Might-leaning -> DAMAGE (crush: armour robustness counts for less)
-      mace:       { name: "a mace",        type: "impact",  base: 14, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.6 },   // GATE 2 R3: impact base nudged so DAMAGE/burst wins the tanky foe (lurker) without dominating
-      warhammer:  { name: "a warhammer",   type: "impact",  base: 17, acc: -3, weight: 9, bulk: 6, verb: "crush",  crush: 0.4 },  // heaviest: biggest crush + encumbrance
-      axe:        { name: "an axe",        type: "impact",  base: 15, acc: -1, weight: 6, bulk: 4, verb: "crush",  crush: 0.55 },
-      flail:      { name: "a flail",       type: "impact",  base: 14, acc: -2, weight: 7, bulk: 5, verb: "crush",  crush: 0.5 },
-      // POLEARMS — reach -> POSITIONING (opening strike now-resolvable; full positioning a HOOK)
-      spear:      { name: "a spear",       type: "polearm", base: 15, acc: 1,  weight: 4, bulk: 5, verb: "skewer", reach: true, opening: 3 },  // GATE 4 R2: +1 base so the reach GENERALIST wins the NORMAL foe (its niche); full positioning edge still a deferred spatial HOOK
-      halberd:    { name: "a halberd",     type: "polearm", base: 16, acc: 0,  weight: 7, bulk: 6, verb: "skewer", reach: true, opening: 2 },
-      pike:       { name: "a pike",        type: "polearm", base: 14, acc: 0,  weight: 8, bulk: 8, verb: "skewer", reach: true, opening: 4 }   // longest reach -> biggest opening
+      mace:       { name: "a mace",        type: "impact",  base: 14, acc: -1, weight: 6, bulk: 4, hands: 1, verb: "crush",  crush: 0.6 },   // GATE 2 R3: impact base nudged so DAMAGE/burst wins the tanky foe (lurker) without dominating
+      warhammer:  { name: "a warhammer",   type: "impact",  base: 17, acc: -3, weight: 9, bulk: 6, hands: 2, verb: "crush",  crush: 0.4 },  // heaviest: biggest crush + encumbrance; TWO-HANDED
+      axe:        { name: "an axe",        type: "impact",  base: 15, acc: -1, weight: 6, bulk: 4, hands: 1, verb: "crush",  crush: 0.55 },
+      flail:      { name: "a flail",       type: "impact",  base: 14, acc: -2, weight: 7, bulk: 5, hands: 1, verb: "crush",  crush: 0.5 },
+      // POLEARMS — reach -> POSITIONING (opening strike now-resolvable; full positioning a HOOK); all TWO-HANDED
+      spear:      { name: "a spear",       type: "polearm", base: 15, acc: 1,  weight: 4, bulk: 5, hands: 2, verb: "skewer", reach: true, opening: 3 },  // GATE 4 R2: +1 base so the reach GENERALIST wins the NORMAL foe (its niche); full positioning edge still a deferred spatial HOOK
+      halberd:    { name: "a halberd",     type: "polearm", base: 16, acc: 0,  weight: 7, bulk: 6, hands: 2, verb: "skewer", reach: true, opening: 2 },
+      pike:       { name: "a pike",        type: "polearm", base: 14, acc: 0,  weight: 8, bulk: 8, hands: 2, verb: "skewer", reach: true, opening: 4 }   // longest reach -> biggest opening
     },
     // ARMOR — ONE MASTER DIAL, light <-> bulky (4 named tiers). The single dial position drives BOTH
     // together: bulkier = more robustness (damage-reduction) AND more encumbrance (worse evasion ->
@@ -165,6 +166,63 @@ var TD_RESOLVE = (function () {
     }
   };
   GEAR.ARMOR.none = GEAR.ARMOR.unarmored;   // alias so older callers (fighter default, tests) keep working
+
+  // GATE 7 (A) — MULTI-SLOT EQUIPMENT. Eleven slots; nine worn + two hands. The single armour dial is
+  // reversed into per-slot PIECES whose robustness/encumbrance/weight AGGREGATE (sum) into the same
+  // totals the combat already reads (no combat-math change). A FULL MATCHING SET of one tier reproduces
+  // that tier's OLD total (the Gate 1/4 calibration holds). DURABILITY DROPPED; MAGIC DEFERRED — accessory
+  // slots (neck/rings) are mundane and carry no effect yet (FLAGGED: girdle->carry / boots->minor-evasion
+  // mundane accessory effects deferred with the item-effect layer). Foes are UNCHANGED (single weapon/armor).
+  GEAR.SLOTS = ["head", "body", "hands", "feet", "neck", "ringL", "ringR", "waist", "back", "rightHand", "leftHand"];
+  GEAR.WORN = ["head", "body", "hands", "feet", "neck", "ringL", "ringR", "waist", "back"];   // everything not a hand
+  var ARMOR_SLOTS = {   // each protective slot's SHARE of a tier's rob/enc/weight (sums to ~1.0 -> a full set = the tier)
+    body:  { share: 0.50, noun: { light: "a padded jerkin", medium: "a mail hauberk", heavy: "a plate cuirass" } },
+    head:  { share: 0.20, noun: { light: "a padded coif", medium: "a mail coif", heavy: "a plate helm" } },
+    hands: { share: 0.10, noun: { light: "padded gloves", medium: "mail mittens", heavy: "plate gauntlets" } },
+    feet:  { share: 0.10, noun: { light: "soft boots", medium: "mail-shod boots", heavy: "steel sabatons" } },
+    waist: { share: 0.05, noun: { light: "a cloth girdle", medium: "a studded belt", heavy: "a plate fauld" } },
+    back:  { share: 0.05, noun: { light: "a travelling cloak", medium: "a weighted cloak", heavy: "a mantle of plates" } }
+  };
+  var DUAL_ACC = 3, DUAL_ENC = 1;   // dual-wield: modest off-hand offense at an accuracy + encumbrance(-evasion) cost
+  function armorPiece(slot, tier) {
+    var def = ARMOR_SLOTS[slot]; if (!def) return null;
+    var T = GEAR.ARMOR[tier] || GEAR.ARMOR.light, sh = def.share;
+    return { kind: "armor", slot: slot, tier: tier, name: def.noun[tier] || (tier + " " + slot),
+      robustness: T.robustness * sh, encumbrance: T.encumbrance * sh, weight: Math.max(1, Math.round(T.encumbrance * sh * 3 + 1)),
+      bulkReadout: T.bulkReadout, struckFeel: T.struckFeel, crushTell: T.crushTell };
+  }
+  // aggregate a player's equipment into the {weapon, armor} the combat reads. Worn pieces sum their
+  // robustness/encumbrance; the primary weapon is the right hand (else left); two 1H weapons dual-wield
+  // (effective base = primary + a fraction of the off-hand, at an accuracy + encumbrance cost — SHALLOW by
+  // design; deep second-attack mechanics are FLAGGED out of scope). Empty hands -> bare fists.
+  function aggregate(eq) {
+    eq = eq || {};
+    var rob = 0, enc = 0, wt = 0, heavyWorn = false;
+    GEAR.WORN.forEach(function (s) { var p = eq[s]; if (p) { rob += p.robustness || 0; enc += p.encumbrance || 0; wt += p.weight || 0; if (p.tier === "heavy") heavyWorn = true; } });
+    var rh = eq.rightHand, lh = eq.leftHand, primary = rh || lh || null, dual = false;
+    var weapon = primary || { name: "your fists", type: "blade", base: 2, acc: 0, hands: 1, verb: "strike" };
+    if (rh && lh && rh !== lh && (rh.hands || 1) === 1 && (lh.hands || 1) === 1) {
+      dual = true; var off = lh;
+      weapon = { name: rh.name + " (and " + off.name + ")", type: rh.type, base: rh.base + Math.round((off.base || 0) * 0.35),
+        acc: (rh.acc || 0) - DUAL_ACC, verb: rh.verb, crush: rh.crush, reach: rh.reach, opening: rh.opening, hands: 1, dual: true };
+      enc += DUAL_ENC;
+    }
+    if (primary) wt += primary.weight || 0;
+    return { weapon: weapon, armor: { name: "worn gear", robustness: rob, encumbrance: enc, heavy: heavyWorn, crushTell: heavyWorn ? GEAR.ARMOR.heavy.crushTell : null }, weight: wt, dual: dual };
+  }
+  // a fresh starting loadout: a full armour set of `tier` (null/"unarmored" = no armour) + a weapon
+  // (2H fills both hands). Used by freshCharacter (quick-start) and the Gate 6 background intake.
+  function startingSet(tier, weaponKey) {
+    var eq = { head: null, body: null, hands: null, feet: null, neck: null, ringL: null, ringR: null, waist: null, back: null, rightHand: null, leftHand: null };
+    if (tier && tier !== "unarmored" && tier !== "none" && GEAR.ARMOR[tier]) ["head", "body", "hands", "feet", "waist", "back"].forEach(function (s) { eq[s] = armorPiece(s, tier); });
+    var w = GEAR.WEAPONS[weaponKey];
+    if (w) { eq.rightHand = w; if ((w.hands || 1) === 2) eq.leftHand = w; }
+    return eq;
+  }
+  GEAR.armorPiece = armorPiece; GEAR.aggregate = aggregate; GEAR.startingSet = startingSet;
+  // a single feel-word for total worn bulk (the dossier readout), matching the old four dial stops.
+  GEAR.bulkWord = function (rob) { return rob <= 0 ? "Unhindered" : rob <= 4 ? "Cushioned" : rob <= 8 ? "Shelled" : "Encased"; };
+
   function _S() { return (typeof TD_STATS !== "undefined") ? TD_STATS : null; }
   var ENC_EV_PENALTY = 2.5;   // GATE 4 R2: armour encumbrance -> evasion penalty multiplier. Heavy (enc6) => -15 EV, enough to cancel even a high-Dex dodge: you pick light-and-dodge OR heavy-and-absorb, never both.
   function fighter(stats, weapon, armor) { return { stats: stats, weapon: weapon || GEAR.WEAPONS.longsword, armor: armor || GEAR.ARMOR.none }; }

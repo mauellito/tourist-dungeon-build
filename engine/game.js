@@ -112,7 +112,7 @@ var TD_GAME = (function () {
       }
       // starting gear (combat track phase 3): a weapon + armour the player carries; both feed combat
       // and encumbrance. PLACEHOLDER loadout from the roster (rosters/shops are a later directive).
-      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.weapon = TD_RESOLVE.GEAR.WEAPONS.shortsword; character.armor = TD_RESOLVE.GEAR.ARMOR.light; }
+      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("light", "shortsword"); }   // GATE 7 (A): the quick-start loadout across the 11 slots (full light set + shortsword)
       character.purse = { copper: 0, silver: 0, gold: 0 };   // coins picked up in the descent (weight -> encumbrance)
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
@@ -142,10 +142,7 @@ var TD_GAME = (function () {
         character.progress = TD_STATS.newProgress();
         var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hp = hpm; meters.hpMax = hpm;   // Con -> HP, re-derived for the declared build
       }
-      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) {
-        if (TD_RESOLVE.GEAR.WEAPONS[bg.weapon]) character.weapon = TD_RESOLVE.GEAR.WEAPONS[bg.weapon];
-        if (TD_RESOLVE.GEAR.ARMOR[bg.armor]) character.armor = TD_RESOLVE.GEAR.ARMOR[bg.armor];
-      }
+      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) character.equipment = TD_RESOLVE.GEAR.startingSet(bg.armor, bg.weapon);   // GATE 7 (A): the declared loadout across the 11 slots
       character.background = { id: id, name: bg.name, disposition: bg.disposition };
       character.ticket = "agency"; character.signalsSeen.add("001"); intakeOpen = false;
       senses("The clerk stamps the form without quite reading it: “" + SIG["001"].t + ".”", "said", "OBJ");
@@ -998,11 +995,12 @@ var TD_GAME = (function () {
       v.intake = intakeOpen ? { open: true, sel: intakeSel, list: intakeList() } : null;   // GATE 6 — the admission form, while open
       // GATE 6 — surface the carried loadout in TOWN too (the dungeon view already carries it), so the
       // declared background's gear reads in the dossier the moment you've declared. Feel-words only.
-      if (!v.gear) {
-        var w = character.weapon, a = character.armor, WT = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) ? TD_RESOLVE.GEAR.WEAPON_TYPES : {};
-        v.gear = { weapon: w ? { name: w.name, verb: w.verb || (WT[w.type] || {}).verb || "strike" } : null,
-                   armour: a ? { name: a.tierName || a.name, bulk: a.bulkReadout || null } : null };
+      if (!v.gear && typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR && character.equipment) {
+        var ag = TD_RESOLVE.GEAR.aggregate(character.equipment), eq = character.equipment;
+        v.gear = { weapon: ag.weapon ? { name: ag.weapon.name, verb: ag.weapon.verb || "strike" } : null,
+                   armour: { name: eq.body ? eq.body.name : "unarmoured", bulk: TD_RESOLVE.GEAR.bulkWord(ag.armor.robustness) } };
       }
+      v.equipment = character.equipment || null;   // GATE 7 (A) — raw slots, for the Phase-C paperdoll
       // the latest log line is the unified "current event", whoever wrote it
       // (town counters, dungeon controller, or the top-level verbs here).
       var lastM = shared.messages.length ? shared.messages[shared.messages.length - 1] : null;
