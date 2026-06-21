@@ -50,6 +50,9 @@ var TD_UI = (function () {
     // TOWN A — building CATEGORY hues (TUNABLE): civic slate-blue, commerce warm tan, food+lodging amber/gold,
     // vice/red-light magenta, maritime sea-teal. (civic + vice already above; food + maritime added here.)
     food:       "#d9a441", maritime: "#3fa3a3",
+    // GATE 1 — the CHURCH landmark reads in a SANCTIFIED jewel tone (cool amethyst/stained-glass), set
+    // apart from the civic slate so it's findable across town. One meaning: faith/sanctified.
+    sanctified: "#9a6fe0", sanctifiedBg: "#241a3a",
     // danger tints for the threats panel (severity, a defined meaning)
     dangerHigh: "#ff2d1f", dangerMed: "#e0902a", dangerLow: "#caa15a",
     // COMBAT JUICE: the MUTED hit-tick (a blow fully absorbed / de-minimis) — a quiet grey pulse,
@@ -225,7 +228,9 @@ var TD_UI = (function () {
   // tells the specific building; colour tells the category at a glance. Editable.
   var BUILDING_KIND = {
     // CIVIC (slate-blue)
-    bank: "civic", customs: "civic", church: "civic", agency: "civic", kiosk: "civic", tim: "civic", office: "civic", DUNGEON: "civic", boat: "civic",
+    bank: "civic", customs: "civic", agency: "civic", kiosk: "civic", tim: "civic", office: "civic", DUNGEON: "civic", boat: "civic",
+    // FAITH (sanctified jewel tone) — GATE 1: the church is its own landmark category, not civic
+    church: "faith",
     // FOOD + LODGING (amber/gold)
     tavern: "food", saloon: "food", restaurant: "food", coffee: "food", chinese: "food", hotel: "food", motel: "food",
     // VICE / RED-LIGHT (magenta) — GATE 4: the bodega moved OUT to commerce (it's an enterable shop now)
@@ -234,7 +239,7 @@ var TD_UI = (function () {
     chandlery: "maritime", warehouse: "maritime", clamshack: "maritime", spa: "maritime"
     // everything else (store/apothecary/bodega/bookstore/fence/tailor/cobbler/barber/bakery/grocer/tattoo/blacksmith/gift…) = COMMERCE (warm tan)
   };
-  var CATEGORY_COLOR = { civic: "civic", food: "food", vice: "vice", maritime: "maritime", commerce: "storefront", faith: "civic", lodging: "food" };
+  var CATEGORY_COLOR = { civic: "civic", food: "food", vice: "vice", maritime: "maritime", commerce: "storefront", faith: "sanctified", lodging: "food" };
   function buildingCategory(id) { return BUILDING_KIND[id] || "commerce"; }   // commerce is the default frontage
   function buildingColor(id) { return PALETTE[CATEGORY_COLOR[buildingCategory(id)] || "storefront"]; }
 

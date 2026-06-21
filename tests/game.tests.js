@@ -477,7 +477,7 @@ function TD_GAME_TESTS() {
     assert(v.buildings && v.buildings.length >= 10, "the view carries the building list (" + (v.buildings || []).length + ")");
     var church = v.buildings.filter(function (b) { return b.id === "church"; })[0];
     var hotel = v.buildings.filter(function (b) { return b.id === "hotel"; })[0];
-    assert(church && church.glyph === "C" && TD_UI.buildingCategory("church") === "civic", "the church reads as civic (glyph C)");
+    assert(church && TD_UI.buildingCategory("church") === "faith", "GATE 1: the church reads as a FAITH landmark (sanctified, not civic)");
     assert(hotel && hotel.glyph === "H" && TD_UI.buildingCategory("hotel") === "food", "the hotel reads as food/lodging (glyph H)");
     assert(v.dungeonEntrance, "the dungeon entrance is exposed for the map");
     v.buildings.forEach(function (b) { if (b.id !== "church") assert(church.area >= b.area, "size grammar: church >= " + b.id); });

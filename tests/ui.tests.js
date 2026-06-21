@@ -176,7 +176,7 @@ function TD_UI_TESTS() {
 
   test("TOWN A: a building's CATEGORY is classifiable, and the five categories own distinct hues", function () {
     var cat = TD_UI.buildingCategory;
-    eq(cat("church"), "civic", "church is civic");
+    eq(cat("church"), "faith", "GATE 1: the church is its own FAITH landmark category (sanctified jewel tone, not civic)");
     eq(cat("bank"), "civic", "bank is civic");
     eq(cat("DUNGEON"), "civic", "the dungeon office/entrance is civic");
     eq(cat("coffee"), "food", "coffee is food/lodging");
@@ -185,10 +185,10 @@ function TD_UI_TESTS() {
     eq(cat("chandlery"), "maritime", "the chandlery is maritime");
     eq(cat("spa"), "maritime", "the spa is maritime");
     eq(cat("store"), "commerce", "a shop defaults to commerce");
-    var ids = { civic: "bank", commerce: "store", food: "coffee", vice: "redshop", maritime: "chandlery" };
+    var ids = { civic: "bank", commerce: "store", food: "coffee", vice: "redshop", maritime: "chandlery", faith: "church" };
     var hues = Object.keys(ids).map(function (k) { return TD_UI.buildingColor(ids[k]); });
     var uniq = hues.filter(function (v, i, a) { return a.indexOf(v) === i; });
-    eq(uniq.length, 5, "the five town categories own five distinct hues");
+    eq(uniq.length, 6, "the six town categories own six distinct hues (faith added: the church landmark)");
   });
 
   var pass = results.filter(function (r) { return r.ok; }).length;

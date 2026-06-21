@@ -619,7 +619,7 @@ var TD_GAME = (function () {
     // POIs -> bump-to-read FEATURES (fronts are flavour — no interiors yet, operator ruling).
     function adaptTownGen(m) {
       var Wt = m.w, Ht = m.h, grid = [], ground = {}, doors = {}, features = {}, buildings = [], cells = [];
-      var gateCell = null, mouth = null;
+      var gateCell = null, mouth = null, churchCells = [];
       var GT = { plaza: "stone", park: "grass", graveyard: "grass", alley: "redlight", pier: "plank", bridge: "plank", street: "cobble", gate: "cobble", dungeon: "stone", landmark: "stone", notice: "cobble", vendor: "cobble", npc: "cobble", kiosk: "stone" };
       // ambient townsfolk barks, by the quarter they stand in (accent law: word choice + rhythm
       // only, never phonetic spelling). Bump-to-read flavor; no mechanics.
@@ -641,12 +641,13 @@ var TD_GAME = (function () {
           var t = m.tag[y][x], ch = ".";
           if (t === "water") ch = "~";
           else if (t === "building" || t === "wall" || t === "townsecret") ch = "#";
+          else if (t === "church") ch = "#";   // GATE 1: the church is a SOLID landmark structure (jewel-toned, see churchRect)
           else if (t === "fence") ch = ":";
           row.push(ch);
           if (ch === "." && GT[t]) ground[key(x, y)] = GT[t];
           if (t === "gate") gateCell = { x: x, y: y };
           else if (t === "dungeon") mouth = { x: x, y: y };
-          else if (t === "church") buildings.push({ id: "church", glyph: "C", x0: x, y0: y, w: 1, h: 1 });
+          else if (t === "church") churchCells.push({ x: x, y: y });
           else if (t === "landmark") features[key(x, y)] = { type: "view", glyph: "☼", col: "signal", label: "a district landmark", text: "A weenie the quarter gathers around. (Its content arrives with the interiors pass.)", act: "look" };
           else if (t === "notice") features[key(x, y)] = { type: "notice", glyph: "¶", label: "a Bureau notice", text: "A Bureau notice, freshly pasted and already contradicting the one beside it.", act: "read" };
           else if (t === "vendor") features[key(x, y)] = { type: "view", glyph: "₪", col: "signal", label: "a street vendor", text: "A vendor's cart, permits fluttering. The goods are flavour for now; the till is firewalled.", act: "look" };
@@ -654,6 +655,16 @@ var TD_GAME = (function () {
           else if (t === "kiosk") features[key(x, y)] = { type: "counter", glyph: "K", col: "signal", label: "the Kiosk — admission to the dungeon", text: "The Kiosk. Admission to the commute is sold here (a stub for now).", act: "kiosk" };
         }
         grid.push(row);
+      }
+      // GATE 1 — THE CHURCH AS A LANDMARK: merge the scattered church cells into ONE multi-cell structure
+      // with a single cross glyph centred on its footprint (jewel-toned via churchRect). The one building
+      // you can find from across town.
+      var churchRect = null;
+      if (churchCells.length) {
+        var cx0 = Wt, cy0 = Ht, cx1 = 0, cy1 = 0;
+        churchCells.forEach(function (c) { if (c.x < cx0) cx0 = c.x; if (c.y < cy0) cy0 = c.y; if (c.x > cx1) cx1 = c.x; if (c.y > cy1) cy1 = c.y; });
+        churchRect = [cx0, cy0, cx1, cy1];
+        buildings.push({ id: "church", glyph: "†", x0: cx0, y0: cy0, w: cx1 - cx0 + 1, h: cy1 - cy0 + 1, landmark: true });   // † cross
       }
       // spawn JUST INSIDE the gate, on the spine side (toward the dungeon mouth /
       // map centre) — the gate sits on the map border, so spawning on it would jam
@@ -703,7 +714,7 @@ var TD_GAME = (function () {
         if (D.role === "market" && !dmeta.market) dmeta.market = { rect: r };
       });
       var rl = m.meta.redlight ? { rect: [m.meta.redlight.x0, m.meta.redlight.y0, m.meta.redlight.x1, m.meta.redlight.y1] } : null;
-      var meta = { seed: m.seed, dungeonEntrance: dungeonEntrance, redlight: rl, districts: dmeta };
+      var meta = { seed: m.seed, dungeonEntrance: dungeonEntrance, redlight: rl, districts: dmeta, churchRect: churchRect };
       for (var y2 = 0; y2 < Ht; y2++) for (var x2 = 0; x2 < Wt; x2++) if (grid[y2][x2] === "." && !features[key(x2, y2)] && !doors[key(x2, y2)]) cells.push({ x: x2, y: y2 });
       // AMBIENT TOWNSFOLK (flavor first-pass): the authored map carries no NPC glyphs, so seed a
       // representative handful of static, bump-to-read townsfolk with accented one-liners, spread
@@ -920,10 +931,17 @@ var TD_GAME = (function () {
       shared.turn += 1;
       walkersStep();
       var dist = districtAt(nx, ny); if (dist) announce(dist);            // E1: crossing into a named district
-      // the senses emitter (town): the harbour makes itself heard near the water
+      // GATE 1 — DISTRICT AMBIENT (in-voice senses beats; each district sounds different):
+      // the HARBOUR (gulls + moored boats), the MARKET (crowd), and the CHURCH bell on approach.
       var nearW = waterAdjacent(P, nx, ny);
-      if (nearW && !sensedWater) senses("Down at the quay the water laps at the stone, patient and cold.", "heard", "OBJ");
+      if (nearW && !sensedWater) senses("Down at the quay the water laps at the stone; gulls wheel over the moored boats, indifferent to your itinerary.", "heard", "OBJ");
       sensedWater = nearW;
+      if (dist && /market/i.test(dist)) { var lm = announcedAt["__market"]; if (lm == null || (shared.turn - lm) >= 16) { announcedAt["__market"] = shared.turn; senses("The market is a press of voices and elbows; someone is selling something you did not know had a name.", "heard", "OBJ"); } }
+      var crch = P.meta && P.meta.churchRect;
+      if (crch) {
+        var ccx = (crch[0] + crch[2]) / 2, ccy = (crch[1] + crch[3]) / 2, cd = Math.abs(nx - ccx) + Math.abs(ny - ccy);
+        if (cd <= 7) { var lb = announcedAt["__bell"]; if (lb == null || (shared.turn - lb) >= 14) { announcedAt["__bell"] = shared.turn; senses("A bell tolls over the rooftops, slow and municipal; the eye climbs to the jewelled spire above the slate.", "heard", "OBJ"); } }
+      }
       maybeGiftDuel(); maybeAmbientBark();
       return { moved: true };
     }
@@ -1352,6 +1370,7 @@ var TD_GAME = (function () {
       v.name = character.name || null;   // Character E — the visitor's name (stored; surfaced as identity)
       v.district = isTownScreen(placeId) ? (districtAt(player.x, player.y) || null) : null;   // TOWN C — current district (drives the RLD neon pulse)
       v.redlightRect = (places.TOWN && places.TOWN.meta && places.TOWN.meta.redlight) ? places.TOWN.meta.redlight.rect : null;
+      v.churchRect = (places.TOWN && places.TOWN.meta) ? (places.TOWN.meta.churchRect || null) : null;   // GATE 1 — the church landmark footprint (jewel render)
       v.sign = character.sign ? { name: character.sign.name, day: character.sign.day } : null;   // Character C — birth sign + assigned day (feel-words; day is a date, not a stat)
       v.horoscope = character.horoscope ? { line: character.horoscope.line } : null;             // Character C — the run's fixed horoscope (Bureau flavour)
       // the latest log line is the unified "current event", whoever wrote it

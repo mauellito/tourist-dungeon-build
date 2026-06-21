@@ -212,7 +212,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "edee049";</script>
+<script>window.__BUILD = "08f9daa";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -509,7 +509,13 @@ window.__initPlayMap = function () {
         else if (ch === "=") { bg = "#23211c"; glyph = "▓"; col = P.rampart; }   // town perimeter rampart (Amendment 1)
         else if (ch === ":") { bg = bright ? P.floorBg : P.floorBgDim; glyph = ":"; col = P.fence; }   // an enclosure fence (see-through)
         else if (ch === "X") { bg = "#0a0a0c"; glyph = vw.pendingFall === k ? "▼" : "·"; col = "#3a3a44"; }
-        else if (ch === "#") { glyph = "#"; col = bright ? P.wall : P.wallDim; }
+        else if (ch === "#") {
+          // GATE 1 — the CHURCH footprint reads in the sanctified jewel palette (stained-glass), so the
+          // landmark is unmistakable against the bone-coloured ordinary walls.
+          var cr = town && vw.churchRect;
+          if (cr && x >= cr[0] && x <= cr[2] && y >= cr[1] && y <= cr[3]) { bg = P.sanctifiedBg; glyph = "▓"; col = bright ? P.sanctified : dim(P.sanctified); }
+          else { glyph = "#"; col = bright ? P.wall : P.wallDim; }
+        }
         if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
         if (glyph) { ctx.fillStyle = bright ? col : dim(col); ctx.fillText(glyph, px + TS / 2, py + TS / 2 + 1); }
       }
@@ -517,8 +523,8 @@ window.__initPlayMap = function () {
     // E2 — each named building's GLYPH, large + centred on its footprint, coloured
     // by KIND (civic/lodging/faith/commerce/vice). You read the town without entering.
     (vw.buildings || []).forEach(function (b) {
-      if (!/^[A-Z0-9]$/.test(b.glyph || "")) return;                       // the named buildings only (skip filler sheds/homes)
-      ctx.font = Math.round(TS * 1.7) + "px Consolas, monospace";
+      if (!b.landmark && !/^[A-Z0-9]$/.test(b.glyph || "")) return;        // named buildings + landmarks (skip filler sheds/homes)
+      ctx.font = Math.round(TS * (b.landmark ? 2.3 : 1.7)) + "px Consolas, monospace";   // GATE 1: the church cross looms larger than its neighbours
       ctx.fillStyle = (window.TD_UI && TD_UI.buildingColor) ? TD_UI.buildingColor(b.id) : P.wall;
       ctx.fillText(b.glyph, (b.x0 + b.w / 2) * TS, (b.y0 + b.h / 2) * TS + 1);
     });
@@ -1197,7 +1203,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Fix — feel-words re-centered, M/F only, viewport fits";
+  var VERSION = "Town character — varied silhouettes, district texture, church landmark";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
