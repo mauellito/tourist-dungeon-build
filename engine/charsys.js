@@ -20,7 +20,7 @@ var TD_CHARSYS = (function () {
   var PROF_RANKS = ["clumsy", "untrained", "familiar", "proficient", "expert", "master"];
   // a weapon-family proficiency RANK -> a small accuracy/damage modifier (a competence layer ON TOP of
   // the unchanged combat magnitudes). untrained (1) = 0; clumsy (0) = a penalty; master (5) = a modest bonus.
-  function profMod(rank) { var r = (typeof rank === "number") ? rank : 1; return { acc: (r - 1) * 2, dmg: Math.round((r - 1) * 0.6) }; }
+  function profMod(rank) { var r = (typeof rank === "number") ? rank : 1; return { acc: (r - 1) * 1.2, dmg: Math.round((r - 1) * 0.4) }; }
 
   // ---- SKILLS (editable list) --------------------------------------------------------------------
   var SKILLS = {
@@ -178,7 +178,26 @@ var TD_CHARSYS = (function () {
     else if (sheet && (horo.kind === "talent" || horo.kind === "ability")) grant(sheet, horo.kind, horo.target);
   }
 
+  // ---- PHASE 4 — THE UNIFIED ALLOCATION POOL (~20 pts; STATS or ABILITIES; not gameable) -----------
+  // ~20 discretionary points across two pieces: STATS (escalating cost — cheap below average, dear toward
+  // the top; lowering below average REFUNDS at the cheap rate; a hard human cap so you can't max one) and
+  // ABILITIES (skills/talents/proficiencies bought in discrete bounded chunks per rank/pick — no infinite
+  // stacking). Tuned so NEITHER piece strictly dominates per point (sandbox-verified). A STEP = 25 internal
+  // stat points (never shown). raiseCost depends on the value you raise FROM (stat-agnostic -> no dominant stat).
+  var POOL = {
+    POINTS: 20, STEP: 25, FLOOR: 320, CEIL: 950,
+    PICK_COST: { talent: 4, ability: 4, skill: 2, proficiency: 2 },   // discrete chunks; capped ranks -> bounded
+    raiseCost: function (v) { return v < 500 ? 1.0 : v < 600 ? 1.25 : v < 700 ? 1.5 : v < 800 ? 2.0 : v < 900 ? 2.5 : 3.0; },
+    lowerRefund: function () { return 1.0; }   // the cheap rate (lowering a dump stat funds little; no arbitrage vs the dear top)
+  };
+  function poolCostRaise(from, n) { var c = 0, v = from; for (var i = 0; i < n; i++) { if (v + POOL.STEP > POOL.CEIL) return Infinity; c += POOL.raiseCost(v); v += POOL.STEP; } return c; }
+  function poolRefundLower(from, n) { var r = 0, v = from; for (var i = 0; i < n; i++) { if (v - POOL.STEP < POOL.FLOOR) break; r += POOL.lowerRefund(v); v -= POOL.STEP; } return r; }
+  // the most STEPs you can raise a stat starting at `from`, spending up to `budget` points (caps at CEIL).
+  function poolMaxRaise(from, budget) { var n = 0, v = from, spent = 0; while (v + POOL.STEP <= POOL.CEIL) { var c = POOL.raiseCost(v); if (spent + c > budget + 1e-9) break; spent += c; v += POOL.STEP; n++; } return { steps: n, end: v, spent: spent }; }
+  function pickCost(cat) { return POOL.PICK_COST[cat] || 4; }
+
   return {
+    POOL: POOL, poolCostRaise: poolCostRaise, poolRefundLower: poolRefundLower, poolMaxRaise: poolMaxRaise, pickCost: pickCost,
     SIGNS: SIGNS, signList: signList, applySign: applySign, assignDay: assignDay,
     pullHoroscope: pullHoroscope, applyHoroscope: applyHoroscope,
     VISAS: VISAS, visaList: visaList, applyVisa: applyVisa, grantVisaSignature: grantVisaSignature,
