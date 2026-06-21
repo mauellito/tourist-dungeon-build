@@ -775,7 +775,7 @@ var TD_MAP = (function () {
     var DANGER_RATE = 1.4;            // target band = RATE^(L-1): the compounding danger ramp
     var BAND_SPREAD = 0.5;            // how tightly the mix clusters on the target band (smaller = tighter)
     var OUT_OF_DEPTH_CHANCE = 0.10;   // chance a given spawn is one band TOO STRONG for the floor (telegraphed must-flee)
-    var KINDS_BY_BAND = (function () { var m = {}; Object.keys(CREATURE).forEach(function (k) { var b = CREATURE[k].band || 1; (m[b] = m[b] || []).push(k); }); return m; })();
+    var KINDS_BY_BAND = (function () { var m = {}; Object.keys(CREATURE).forEach(function (k) { if (CREATURE[k].noSpawn) return; var b = CREATURE[k].band || 1; (m[b] = m[b] || []).push(k); }); return m; })();   // GATE 2: the retired office roster (noSpawn) is excluded from the pool
     var MAX_BAND = (function () { var mx = 1; Object.keys(CREATURE).forEach(function (k) { mx = Math.max(mx, CREATURE[k].band || 1); }); return mx; })();
     function pickFoe(L) {
       if (L < 1) L = 1;
