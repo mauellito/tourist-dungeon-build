@@ -995,7 +995,14 @@ var TD_MAP = (function () {
       if (!ch || !ch.stats || !lo || typeof TD_RESOLVE === "undefined" || typeof TD_RESOLVE.fighter !== "function") return null;
       var armor = lo.armor, bnd = playerBand();
       if (bnd) { var pen = ENC_EVASION[bnd.band.key] || 0; if (pen) armor = { name: armor.name, robustness: armor.robustness, encumbrance: (armor.encumbrance || 0) + pen, heavy: armor.heavy, crushTell: armor.crushTell }; }   // burden dulls evasion
-      return TD_RESOLVE.fighter(ch.stats, lo.weapon, armor);
+      // CHARACTER A — PROFICIENCY competence layer: a weapon-family rank folds a small acc/damage modifier
+      // into the EFFECTIVE weapon (combat magnitudes untouched). Default untrained -> no change.
+      var weapon = lo.weapon;
+      if (typeof TD_CHARSYS !== "undefined" && ch.sheet && weapon && weapon.type) {
+        var pr = TD_CHARSYS.profRankOf(ch.sheet, weapon.type);
+        if (pr !== 1) { var pm = TD_CHARSYS.profMod(pr), w2 = {}; for (var kk in weapon) w2[kk] = weapon[kk]; w2.acc = (weapon.acc || 0) + pm.acc; w2.base = (weapon.base || 0) + pm.dmg; weapon = w2; }
+      }
+      return TD_RESOLVE.fighter(ch.stats, weapon, armor);
     }
     // GATE 8 (B): fatigue RESISTANCE — Con + Grit + Might make you tire slower (a multiplier on all
     // fatigue GAIN). avg 500 = neutral (x1); hardy/willful/strong (high avg) tire far slower; the frail

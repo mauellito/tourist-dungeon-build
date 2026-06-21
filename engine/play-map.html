@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "fbf9f94";</script>
+<script>window.__BUILD = "586e9e3";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -637,6 +637,17 @@ window.__initPlayMap = function () {
       statrow("Neck", '<span id="sb-eq-neck">' + nm(eq.neck) + "</span>") +
       statrow("Rings", '<span id="sb-eq-rings">' + nm(eq.ringL) + " / " + nm(eq.ringR) + "</span>");
   }
+  // Character A — the aptitudes block (proficiencies/skills as feel-words; talents/abilities as held perks).
+  // Empty categories hide. Never a number.
+  function aptitudes(cs) {
+    if (!cs) return "";
+    var out = "";
+    if (cs.proficiencies && cs.proficiencies.length) out += section("Proficiencies") + cs.proficiencies.map(function (p) { return statrow(p.name, '<span>' + escapeHTML(p.word) + "</span>"); }).join("");
+    if (cs.skills && cs.skills.length) out += section("Skills") + cs.skills.map(function (s) { return statrow(s.name, '<span>' + escapeHTML(s.word) + "</span>"); }).join("");
+    if (cs.talents && cs.talents.length) out += section("Talents") + cs.talents.map(function (t) { return statrow(t.name, '<span style="color:#2f6d33">held</span>'); }).join("");
+    if (cs.abilities && cs.abilities.length) out += section("Abilities") + cs.abilities.map(function (a) { return statrow(a.name, '<span style="color:' + P.signal + '">ready</span>'); }).join("");
+    return out;
+  }
   function renderDossier(vw) {
     var m = vw.meters || {}, hg = vw.hunger || { stage: "—", critical: false };
     var hpFrac = m.hpMax ? m.hp / m.hpMax : 0, ftFrac = m.fatigueMax ? m.fatigue / m.fatigueMax : 0;
@@ -656,6 +667,7 @@ window.__initPlayMap = function () {
       paperdoll(vw.equipment, vw.gear) +
       // GATE 4.1/6 — the declared IDENTITY + the ten-stat CONSTITUTION sheet (feel-words, digit-safe).
       statSheet(vw.stats, vw.background) +
+      aptitudes(vw.charsheet) +   // Character A — proficiencies/skills/talents/abilities as feel-words
       // GATE 5 R3 — the slice objective (Bureau itinerary). Feel-words only; colour shifts on progress.
       (vw.objective ? section("Itinerary") + statrow("Survey", '<span id="sb-objective" style="color:' + (vw.objective.stage === "filed" ? "#2f6d33" : vw.objective.stage === "surveyed" ? P.signal : "#8a7c66") + '">' + escapeHTML(vw.objective.line) + "</span>") : "") +
       statrow("Place", '<span id="sb-place">' + escapeHTML(place) + "</span>") +
@@ -1057,7 +1069,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Gate 9 (C) — HUD: inventory by type, equipment paperdoll, compact log";
+  var VERSION = "Character A — skills/talents/abilities/proficiencies registries live";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
@@ -1084,7 +1096,7 @@ window.__initPlayMap = function () {
 (function () {
   // CURRENT ORDER PRESERVED — rng.js ... feel.js. Keep in sync with sync_build.py's self-check.
   var files = [
-    "rng.js", "resolve.js", "stats.js", "burden.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
+    "rng.js", "resolve.js", "stats.js", "charsys.js", "burden.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
     "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "mapmode.js",
     "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js",
     "smashgrab.js", "sfx.js", "game.js", "ui.js", "feel.js"

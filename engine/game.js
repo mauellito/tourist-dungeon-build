@@ -113,6 +113,7 @@ var TD_GAME = (function () {
       // starting gear (combat track phase 3): a weapon + armour the player carries; both feed combat
       // and encumbrance. PLACEHOLDER loadout from the roster (rosters/shops are a later directive).
       if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("light", "shortsword"); }   // GATE 7 (A): the quick-start loadout across the 11 slots (full light set + shortsword)
+      character.sheet = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS.blankSheet() : null;   // Character A: skills/talents/abilities/proficiencies (granted by visa/pool)
       character.purse = { copper: 0, silver: 0, gold: 0 };   // coins picked up in the descent (weight -> encumbrance)
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
@@ -1007,6 +1008,7 @@ var TD_GAME = (function () {
                    armour: { name: eq.body ? eq.body.name : "unarmoured", bulk: TD_RESOLVE.GEAR.bulkWord(ag.armor.robustness) } };
       }
       v.equipment = character.equipment || null;   // GATE 7 (A) — raw slots, for the Phase-C paperdoll
+      v.charsheet = (typeof TD_CHARSYS !== "undefined" && character.sheet) ? TD_CHARSYS.surface(character.sheet) : null;   // Character A — aptitudes as feel-words
       // the latest log line is the unified "current event", whoever wrote it
       // (town counters, dungeon controller, or the top-level verbs here).
       var lastM = shared.messages.length ? shared.messages[shared.messages.length - 1] : null;
