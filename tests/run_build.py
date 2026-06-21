@@ -31,6 +31,7 @@ SUITES = [
     ("procedural TOWN generator + law-suite", "run_towngen.py"),
     ("FIXED authored town map + randomized tenants", "run_townmap.py"),
     ("E2E real keypresses on play-map.html", "run_keys.py"),
+    ("FRONT-DOOR smoke: boot -> create -> ticket -> descend", "run_smoke.py"),
     # Master Directive — the gate is independently verifiable on the mirror now:
     ("vault format + parser (P1)", "run_vaultfmt.py"),
     ("spatial law-suite / THE GATE (P3)", "run_lawsuite.py"),
