@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "d0f52b8";</script>
+<script>window.__BUILD = "49010ac";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -896,10 +896,10 @@ window.__initPlayMap = function () {
   }
   function renderIntake(vw) {
     var it = vw.intake, st = it.stage, sel = it.sel || 0, body = "", head = "Bureau Admission", hint = "";
-    if (st === "sign" || st === "visa") {
+    if (st === "sign" || st === "sex" || st === "visa") {
       var list = it.list || [];
-      body = list.map(function (b, i) { return intakeRow(b.name, b.disposition || b.blurb, i === sel, i + 1); }).join("");
-      head = (st === "sign") ? "Welcome to Harbordtown — Declare your Birth Sign" : "Declaration of Visa";
+      body = list.map(function (b, i) { return intakeRow(b.name, b.disposition || b.blurb || b.note, i === sel, i + 1); }).join("");
+      head = (st === "sign") ? "Welcome to Harbordtown — Declare your Birth Sign" : (st === "sex") ? "Form 12 — Sex/Gender (for the allotment)" : "Declaration of Visa";
       hint = "&uarr;/&darr; &nbsp;·&nbsp; <b>1&ndash;" + list.length + "</b> or <b>Enter</b> &nbsp;·&nbsp; <b>Esc</b> step away";
     } else if (st === "allocate") {
       head = "Allocate your Particulars";
@@ -1061,8 +1061,8 @@ window.__initPlayMap = function () {
         if (k === "ArrowRight" || k === "+" || k === "=") { e.preventDefault(); sim.intakeAdjust(1); draw(); return; }
         if (k === "ArrowLeft" || k === "-" || k === "_") { e.preventDefault(); sim.intakeAdjust(-1); draw(); return; }
         if (k === "r") { e.preventDefault(); sim.allocReset(); draw(); return; }
-      } else if ((ist === "sign" || ist === "visa") && /^[1-9]$/.test(k)) {
-        e.preventDefault(); var bl = vw.intake.list || [], bi = (+k) - 1; if (bl[bi]) { if (ist === "sign") sim.pickSign(bl[bi].id); else sim.pickVisa(bl[bi].id); } draw(); return;
+      } else if ((ist === "sign" || ist === "sex" || ist === "visa") && /^[1-9]$/.test(k)) {
+        e.preventDefault(); var bl = vw.intake.list || [], bi = (+k) - 1; if (bl[bi]) { if (ist === "sign") sim.pickSign(bl[bi].id); else if (ist === "sex") sim.pickSex(bl[bi].id); else sim.pickVisa(bl[bi].id); } draw(); return;
       }
       return;   // modal: the flow swallows other input
     }
@@ -1097,7 +1097,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Gate 8.1 — walking free; food clock long + body-scaled (Might/Con: carry+resist up, but hungrier)";
+  var VERSION = "Gender — Form-12 allotment (Bureau ordinance), feel-words, visa cascade";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

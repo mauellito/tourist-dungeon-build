@@ -122,6 +122,9 @@ var TD_GAME = (function () {
           // Character E); the horoscope is always a random fixed pull. Both shape the base, both stored.
           var sl = TD_CHARSYS.signList(), sid = sl[crng.int(0, sl.length - 1)].id;
           character.sign = TD_CHARSYS.assignDay(crng, sid); TD_CHARSYS.applySign(character.stats, sid);
+          // GATE GENDER: quick-start gets a RANDOM Form-12 allotment (the flow lets you state it); box stored as a seed.
+          var al = TD_CHARSYS.allotmentList(), sx = al[crng.int(0, al.length - 1)].id;
+          character.sex = TD_CHARSYS.sexSeed(sx); TD_CHARSYS.applyAllotment(character.stats, sx);
           character.horoscope = TD_CHARSYS.pullHoroscope(crng); TD_CHARSYS.applyHoroscope(character.stats, character.sheet, character.horoscope);
         }
         var hpm = TD_STATS.DERIVED.hpMax(character.stats);   // Con -> HP (internal; never shown)
@@ -151,28 +154,38 @@ var TD_GAME = (function () {
     // budget meter + escalating cost (feel-words only; lowering refunds). The Kiosk is the quick-start
     // (no flow). Editable registries throughout. (Supersedes the Gate-6 single-form intake.)
     var CS = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS : null;
-    function intakeListFor(stage) { if (!CS) return []; if (stage === "sign") return CS.signList(); if (stage === "visa") return CS.visaList(); return []; }
+    function intakeListFor(stage) { if (!CS) return []; if (stage === "sign") return CS.signList(); if (stage === "sex") return CS.allotmentList(); if (stage === "visa") return CS.visaList(); return []; }
     function intakeList() { return intakeListFor("visa"); }   // back-compat: _backgrounds() = the visas
     function startIntake() {
       if (!CS) return;
       intakeOpen = true; intakeStage = "sign"; intakeSel = 0;
       intakeBase = TD_STATS.createBase(TD_RNG.make(((lifeN * 2654435761) ^ 0x5bd1e995) >>> 0 || 1));   // the base the flow will shape
       character.stats = cloneStats(intakeBase); character.sheet = CS.blankSheet();
-      character.sign = null; character.visa = null; character.background = null;
+      character.sign = null; character.visa = null; character.background = null; character.sex = null;
       alloc = { pointsLeft: CS.POOL.POINTS, deltas: {}, picks: {}, base: null };
       logMsg("Welcome to Harbordtown. Apply for a visa? First, declare your birth sign. (↑/↓ · Enter · Esc to step away)");
     }
     function cloneStats(s) { var o = {}; for (var k in s) o[k] = s[k]; return o; }
-    function recomputeStats() {   // base -> sign sidegrade -> visa bonuses (allocation rides on top via allocBase)
+    function recomputeStats() {   // base -> sign sidegrade -> Form-12 allotment -> visa bonuses (allocation rides on top)
       character.stats = cloneStats(intakeBase);
       if (character.sign) CS.applySign(character.stats, character.sign.id);
+      if (character.sex) CS.applyAllotment(character.stats, character.sex.box);
       if (character.visa) CS.applyVisa(character.stats, character.visa);
     }
     // ---- stage 1: SIGN (player chooses; the game assigns a day + stores the day-seed) ----
     function pickSign(id) {
       if (!CS.SIGNS[id]) return; character.sign = CS.assignDay(TD_RNG.make(((lifeN * 7919) ^ 0x9e3779b9) >>> 0 || 1), id);
-      recomputeStats(); intakeStage = "visa"; intakeSel = 0;
-      logMsg("Born under " + character.sign.name + ". Now declare your visa. (↑/↓ · Enter)");
+      recomputeStats(); intakeStage = "sex"; intakeSel = 0;
+      logMsg("Born under " + character.sign.name + ". Form 12: state your sex/gender for the allotment. (↑/↓ · Enter)");
+    }
+    // ---- stage 1b: FORM-12 SEX/GENDER (the Bureau's allotment; box-value stored as a hidden seed) ----
+    function pickSex(id) {
+      if (!CS.ALLOTMENTS[id]) return; character.sex = CS.sexSeed(id);   // {box, seed} — stored; seed reserved, never read for sense lines
+      recomputeStats(); intakeStage = "visa";
+      // R2 cascade: the allotment (e.g. the female Charm allowance) feeds the Charm-weighted visa SUGGESTION
+      var suggest = CS.assignVisaWeighted(character.stats, TD_RNG.make(((lifeN * 40503) ^ 0xb12a) >>> 0 || 1));
+      var vl = CS.visaList(); intakeSel = 0; for (var i = 0; i < vl.length; i++) if (vl[i].id === suggest) intakeSel = i;
+      logMsg("Allotment recorded (" + CS.ALLOTMENTS[id].name + "). " + CS.ALLOTMENTS[id].note + " Now declare your visa — the Bureau suggests one. (↑/↓ · Enter)");
     }
     // ---- stage 2: VISA (bonuses-only) -> grants signature + loadout, snapshots the allocation base ----
     function pickVisa(id) {
@@ -244,6 +257,7 @@ var TD_GAME = (function () {
       if (!intakeOpen || !CS || !CS.VISAS[id]) return { declared: false };
       if (!intakeBase) intakeBase = TD_STATS.createBase(TD_RNG.make(((lifeN * 2654435761) ^ ((CS.VISAS[id].order + 1) * 40503)) >>> 0 || 1));
       if (!character.sign) character.sign = CS.assignDay(TD_RNG.make(((lifeN * 7919) ^ 0x12345) >>> 0 || 1), CS.signList()[0].id);
+      if (!character.sex) character.sex = CS.sexSeed("other");   // direct path: default to the inert allotment unless one was set
       pickVisa(id);                                   // applies stats+signature+gear+identity, advances to 'allocate'
       character.horoscope = CS.pullHoroscope(TD_RNG.make(((lifeN * 2246822519) ^ 0xfeed) >>> 0 || 1));
       CS.applyHoroscope(character.stats, character.sheet, character.horoscope);
@@ -266,7 +280,8 @@ var TD_GAME = (function () {
     }
     function intakeChoose() {
       if (!intakeOpen) return { declared: false };
-      if (intakeStage === "sign") { var s = intakeListFor("sign")[intakeSel]; if (s) pickSign(s.id); return { staged: "visa" }; }
+      if (intakeStage === "sign") { var s = intakeListFor("sign")[intakeSel]; if (s) pickSign(s.id); return { staged: "sex" }; }
+      if (intakeStage === "sex") { var x = intakeListFor("sex")[intakeSel]; if (x) pickSex(x.id); return { staged: "visa" }; }
       if (intakeStage === "visa") { var v = intakeListFor("visa")[intakeSel]; if (v) pickVisa(v.id); return { staged: "allocate" }; }
       if (intakeStage === "allocate") { allocFinish(); return { staged: "horoscope" }; }
       if (intakeStage === "horoscope") return finalizeIntake();
@@ -1117,7 +1132,7 @@ var TD_GAME = (function () {
       // CHARACTER E — the creation flow surface (staged). Feel-words only; the budget is a fraction (bar), never a number.
       v.intake = intakeOpen ? (function () {
         var o = { open: true, stage: intakeStage, sel: intakeSel };
-        if (intakeStage === "sign" || intakeStage === "visa") o.list = intakeListFor(intakeStage);
+        if (intakeStage === "sign" || intakeStage === "sex" || intakeStage === "visa") o.list = intakeListFor(intakeStage);
         else if (intakeStage === "allocate") {
           o.budget = alloc ? Math.max(0, Math.min(1, alloc.pointsLeft / CS.POOL.POINTS)) : 0;
           o.spent = alloc ? alloc.pointsLeft <= 0.001 : false;
@@ -1175,7 +1190,7 @@ var TD_GAME = (function () {
       lookToggle: lookToggle, lookMove: lookMove,
       confirmExit: confirmExit, cancelExit: cancelExit,
       intakeMove: intakeMove, intakeChoose: intakeChoose, intakeCancel: intakeCancel, chooseBackground: chooseBackground,
-      intakeAdjust: intakeAdjust, allocReset: allocReset, pickSign: pickSign, pickVisa: pickVisa,
+      intakeAdjust: intakeAdjust, allocReset: allocReset, pickSign: pickSign, pickSex: pickSex, pickVisa: pickVisa,
       _intakeOpen: function () { return intakeOpen; }, _intakeStage: function () { return intakeStage; }, _backgrounds: function () { return intakeList(); },
       say: function (t) { logMsg(t); },   // the Bureau speaks during play (presentation flavour)
       isDead: function () { return dead; }, isComplete: function () { return won; },

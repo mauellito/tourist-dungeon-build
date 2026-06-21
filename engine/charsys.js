@@ -196,7 +196,34 @@ var TD_CHARSYS = (function () {
   function poolMaxRaise(from, budget) { var n = 0, v = from, spent = 0; while (v + POOL.STEP <= POOL.CEIL) { var c = POOL.raiseCost(v); if (spent + c > budget + 1e-9) break; spent += c; v += POOL.STEP; n++; } return { steps: n, end: v, spent: spent }; }
   function pickCost(cat) { return POOL.PICK_COST[cat] || 4; }
 
+  // ---- GATE GENDER — FORM-12 ALLOTMENT (the Bureau's ordinance; an allowance by checkbox, not biology) --
+  // A box on the visa application grants a small stat ALLOWANCE (applied to the BASE, within the cap). The
+  // satire IS the joke. BONUSES only (Other nets to zero, reserved/decline-to-state). Feel-words only — the
+  // allowance surfaces solely as a knee-shift in the stat feel-words, never an integer. (FLAG: as written,
+  // FEMALE nets more total than MALE -> may read as the stronger general pick; the R3 asymmetry rebalance
+  // and the infatuation tax are PINNED, not built.)
+  var ALLOT_U = 25;
+  var ALLOTMENTS = {
+    male:   { order: 0, name: "Male", note: "Allotment per ordinance: a labourer's frame.", stats: { might: 2 * ALLOT_U, con: 2 * ALLOT_U } },
+    female: { order: 1, name: "Female", note: "Allotment per ordinance: deftness, bearing, and address.", stats: { might: ALLOT_U, con: ALLOT_U, dex: ALLOT_U, charm: ALLOT_U, appearance: ALLOT_U } },
+    other:  { order: 2, name: "Other (see Supplementary Form 9)", note: "The Bureau records the entry and, with practiced indifference, allots nothing.", stats: {} }
+  };
+  function allotmentList() { return Object.keys(ALLOTMENTS).map(function (id) { var a = ALLOTMENTS[id]; return { id: id, name: a.name, note: a.note, order: a.order }; }).sort(function (x, y) { return x.order - y.order; }); }
+  function applyAllotment(stats, sexId) { var a = ALLOTMENTS[sexId]; if (!a || !stats) return stats; for (var k in a.stats) if (typeof stats[k] === "number") stats[k] = clamp1k(stats[k] + a.stats[k]); return stats; }
+  // the hidden seed the box-value contributes (stored only — for the future name/day hidden-math economy;
+  // Two-Channel Honesty: may augment, must NEVER make the senses lie).
+  function sexSeed(sexId) { return { box: sexId, seed: ((ALLOTMENTS[sexId] ? ALLOTMENTS[sexId].order + 1 : 0) * 2654435761) >>> 0 }; }
+  // GATE GENDER R2 — the visa CASCADE: a Charm-weighted visa assignment (the female Charm allowance bleeds
+  // into which visa the Bureau SUGGESTS). Weight each visa by how well the character's stats match its bonus
+  // lanes; pick weighted. (FLAG: no prior 'Charm-weighted visa-assignment hook' existed — added here.)
+  function assignVisaWeighted(stats, rng) {
+    var ids = Object.keys(VISAS), w = [], tot = 0;
+    ids.forEach(function (id) { var v = VISAS[id], s = 0; for (var k in v.stats) s += (stats[k] || 500); var ww = Math.pow(s / 500, 3); w.push(ww); tot += ww; });
+    var r = (rng ? rng.next() : 0.5) * tot; for (var i = 0; i < ids.length; i++) { r -= w[i]; if (r <= 0) return ids[i]; } return ids[ids.length - 1];
+  }
+
   return {
+    ALLOTMENTS: ALLOTMENTS, allotmentList: allotmentList, applyAllotment: applyAllotment, sexSeed: sexSeed, assignVisaWeighted: assignVisaWeighted,
     POOL: POOL, poolCostRaise: poolCostRaise, poolRefundLower: poolRefundLower, poolMaxRaise: poolMaxRaise, pickCost: pickCost,
     SIGNS: SIGNS, signList: signList, applySign: applySign, assignDay: assignDay,
     pullHoroscope: pullHoroscope, applyHoroscope: applyHoroscope,
