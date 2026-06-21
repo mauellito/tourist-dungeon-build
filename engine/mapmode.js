@@ -35,12 +35,16 @@ var TD_MAP = (function () {
   var CREATURE = TD_RESOLVE.COMBAT.CREATURES;
   // generous slack: walking is cheap, fighting costs, resting recovers fatigue,
   // and a full belly carries you across several levels before food matters.
-  var FATIGUE_PER_STEP = 0.5, FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4, FATIGUE_PER_SPRINT = 1.5;   // GATE 8 (B): sprint is the costliest pace (3x a walk)
-  // GATE 8 (B): base satiation drain LOWERED (0.30 -> 0.14) so an UNBURDENED ~6-floor dive ends
-  // Hungry/Famished, not Starving; the per-step drain is multiplied by the TD_BURDEN band (heavier =
-  // hungrier faster). Town recovery fully resets (the retreat is never punished).
-  var SATIATION_PER_STEP = 0.14, STARVE_HP = TD_RESOLVE.COMBAT.STARVE_HP, EXHAUST_HP = TD_RESOLVE.COMBAT.EXHAUST_HP;
-  var SATIATION_BAND = { unencumbered: 1.0, laden: 1.6, strained: 2.4, overloaded: 3.5 };   // burden -> hunger multiplier
+  var FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4, FATIGUE_PER_SPRINT = 1.5;   // GATE 8 (B): sprint is the costliest pace
+  // GATE 8.1: WALKING IS FREE when unencumbered — a "step" costs fatigue only via the BURDEN band (still
+  // x fatigueResist). Unburdened -> 0 (you walk a floor and arrive fresh); heavier -> tiring. Fight + sprint
+  // keep their costs. (A jump, if added, would cost like a sprint — reserved.)
+  var FATIGUE_STEP_BAND = { unencumbered: 0, laden: 0.4, strained: 0.9, overloaded: 1.6 };
+  // GATE 8.1: the FOOD CLOCK is LONG and BODY-SCALED. Base drain lowered (0.14 -> 0.10), then multiplied by
+  // (a) the BURDEN band (heavier = hungrier) and (b) a BODY-SIZE factor from Might+Con (big bodies burn more,
+  // small bodies less; average ~1.0). Town recovery still fully resets.
+  var SATIATION_PER_STEP = 0.115, STARVE_HP = TD_RESOLVE.COMBAT.STARVE_HP, EXHAUST_HP = TD_RESOLVE.COMBAT.EXHAUST_HP;
+  var SATIATION_BAND = { unencumbered: 1.0, laden: 1.5, strained: 2.2, overloaded: 3.0 };   // burden -> hunger multiplier
   var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
@@ -1037,15 +1041,19 @@ var TD_MAP = (function () {
 
     // body meters tick on each dungeon action (bible §4.13 anti-scum).
     // mode: "step" (walk), "fight", "rest" (wait — recovers fatigue if safe).
+    // GATE 8.1: a BODY-SIZE food factor from Might+Con — big bodies burn more food, small bodies less,
+    // average ~1.0 (clamped). (Same lanes that, via carry+resist, make a big body otherwise advantaged.)
+    function bodyFactor() { var s = ctrl.character && ctrl.character.stats; if (!s) return 1; return Math.max(0.7, Math.min(1.3, 1 + ((s.might + s.con) / 2 - 500) / 600)); }
     function meterTick(mode, noWorld) {
       if (!inDungeon()) return;
-      var m = ctrl.meters;
-      // FATIGUE: rest recovers; otherwise gain by pace (sprint > fight > walk), scaled by stat resistance.
+      var m = ctrl.meters, bnd = playerBand(), bk = bnd ? bnd.band.key : "unencumbered";
+      // FATIGUE: rest recovers; walking is FREE unencumbered (cost via the burden band only); fight + sprint
+      // keep their costs; all gains x fatigueResist (Con/Grit/Might tire slower).
       if (mode === "rest") { if (!enemiesVisible()) m.fatigue = Math.max(0, m.fatigue - REST_RECOVER); }
-      else { var base = mode === "fight" ? FATIGUE_PER_FIGHT : mode === "sprint" ? FATIGUE_PER_SPRINT : FATIGUE_PER_STEP; m.fatigue = Math.min(m.fatigueMax, m.fatigue + base * fatigueResist()); }
-      // HUNGER: base drain multiplied by the burden band (heavier = hungrier faster). Sprint costs a touch more food.
-      var bnd = playerBand(), smul = (bnd && SATIATION_BAND[bnd.band.key]) || 1;
-      m.satiation = Math.max(0, m.satiation - SATIATION_PER_STEP * smul * (mode === "sprint" ? 1.4 : 1));
+      else { var base = mode === "fight" ? FATIGUE_PER_FIGHT : mode === "sprint" ? FATIGUE_PER_SPRINT : (FATIGUE_STEP_BAND[bk] || 0); m.fatigue = Math.min(m.fatigueMax, m.fatigue + base * fatigueResist()); }
+      // HUNGER: a long, body-scaled clock — base x burden band x body-size; sprint costs a touch more food.
+      var smul = SATIATION_BAND[bk] || 1;
+      m.satiation = Math.max(0, m.satiation - SATIATION_PER_STEP * smul * bodyFactor() * (mode === "sprint" ? 1.4 : 1));
 
       // hunger-ladder transitions (announce only on the way DOWN; STARVING is critical)
       var st = hungerStage(m).stage;

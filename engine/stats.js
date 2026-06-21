@@ -98,7 +98,7 @@ var TD_STATS = (function () {
   // Each is a pure function of the stat block. Combat (TD_RESOLVE) reads these.
   var DERIVED = {
     damageBonus: function (s) { return Math.round((s.might - 500) / 60); },     // Might -> damage
-    carry:       function (s) { return 100 + Math.round((s.might - 500) / 5); },// Might -> carry (lbs, stub)
+    carry:       function (s) { return 100 + Math.round(((s.might + s.con) / 2 - 500) / 5); },// GATE 8.1: carry from Might AND Con (was Might-only) — a big body hauls more
     accuracy:    function (s) { return Math.round((s.dex - 500) / 25); },       // Dex -> accuracy
     evasion:     function (s) { return Math.round((s.dex - 500) / 30); },       // Dex -> evasion
     hpMax:       function (s) { return 100 + Math.round((s.con - 500) / 8); },  // Con -> HP

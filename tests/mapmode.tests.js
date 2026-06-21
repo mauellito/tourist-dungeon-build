@@ -276,8 +276,10 @@ function TD_MAP_TESTS() {
     var g = TD_MAP.create(world(), { creatures: false });
     eq(g._meters().fatigue, 0); eq(g._meters().satiation, 100);
     var fn = floorNbr(g); g.move(fn.dir); g.move(fn.dir === "left" ? "right" : "left");
-    assert(g._meters().fatigue > 0, "fatigue rises with action");
     assert(g._meters().satiation < 100, "satiation falls with action");
+    assert(g._meters().fatigue === 0, "GATE 8.1: walking unencumbered is FREE (no fatigue)");
+    var fn3 = floorNbr(g); if (fn3) g.sprint(fn3.dir);   // exertion (a sprint) tires
+    assert(g._meters().fatigue > 0, "exertion (sprint) raises fatigue");
     g._meters().satiation = 0;
     var hpBefore = g._meters().hp, fn2 = floorNbr(g);
     g.move(fn2.dir);
