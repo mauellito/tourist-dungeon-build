@@ -106,14 +106,23 @@ var TD_GAME = (function () {
       // GATE 1 R1: Con -> live HP. The pool is now TD_STATS.DERIVED.hpMax(stats) (Con-derived), so combat
       // numbers land against a real body, not a flat 100. No-spine harnesses keep 100/100 (guard below).
       if (typeof TD_STATS !== "undefined") {
-        lifeN += 1; character.stats = TD_STATS.create(TD_RNG.make((lifeN * 2654435761) >>> 0 || 1)); character.progress = TD_STATS.newProgress();
-        var hpm = TD_STATS.DERIVED.hpMax(character.stats);   // Con -> HP (internal number; never shown — feel-words only on surface)
+        lifeN += 1;
+        var crng = TD_RNG.make((lifeN * 2654435761) >>> 0 || 1);
+        character.sheet = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS.blankSheet() : null;   // Character A: aptitudes (granted by visa/pool/horoscope)
+        character.stats = TD_STATS.createBase ? TD_STATS.createBase(crng) : TD_STATS.create(crng);   // CHARACTER C: average-band base
+        character.progress = TD_STATS.newProgress();
+        if (typeof TD_CHARSYS !== "undefined") {
+          // CHARACTER C: a quick-start gets a RANDOM birth sign + assigned day (the flow lets you CHOOSE in
+          // Character E); the horoscope is always a random fixed pull. Both shape the base, both stored.
+          var sl = TD_CHARSYS.signList(), sid = sl[crng.int(0, sl.length - 1)].id;
+          character.sign = TD_CHARSYS.assignDay(crng, sid); TD_CHARSYS.applySign(character.stats, sid);
+          character.horoscope = TD_CHARSYS.pullHoroscope(crng); TD_CHARSYS.applyHoroscope(character.stats, character.sheet, character.horoscope);
+        }
+        var hpm = TD_STATS.DERIVED.hpMax(character.stats);   // Con -> HP (internal; never shown)
         meters.hp = hpm; meters.hpMax = hpm;
       }
-      // starting gear (combat track phase 3): a weapon + armour the player carries; both feed combat
-      // and encumbrance. PLACEHOLDER loadout from the roster (rosters/shops are a later directive).
-      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("light", "shortsword"); }   // GATE 7 (A): the quick-start loadout across the 11 slots (full light set + shortsword)
-      character.sheet = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS.blankSheet() : null;   // Character A: skills/talents/abilities/proficiencies (granted by visa/pool)
+      // starting gear: a weapon + armour across the 11 slots (Gate 7 A).
+      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("light", "shortsword"); }
       character.purse = { copper: 0, silver: 0, gold: 0 };   // coins picked up in the descent (weight -> encumbrance)
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
@@ -139,13 +148,15 @@ var TD_GAME = (function () {
       if (!intakeOpen) return { declared: false };
       var v = (typeof TD_CHARSYS !== "undefined" && TD_CHARSYS.VISAS) ? TD_CHARSYS.VISAS[id] : null;
       if (!v) return { declared: false };
+      character.sheet = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS.grantVisaSignature(TD_CHARSYS.blankSheet(), id) : null;
       if (typeof TD_STATS !== "undefined") {
-        character.stats = TD_STATS.create(TD_RNG.make(((lifeN * 2654435761) ^ ((v.order + 1) * 40503)) >>> 0 || 1));   // base roll (Phase 3 makes it average)
-        TD_CHARSYS.applyVisa(character.stats, id);                                                                      // bonuses only
+        character.stats = TD_STATS.createBase ? TD_STATS.createBase(TD_RNG.make(((lifeN * 2654435761) ^ ((v.order + 1) * 40503)) >>> 0 || 1)) : TD_STATS.create(TD_RNG.make(1));   // CHARACTER C average base
+        TD_CHARSYS.applyVisa(character.stats, id);                                                  // bonuses only
+        if (character.sign) TD_CHARSYS.applySign(character.stats, character.sign.id);               // re-apply the (freshCharacter) birth sign
+        if (character.horoscope) TD_CHARSYS.applyHoroscope(character.stats, character.sheet, character.horoscope);   // re-apply the fixed horoscope
         character.progress = TD_STATS.newProgress();
         var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hp = hpm; meters.hpMax = hpm;   // Con -> HP, re-derived
       }
-      character.sheet = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS.grantVisaSignature(TD_CHARSYS.blankSheet(), id) : null;
       if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) character.equipment = TD_RESOLVE.GEAR.startingSet(v.armor, v.weapon);
       character.background = { id: id, name: v.name, disposition: v.disposition };   // the declared identity (dossier)
       character.visa = id;
@@ -1013,6 +1024,8 @@ var TD_GAME = (function () {
       }
       v.equipment = character.equipment || null;   // GATE 7 (A) — raw slots, for the Phase-C paperdoll
       v.charsheet = (typeof TD_CHARSYS !== "undefined" && character.sheet) ? TD_CHARSYS.surface(character.sheet) : null;   // Character A — aptitudes as feel-words
+      v.sign = character.sign ? { name: character.sign.name, day: character.sign.day } : null;   // Character C — birth sign + assigned day (feel-words; day is a date, not a stat)
+      v.horoscope = character.horoscope ? { line: character.horoscope.line } : null;             // Character C — the run's fixed horoscope (Bureau flavour)
       // the latest log line is the unified "current event", whoever wrote it
       // (town counters, dungeon controller, or the top-level verbs here).
       var lastM = shared.messages.length ? shared.messages[shared.messages.length - 1] : null;

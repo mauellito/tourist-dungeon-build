@@ -133,7 +133,54 @@ var TD_CHARSYS = (function () {
   function applyVisa(stats, visaId) { var v = VISAS[visaId]; if (!v || !stats) return stats; for (var k in v.stats) if (typeof stats[k] === "number") stats[k] = clamp1k(stats[k] + v.stats[k]); return stats; }
   function grantVisaSignature(sheet, visaId) { var v = VISAS[visaId]; if (!v) return sheet; (v.grants || []).forEach(function (g) { grant(sheet, g[0], g[1], g[2]); }); return sheet; }
 
+  // ---- PHASE 3 — BIRTH SIGNS (balanced SIDEGRADES, ~5% makeup shift; no dominant) + HOROSCOPE --------
+  // 12 editable signs. Each is a small ZERO-SUM trade (+one stat / -another, ~SIGN_SHIFT), so picking a
+  // sign reshapes the build a little without making anyone stronger overall — no dominant sign. The player
+  // PICKS the sign; assignDay() assigns a specific DAY within it (semi-random) and stores a daySeed
+  // (reserved for future hidden birthday effects — NOT built here; the senses must never be made to lie).
+  var SIGN_SHIFT = 32, SIGN_DAYS = 30;
+  var SIGNS = {
+    anchor:  { order: 0,  name: "The Anchor",  blurb: "steady, and slow with it",      plus: "con", minus: "dex" },
+    gull:    { order: 1,  name: "The Gull",    blurb: "quick, and slight with it",     plus: "dex", minus: "con" },
+    hammer:  { order: 2,  name: "The Hammer",  blurb: "strong, and plain-spoken",      plus: "might", minus: "int" },
+    ledger:  { order: 3,  name: "The Ledger",  blurb: "clever, and no brawler",        plus: "int", minus: "might" },
+    lantern: { order: 4,  name: "The Lantern", blurb: "watchful, and aloof",           plus: "per", minus: "charm" },
+    mask:    { order: 5,  name: "The Mask",    blurb: "winning, and unobservant",      plus: "charm", minus: "per" },
+    tide:    { order: 6,  name: "The Tide",    blurb: "knowing, and easily swayed",    plus: "intuition", minus: "grit" },
+    pillar:  { order: 7,  name: "The Pillar",  blurb: "steadfast, and literal",        plus: "grit", minus: "intuition" },
+    coin:    { order: 8,  name: "The Coin",    blurb: "fortunate, and forgettable",    plus: "lucky", minus: "appearance" },
+    crown:   { order: 9,  name: "The Crown",   blurb: "striking, and hard-luck",       plus: "appearance", minus: "lucky" },
+    net:     { order: 10, name: "The Net",     blurb: "nimble, and flighty",           plus: "dex", minus: "grit" },
+    forge:   { order: 11, name: "The Forge",   blurb: "mighty, and ill-starred",       plus: "might", minus: "lucky" }
+  };
+  function signList() { return Object.keys(SIGNS).map(function (id) { var s = SIGNS[id]; return { id: id, name: s.name, blurb: s.blurb, order: s.order }; }).sort(function (a, b) { return a.order - b.order; }); }
+  function applySign(stats, signId) { var s = SIGNS[signId]; if (!s || !stats) return stats; stats[s.plus] = clamp1k(stats[s.plus] + SIGN_SHIFT); stats[s.minus] = clamp1k(stats[s.minus] - SIGN_SHIFT); return stats; }
+  // assign a specific day within the chosen sign + a reserved day-seed (stored, never read here).
+  function assignDay(rng, signId) { var s = SIGNS[signId] || SIGNS.anchor, di = rng.int(0, SIGN_DAYS - 1); return { id: signId, name: s.name, day: s.order * SIGN_DAYS + di + 1, dayInSign: di + 1, daySeed: rng.int(1, 2147483646) }; }
+
+  // HOROSCOPE — at creation, PULL a random ~5% bonus (a stat bump OR an aptitude grant), FIXED for the
+  // run (no re-roll). RANDOM => not gameable. Bureau-voice flavour. Applied to stats/sheet by applyHoroscope.
+  var HOROSCOPE_STAT_BONUS = 50;
+  var STAT_IDS = (typeof TD_STATS !== "undefined" && TD_STATS.STATS) ? TD_STATS.STATS : ["might", "dex", "con", "int", "per", "lucky", "intuition", "appearance", "charm", "grit"];
+  var STAT_NAMES = (typeof TD_STATS !== "undefined" && TD_STATS.NAMES) ? TD_STATS.NAMES : {};
+  var HORO_GRANTS = [["talent", "sureFooted"], ["talent", "lightSleeper"], ["ability", "powerStrike"], ["ability", "forage"], ["talent", "conviction"]];
+  function pullHoroscope(rng) {
+    if (rng.next() < 0.7) {
+      var st = STAT_IDS[rng.int(0, STAT_IDS.length - 1)];
+      return { kind: "stat", target: st, amount: HOROSCOPE_STAT_BONUS, line: "The Bureau's almanac smiles, this season, upon your " + (STAT_NAMES[st] || st) + "." };
+    }
+    var g = HORO_GRANTS[rng.int(0, HORO_GRANTS.length - 1)], reg = (g[0] === "talent") ? TALENTS : ABILITIES;
+    return { kind: g[0], target: g[1], line: "The stars, the clerk observes, have issued you a gift: " + ((reg[g[1]] || {}).name || g[1]) + "." };
+  }
+  function applyHoroscope(stats, sheet, horo) {
+    if (!horo) return;
+    if (horo.kind === "stat" && stats && typeof stats[horo.target] === "number") stats[horo.target] = clamp1k(stats[horo.target] + horo.amount);
+    else if (sheet && (horo.kind === "talent" || horo.kind === "ability")) grant(sheet, horo.kind, horo.target);
+  }
+
   return {
+    SIGNS: SIGNS, signList: signList, applySign: applySign, assignDay: assignDay,
+    pullHoroscope: pullHoroscope, applyHoroscope: applyHoroscope,
     VISAS: VISAS, visaList: visaList, applyVisa: applyVisa, grantVisaSignature: grantVisaSignature,
     PROFICIENCIES: PROFICIENCIES, PROF_RANKS: PROF_RANKS, profMod: profMod, profRankOf: profRankOf,
     SKILLS: SKILLS, SKILL_RANKS: SKILL_RANKS, TALENTS: TALENTS, ABILITIES: ABILITIES,

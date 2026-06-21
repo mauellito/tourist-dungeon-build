@@ -36,6 +36,11 @@ var TD_STATS = (function () {
     for (var i = 0; i < STATS.length; i++) { var v = roll(rng); if (bias && typeof bias[STATS[i]] === "number") v = clamp(v + bias[STATS[i]]); st[STATS[i]] = v; }
     return st;
   }
+  // CHARACTER C — the BASE roll: each stat lands in the AVERAGE band (around the middle quintile of
+  // 1..1000), tails compressed — a competent, unremarkable starting body. Visa bonuses, the birth sign,
+  // the horoscope, and the allocation pool shape it from there. (The old wide `create` is kept for the
+  // bestiary/foes and any caller that wants the full spread.)
+  function createBase(rng) { var st = {}; for (var i = 0; i < STATS.length; i++) st[STATS[i]] = clamp(Math.round(500 + (bell(rng) - 500) * 0.35)); return st; }
   // GATE 6 — the declared BACKGROUNDS (the Bureau admission intake). Each is a fixed stat-bias profile +
   // a starting gear loadout (GEAR keys, resolved by game.js) + a one-line disposition + a Bureau-voice
   // name/description. DISTINCT by design — each maps onto a real combat axis; none is a strict no-brainer
@@ -130,7 +135,7 @@ var TD_STATS = (function () {
 
   return {
     STATS: STATS, NAMES: NAMES, BANDS: BANDS, FEEL: FEEL,
-    create: create, bell: bell, tier: tier, feel: feel, surface: surface, crossed: crossed,
+    create: create, createBase: createBase, bell: bell, tier: tier, feel: feel, surface: surface, crossed: crossed,
     luckyThumb: luckyThumb, DERIVED: DERIVED, derive: derive, power: power, powerWord: powerWord,
     newProgress: newProgress, recordDeed: recordDeed, realizeOnRest: realizeOnRest,
     BACKGROUNDS: BACKGROUNDS, backgroundList: backgroundList

@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "7312b9a";</script>
+<script>window.__BUILD = "4a21228";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -667,6 +667,9 @@ window.__initPlayMap = function () {
       paperdoll(vw.equipment, vw.gear) +
       // GATE 4.1/6 — the declared IDENTITY + the ten-stat CONSTITUTION sheet (feel-words, digit-safe).
       statSheet(vw.stats, vw.background) +
+      // CHARACTER C — birth sign (name only; the assigned day is stored, never surfaced) + the run's horoscope.
+      (vw.sign ? statrow("Born under", '<span id="sb-sign">' + escapeHTML(vw.sign.name) + "</span>") : "") +
+      (vw.horoscope ? '<div id="sb-horoscope" style="font-size:11px;color:' + P.signal + ';margin:1px 0 2px">' + escapeHTML(vw.horoscope.line) + "</div>" : "") +
       aptitudes(vw.charsheet) +   // Character A — proficiencies/skills/talents/abilities as feel-words
       // GATE 5 R3 — the slice objective (Bureau itinerary). Feel-words only; colour shifts on progress.
       (vw.objective ? section("Itinerary") + statrow("Survey", '<span id="sb-objective" style="color:' + (vw.objective.stage === "filed" ? "#2f6d33" : vw.objective.stage === "surveyed" ? P.signal : "#8a7c66") + '">' + escapeHTML(vw.objective.line) + "</span>") : "") +
@@ -1069,7 +1072,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Character B — visa categories (bonuses-only, editable)";
+  var VERSION = "Character C — birth sign (chosen) + day (assigned) + horoscope (random)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
