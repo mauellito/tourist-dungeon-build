@@ -1395,6 +1395,7 @@ var TD_GAME = (function () {
       shopMove: shopMove, shopSetMode: shopSetMode, shopTransact: shopTransact, shopClose: shopClose,
       vaultDeposit: vaultDeposit, vaultWithdraw: vaultWithdraw, vaultClose: vaultClose,
       _shop: function () { return shop; }, _vaultUI: function () { return vaultUI; }, _pendingService: function () { return pendingService; },
+      _interiors: function () { return INTERIORS; }, _serviceFor: function (b) { return serviceFor(b); },   // R4 audit: spec/act introspection
       lookToggle: lookToggle, lookMove: lookMove,
       confirmExit: confirmExit, cancelExit: cancelExit,
       intakeMove: intakeMove, intakeChoose: intakeChoose, intakeCancel: intakeCancel, chooseBackground: chooseBackground,

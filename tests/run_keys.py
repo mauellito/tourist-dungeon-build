@@ -108,6 +108,18 @@ F.onload = function(){
     ok('Skip yields a playable random character with a Standard ticket', (!view().intake || !view().intake.open) && view().ticket==='standard');
     // reset to the random/ticketless boot the remaining tests were written against
     win.__TD_SIM().newCharacter(); var gI=0; while(view().intake && view().intake.open && gI++<8){ pk('Escape'); }
+    // ============================ R4 DEAD-SPEC AUDIT =======================
+    // No interior spec may resolve to an undefined act; every town tenant must map to a render/enter spec;
+    // the RLD redlit venue must map to a defined front-service. (Guards the wire-or-retire from regressing.)
+    var INT = win.__TD_SIM()._interiors(), TEN = win.TD_TOWNMAP.TENANTS.map(function(t){return t.id;});
+    var HANDLED = {lookout:1,agency:1,kiosk:1,hotel:1,spa:1,food:1,anchor:1,gate:1,rest:1,blessing:1,tim:1,boat:1,shop:1,vault:1,flavor:1,shrine:1};
+    var undefActs=[], orphanTen=[];
+    for(var iid in INT){ var ia=INT[iid].act; if(ia && !HANDLED[ia]) undefActs.push(iid+':'+ia); }
+    // a tenant is well-formed if it enters an interior OR (being a VICE venue) transacts as an RLD front-service.
+    TEN.forEach(function(id){ var vice = win.TD_UI.buildingCategory && win.TD_UI.buildingCategory(id)==='vice'; if(!INT[id] && !vice) orphanTen.push(id); });
+    ok('no interior spec resolves to an undefined act', undefActs.length===0);
+    ok('every town tenant maps to an interior OR an RLD front-service', orphanTen.length===0);
+    ok('the RLD redlit venue maps to a defined front-service (membership)', win.__TD_SIM()._serviceFor('redlit')==='membership');
     // ============================ SCROLLING CAMERA (Phase B) ==============
     win.__TD_SIM()._clearActors();   // de-flake: wandering townsfolk must not block the spine walk
     var cam0=win.__TD_CAMERA(); var pc=view().player;

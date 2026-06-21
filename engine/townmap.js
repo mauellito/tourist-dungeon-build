@@ -985,6 +985,19 @@ var TD_TOWNMAP = (function () {
     { id: "store",      label: "the Outfitter",          glyph: "o", cat: "commerce", size: "small",  where: ["housing", "market", "civic"], unique: true, weight: 8 },
     { id: "spa",        label: "a spa",                  glyph: "m", cat: "commerce", size: "medium", where: ["civic", "market", "housing"], weight: 3 },
     { id: "tavern",     label: "a tavern",               glyph: "Y", cat: "commerce", size: "medium", where: ["market", "housing", "civic"], weight: 4 },
+    // GATE FIX R4 — WIRE the previously-defined-but-never-placed interiors as flavour tenants, so no spec is
+    // an orphan. Acts already handled in act(): food/rest/flavor/tim/boat. (tim + boat are DEFERRED-feature
+    // stubs — their interiors deliberately read "Closed / goes nowhere"; FLAGGED, kept reachable as texture.)
+    { id: "saloon",     label: "a saloon",               glyph: "S", cat: "commerce", size: "medium", where: ["market", "housing", "civic"], weight: 3 },
+    { id: "restaurant", label: "a restaurant",           glyph: "E", cat: "commerce", size: "medium", where: ["civic", "market"], weight: 3 },
+    { id: "chinese",    label: "a takeout window",       glyph: "N", cat: "commerce", size: "small",  where: ["market", "housing"], weight: 3 },
+    { id: "clamshack",  label: "a clam shack",           glyph: "F", cat: "commerce", size: "small",  where: ["warehouse"], weight: 3 },
+    { id: "motel",      label: "a motel",                glyph: "M", cat: "lodging",  size: "medium", where: ["market", "housing"], weight: 2 },
+    { id: "blacksmith", label: "a blacksmith",           glyph: "L", cat: "commerce", size: "small",  where: ["market", "warehouse"], weight: 3 },
+    { id: "gift1",      label: "a souvenir shop",        glyph: "1", cat: "commerce", size: "small",  where: ["market", "civic"], weight: 2 },
+    { id: "gift2",      label: "a rival souvenir shop",  glyph: "2", cat: "commerce", size: "small",  where: ["market", "civic"], weight: 2 },
+    { id: "tim",        label: "a shuttered hint desk",  glyph: "G", cat: "civic",    size: "small",  where: ["civic", "market"], weight: 1 },   // FLAG: hints DEFERRED (closed gag)
+    { id: "boat",       label: "a boat rental",          glyph: "U", cat: "civic",    size: "small",  where: ["warehouse", "market"], weight: 1 },   // FLAG: goes nowhere yet
     { id: "bank",       label: "the bank",               glyph: "B", cat: "civic",    size: "large",  where: ["civic", "market"], unique: true, weight: 2 },
     // GATE FIX — the Tour Agency: GUARANTEED civic venue (unique -> always places). Its front (glyph "A",
     // act "agency") is the in-world door to the staged creation flow (startIntake); without it that flow
