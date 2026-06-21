@@ -96,7 +96,45 @@ var TD_CHARSYS = (function () {
     };
   }
 
+  // ---- PHASE 2 — VISA CATEGORIES (BONUSES ONLY, editable) ----------------------------------------
+  // Eight visas; each grants stat BONUSES (never a penalty) + a signature skill/talent/ability/
+  // proficiency from the registries above. Stat-bonus budgets are kept ~equal across visas (~280) so no
+  // visa strictly dominates in raw power — they differ only in WHERE the bonus + signature land.
+  // `weapon`/`armor` give the starting loadout (Phase-A slots). `freePick` = the Tourist's open knack
+  // (chosen at the Phase-5 flow; a sensible default is granted here for the sandbox).
+  function clamp1k(v) { return Math.max(1, Math.min(1000, v)); }
+  var VISAS = {
+    tourist:    { order: 0, name: "Tourist Visa", disposition: "Here for the sights — lucky and hale, with a knack of your choosing.",
+      desc: "The default admission. No specialism; a free pick of one aptitude.", weapon: "shortsword", armor: "light", freePick: true,
+      stats: { lucky: 140, con: 140 }, grants: [["skill", "appraise", 2]] },
+    labourer:   { order: 1, name: "Labourer's Pass", disposition: "Dock-hardened — strong, tough, steady; built for impact and heavy loads.",
+      desc: "Hired muscle off the harbour. Impact proficiency and the Dead Lift.", weapon: "mace", armor: "medium",
+      stats: { might: 95, con: 95, grit: 95 }, grants: [["proficiency", "impact", 3], ["talent", "deadLift"]] },
+    transit:    { order: 2, name: "Transit Visa", disposition: "Always in motion — quick, sharp-eyed, quiet, and tireless.",
+      desc: "Cleared for swift passage. Stealth and Athletics.", weapon: "sabre", armor: "light",
+      stats: { dex: 140, per: 140 }, grants: [["skill", "stealth", 2], ["skill", "athletics", 2]] },
+    scholar:    { order: 3, name: "Scholar's Visa", disposition: "Admitted on letters of study — clever and observant; reads the ciphers.",
+      desc: "Here to read the route's records. Research and a Cipher-Minded reliability.", weapon: "dagger", armor: "light",
+      stats: { int: 140, per: 140 }, grants: [["skill", "research", 2], ["talent", "cipherMinded"]] },
+    surveyor:   { order: 4, name: "Surveyor's Warrant", disposition: "Sent to map and measure — perceptive and intuitive; reads a floor at a glance.",
+      desc: "Charged with the survey. Survey and Survey-the-Room.", weapon: "dagger", armor: "light",
+      stats: { per: 140, intuition: 140 }, grants: [["skill", "survey", 2], ["ability", "surveyRoom"]] },
+    pilgrim:    { order: 5, name: "Pilgrim's Permit", disposition: "Walking it for the soul — unshakable and strong; fear finds no purchase.",
+      desc: "On pilgrimage to the deep office. Conviction.", weapon: "mace", armor: "medium",
+      stats: { grit: 140, might: 140 }, grants: [["talent", "conviction"]] },
+    diplomat:   { order: 6, name: "Diplomatic Visa", disposition: "Credentialed and charming — magnetic and well-made; talks past trouble.",
+      desc: "Accredited to negotiate. Parley, the skill and the act.", weapon: "shortsword", armor: "light",
+      stats: { charm: 140, appearance: 140 }, grants: [["skill", "parley", 2], ["ability", "parley"]] },
+    naturalist: { order: 7, name: "Naturalist's Visa", disposition: "Cataloguing the dark's flora — intuitive and hardy; forages and physicks.",
+      desc: "Licensed to forage and study. Forage and Physick.", weapon: "sabre", armor: "light",
+      stats: { intuition: 140, con: 140 }, grants: [["skill", "forage", 2], ["talent", "physick"]] }
+  };
+  function visaList() { return Object.keys(VISAS).map(function (id) { var v = VISAS[id]; return { id: id, name: v.name, disposition: v.disposition, desc: v.desc, weapon: v.weapon, armor: v.armor, order: v.order }; }).sort(function (a, b) { return a.order - b.order; }); }
+  function applyVisa(stats, visaId) { var v = VISAS[visaId]; if (!v || !stats) return stats; for (var k in v.stats) if (typeof stats[k] === "number") stats[k] = clamp1k(stats[k] + v.stats[k]); return stats; }
+  function grantVisaSignature(sheet, visaId) { var v = VISAS[visaId]; if (!v) return sheet; (v.grants || []).forEach(function (g) { grant(sheet, g[0], g[1], g[2]); }); return sheet; }
+
   return {
+    VISAS: VISAS, visaList: visaList, applyVisa: applyVisa, grantVisaSignature: grantVisaSignature,
     PROFICIENCIES: PROFICIENCIES, PROF_RANKS: PROF_RANKS, profMod: profMod, profRankOf: profRankOf,
     SKILLS: SKILLS, SKILL_RANKS: SKILL_RANKS, TALENTS: TALENTS, ABILITIES: ABILITIES,
     blankSheet: blankSheet, grant: grant, rankUp: rankUp, has: has,

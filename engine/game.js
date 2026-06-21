@@ -130,25 +130,29 @@ var TD_GAME = (function () {
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
 
-    // GATE 6 — the admission intake (background declaration). The Agency opens the form (act 'agency');
-    // these drive it. Declaring a background RE-ROLLS the stat block with that background's bias, takes
-    // its starting loadout, records the declared identity, and issues the Guided Package. Feel-words only.
-    function intakeList() { return (typeof TD_STATS !== "undefined" && TD_STATS.backgroundList) ? TD_STATS.backgroundList() : []; }
+    // CHARACTER B — the admission intake declares a VISA (bonuses-only). The Agency opens the form (act
+    // 'agency'); declaring a visa rolls the base stat block, applies the visa's stat BONUSES (never a
+    // penalty), grants its signature aptitude(s) to the character sheet, takes its loadout, records the
+    // identity, and issues the Guided Package. Feel-words only. (Supersedes the Gate-6 background biases.)
+    function intakeList() { return (typeof TD_CHARSYS !== "undefined" && TD_CHARSYS.visaList) ? TD_CHARSYS.visaList() : []; }
     function chooseBackground(id) {
       if (!intakeOpen) return { declared: false };
-      var bg = (typeof TD_STATS !== "undefined" && TD_STATS.BACKGROUNDS) ? TD_STATS.BACKGROUNDS[id] : null;
-      if (!bg) return { declared: false };
+      var v = (typeof TD_CHARSYS !== "undefined" && TD_CHARSYS.VISAS) ? TD_CHARSYS.VISAS[id] : null;
+      if (!v) return { declared: false };
       if (typeof TD_STATS !== "undefined") {
-        character.stats = TD_STATS.create(TD_RNG.make(((lifeN * 2654435761) ^ ((bg.order + 1) * 40503)) >>> 0 || 1), bg.bias);
+        character.stats = TD_STATS.create(TD_RNG.make(((lifeN * 2654435761) ^ ((v.order + 1) * 40503)) >>> 0 || 1));   // base roll (Phase 3 makes it average)
+        TD_CHARSYS.applyVisa(character.stats, id);                                                                      // bonuses only
         character.progress = TD_STATS.newProgress();
-        var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hp = hpm; meters.hpMax = hpm;   // Con -> HP, re-derived for the declared build
+        var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hp = hpm; meters.hpMax = hpm;   // Con -> HP, re-derived
       }
-      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) character.equipment = TD_RESOLVE.GEAR.startingSet(bg.armor, bg.weapon);   // GATE 7 (A): the declared loadout across the 11 slots
-      character.background = { id: id, name: bg.name, disposition: bg.disposition };
+      character.sheet = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS.grantVisaSignature(TD_CHARSYS.blankSheet(), id) : null;
+      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) character.equipment = TD_RESOLVE.GEAR.startingSet(v.armor, v.weapon);
+      character.background = { id: id, name: v.name, disposition: v.disposition };   // the declared identity (dossier)
+      character.visa = id;
       character.ticket = "agency"; character.signalsSeen.add("001"); intakeOpen = false;
       senses("The clerk stamps the form without quite reading it: “" + SIG["001"].t + ".”", "said", "OBJ");
-      logMsg("Declared: " + bg.name + " — " + bg.disposition + " A Guided Package is stamped into your hand.");
-      return { declared: true, background: id, event: lastEvent };
+      logMsg("Declared: " + v.name + " — " + v.disposition + " A Guided Package is stamped into your hand.");
+      return { declared: true, visa: id, background: id, event: lastEvent };
     }
     function intakeMove(dir) {
       if (!intakeOpen) return { moved: false };

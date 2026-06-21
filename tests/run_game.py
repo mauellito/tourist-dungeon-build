@@ -15,7 +15,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENGINE = os.path.join(ROOT, "engine")
 TMPDIR = os.path.join(ROOT, "tests", ".tmp")
-ENGINE_FILES = ["rng.js", "resolve.js", "stats.js", "burden.js", "interpreter.js", "vaults.js", "gen2.js", "mapmode.js", "voices.js", "towngen.js", "generator.js", "game.js", "ui.js"]
+ENGINE_FILES = ["rng.js", "resolve.js", "stats.js", "charsys.js", "burden.js", "interpreter.js", "vaults.js", "gen2.js", "mapmode.js", "voices.js", "towngen.js", "generator.js", "game.js", "ui.js"]
 TESTS = os.path.join(ROOT, "tests", "game.tests.js")
 CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",

@@ -11,44 +11,43 @@ function TD_GAME_TESTS() {
   function game(seed) { return TD_GAME.create(TD_GEN.generate(seed || 3)); }
 
   // -------------------------------------------------------------- FORK 1
-  test("Agency: the admission intake opens; declaring a background issues the ticket (002/001 on senses)", function () {
+  test("Agency: the admission intake opens; declaring a VISA issues the ticket (002/001 on senses)", function () {
     var g = game();
-    g._interact("agency");                                       // GATE 6: the booking desk opens the intake form
+    g._interact("agency");                                       // CHARACTER B: the booking desk opens the visa form
     assert(g._intakeOpen(), "the Agency opens the admission intake");
-    eq(g._character().ticket, null);                             // no ticket until a particular is declared
+    eq(g._character().ticket, null);                             // no ticket until a visa is declared
     assert(g._character().signalsSeen.has("002"), "subjective patter 002 seen at the desk");
     var bgs = g._backgrounds();
-    assert(bgs.length >= 5, "the form offers the declared backgrounds");
-    g.chooseBackground("daytripper");                            // declare -> issues the Guided Package
+    assert(bgs.length >= 8, "the form offers the eight visas");
+    g.chooseBackground("tourist");                              // declare -> issues the Guided Package
     eq(g._character().ticket, "agency");
     assert(!g._intakeOpen(), "declaring closes the intake");
-    assert(g._character().background && g._character().background.name === "Day-Tripper", "the declared identity is recorded");
+    assert(g._character().visa === "tourist", "the declared visa is recorded");
+    assert(g._character().background && /Tourist/.test(g._character().background.name), "the declared identity is recorded");
     assert(g._character().signalsSeen.has("001"), "objective fine print 001 seen on declaration");
     var sens = g._shared().messages.filter(function (m) { return m.ch === "senses"; });
     assert(sens.some(function (m) { return /everywhere worth going/.test(m.text) && m.obj === "SUBJ"; }), "002 is SUBJ senses (said)");
     assert(sens.some(function (m) { return /Valid in Guided Zones/.test(m.text) && m.obj === "OBJ"; }), "001 is OBJ senses (said), and true");
     assert(g._shared().messages.some(function (m) { return m.ch === "event" && /Guided Package/.test(m.text); }), "the mechanical fact is an EVENT line");
   });
-  // GATE 6 — a declared background biases the roll into a visibly different build + takes its loadout
-  test("Agency backgrounds are distinct, run-shaping declarations (biased roll + gear)", function () {
-    // the bias is applied deterministically: same seed, the Stevedore lands higher Might + lower Dex
-    var generic = TD_STATS.create(TD_RNG.make(42));
-    var steve = TD_STATS.create(TD_RNG.make(42), TD_STATS.BACKGROUNDS.stevedore.bias);
-    assert(steve.might > generic.might, "Stevedore biases Might UP");
-    assert(steve.dex < generic.dex, "Stevedore biases Dex DOWN");
-    var cut = TD_STATS.create(TD_RNG.make(42), TD_STATS.BACKGROUNDS.cutpurse.bias);
-    assert(cut.dex > generic.dex && cut.con < generic.con, "Cutpurse biases Dex up, Con down");
-    // declaring assigns the background's loadout
-    var g = game(); g._interact("agency"); g.chooseBackground("stevedore");
-    var eqp = g._character().equipment;   // GATE 7 (A): the loadout is now across the 11 slots
+  // CHARACTER B — visas are BONUSES-ONLY (never a penalty) and grant a signature aptitude + loadout
+  test("Visas are bonuses-only declarations (stat lift + signature grant + gear)", function () {
+    // bonuses-only: applyVisa only ever RAISES the listed stats
+    var base = TD_STATS.create(TD_RNG.make(42)), lab = TD_STATS.create(TD_RNG.make(42));
+    TD_CHARSYS.applyVisa(lab, "labourer");
+    assert(lab.might >= base.might && lab.con >= base.con && lab.grit >= base.grit, "Labourer raises Might/Con/Grit, never lowers");
+    assert(lab.dex === base.dex, "untouched stats are unchanged (no penalty)");
+    // declaring grants the visa's signature to the character sheet + its loadout
+    var g = game(); g._interact("agency"); g.chooseBackground("labourer");
+    var eqp = g._character().equipment;
     eq(eqp.rightHand.name, TD_RESOLVE.GEAR.WEAPONS.mace.name);
-    eq(eqp.body.tier, "heavy");                                  // a full plate set across the armour slots
-    var agg = TD_RESOLVE.GEAR.aggregate(eqp);
-    assert(agg.armor.robustness >= 9 && agg.armor.robustness <= 11, "the full plate set aggregates to ~the old heavy tier (rob 10)");
-    assert(g._character().background.id === "stevedore", "the declared background id is recorded");
-    // a quick-start (kiosk) carries no declared background
+    eq(eqp.body.tier, "medium");
+    assert(TD_CHARSYS.has(g._character().sheet, "proficiency", "impact"), "Labourer grants Impact proficiency");
+    assert(TD_CHARSYS.has(g._character().sheet, "talent", "deadLift"), "Labourer grants the Dead Lift talent");
+    // a quick-start (kiosk) carries no declared visa
     var q = game(); q._interact("kiosk");
     eq(q._character().ticket, "standard");
+    eq(q._character().visa, undefined);
     eq(q._character().background, null);
   });
 
