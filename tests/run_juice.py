@@ -53,6 +53,8 @@ F.onload=function(){
   function adjFloor(){ var v=view(),p=v.player,D=[['right',1,0],['left',-1,0],['up',0,-1],['down',0,1],['ul',-1,-1],['ur',1,-1],['dl',-1,1],['dr',1,1]];
     for(var i=0;i<8;i++){ var nx=p.x+D[i][1],ny=p.y+D[i][2],k=nx+','+ny; if(v.grid[ny]&&v.grid[ny][nx]==='.'&&!(v.doors&&v.doors[k])&&!(v.creatures||[]).some(function(c){return c.x===nx&&c.y===ny;})) return {dir:D[i][0],x:nx,y:ny}; } return null; }
   try {
+    // GATE FIX — a new game opens the creation flow up front; dismiss it (Escape) to the random boot
+    var gI=0; while(view().intake && view().intake.open && gI++<8){ pk('Escape'); }
     pk('~');   // open the debug overlay so feel.lastHooks is readable after each action
 
     // ---- DESCEND (town -> dungeon): buy ticket, walk to the mouth, descend (clean, no contraption) ----

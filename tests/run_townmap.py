@@ -53,20 +53,25 @@ REPORTER = r"""
     // CONSTRAINTS: vice only in red-light (bodega may also sit in market); warehouse
     // trades only in the warehouse; uniques at most one; uniques always present.
     var viol = [], seeds = [1,2,3,7,11,42,101,202,777,2024];
-    var present = { bank:0, hotel:0, customs:0 };
+    var present = { bank:0, hotel:0, customs:0, agency:0 };   // GATE FIX — the Agency is a guaranteed anchor too
+    var agencyRoleBad = 0;
     seeds.forEach(function(s){
       var g = TM.generate(s), uc = {};
       g.fronts.forEach(function(f){
         if (f.cat==='vice' && f.role!=='redlight' && f.business!=='bodega') viol.push('vice@'+f.role+'(s'+s+')');
         if ((f.business==='warehouse'||f.business==='chandlery'||f.business==='customs') && f.role!=='warehouse') viol.push(f.business+'@'+f.role);
+        if (f.business==='agency' && f.role!=='civic' && f.role!=='market') agencyRoleBad++;   // R1: civic/market only
         uc[f.business]=(uc[f.business]||0)+1;
       });
-      ['bank','hotel','customs'].forEach(function(u){ if((uc[u]||0)>1) viol.push('dup-'+u+'='+uc[u]+'(s'+s+')'); if(uc[u]) present[u]++; });
+      ['bank','hotel','customs','agency'].forEach(function(u){ if((uc[u]||0)>1) viol.push('dup-'+u+'='+uc[u]+'(s'+s+')'); if(uc[u]) present[u]++; });
     });
     ok('district + size constraints honoured (every seed)', viol.length===0, viol.slice(0,4).join(','));
     ok('anchor businesses ALWAYS present (bank, hotel, customs)',
        present.bank===seeds.length && present.hotel===seeds.length && present.customs===seeds.length,
        JSON.stringify(present)+' of '+seeds.length);
+    // GATE FIX (R1) — the Tour Agency spawns EXACTLY ONCE every seed, in the civic/market district
+    ok('the Tour Agency spawns exactly once EVERY seed (was unreachable)', present.agency===seeds.length, present.agency+' of '+seeds.length+' seeds');
+    ok('the Agency front sits in the civic/market district', agencyRoleBad===0, agencyRoleBad+' off-district placements');
 
     // FRONT VALIDITY: each front sits on a building cell with a walkable street face
     function walkTag(t){ return t==='street'||t==='plaza'||t==='alley'||t==='pier'||t==='bridge'||t==='gate'||t==='dungeon'||t==='park'||t==='graveyard'||t==='landmark'||t==='notice'||t==='vendor'||t==='npc'||t==='kiosk'; }

@@ -88,6 +88,26 @@ F.onload = function(){
       var all=walkable(v,x,y); for(var d in DV){ if(!all)break; if(!walkable(v,x+DV[d][0],y+DV[d][1]))all=false; }
       if(all) return {x:x,y:y}; } return view().player; }
   try {
+    // ============================ CREATION OPENS UP FRONT (GATE FIX) ======
+    // A new game now opens the staged creation flow first. Confirm it's reachable, that the stat-pool
+    // ALLOCATE stage is reachable, and that SKIP still yields a playable ticketed character — then for
+    // the rest of the suite dismiss the flow (Escape) to the random/ticketless boot the tests assume.
+    ok('a new game opens the creation flow up front (welcome stage)', !!(view().intake && view().intake.open && view().intake.stage==='welcome'));
+    pk('1');   // welcome -> Apply for a visa -> sign
+    ok('Apply advances into the staged flow (birth sign)', view().intake && view().intake.stage==='sign');
+    pk('Enter'); pk('Enter'); pk('Enter');   // sign -> sex -> visa -> allocate
+    ok('the ALLOCATE (stat-pool) stage is reachable', view().intake && view().intake.stage==='allocate');
+    pk('ArrowRight');   // spend from the pool on the first stat
+    ok('the stat pool spends in allocate (budget falls below full)', view().intake.budget < 1);
+    pk('Enter'); pk('Enter');   // allocate -> horoscope -> admitted
+    ok('completing the flow issues a ticket (descend-ready)', !view().intake || !view().intake.open ? !!view().ticket : false);
+    // SKIP path on a fresh life
+    win.__TD_SIM().newCharacter();
+    ok('newCharacter re-opens creation up front', !!(view().intake && view().intake.open));
+    pk('2');   // welcome -> Skip — admit me as I am
+    ok('Skip yields a playable random character with a Standard ticket', (!view().intake || !view().intake.open) && view().ticket==='standard');
+    // reset to the random/ticketless boot the remaining tests were written against
+    win.__TD_SIM().newCharacter(); var gI=0; while(view().intake && view().intake.open && gI++<8){ pk('Escape'); }
     // ============================ SCROLLING CAMERA (Phase B) ==============
     win.__TD_SIM()._clearActors();   // de-flake: wandering townsfolk must not block the spine walk
     var cam0=win.__TD_CAMERA(); var pc=view().player;

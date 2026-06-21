@@ -170,16 +170,33 @@ var TD_GAME = (function () {
     // budget meter + escalating cost (feel-words only; lowering refunds). The Kiosk is the quick-start
     // (no flow). Editable registries throughout. (Supersedes the Gate-6 single-form intake.)
     var CS = (typeof TD_CHARSYS !== "undefined") ? TD_CHARSYS : null;
-    function intakeListFor(stage) { if (!CS) return []; if (stage === "sign") return CS.signList(); if (stage === "sex") return CS.allotmentList(); if (stage === "visa") return CS.visaList(); return []; }
+    var WELCOME_OPTS = [
+      { id: "apply", name: "Apply for a visa", disposition: "the full intake — birth sign, allotment, visa, then allocate your particulars" },
+      { id: "skip", name: "Skip — admit me as I am", disposition: "a random visitor and a grey Standard ticket; straight to the harbour" }
+    ];
+    function intakeListFor(stage) { if (!CS) return []; if (stage === "welcome") return WELCOME_OPTS; if (stage === "sign") return CS.signList(); if (stage === "sex") return CS.allotmentList(); if (stage === "visa") return CS.visaList(); return []; }
     function intakeList() { return intakeListFor("visa"); }   // back-compat: _backgrounds() = the visas
+    // GATE FIX — creation opens at a WELCOME choice: APPLY (the full staged intake) or SKIP (admit the
+    // random quick-start as-is, with a Kiosk Standard ticket). startIntake leaves the character UNTOUCHED
+    // until 'apply' is chosen, so 'skip' keeps the freshCharacter() roll exactly as dealt.
     function startIntake() {
       if (!CS) return;
-      intakeOpen = true; intakeStage = "sign"; intakeSel = 0;
+      intakeOpen = true; intakeStage = "welcome"; intakeSel = 0;
+      logMsg("Welcome to Harbordtown. The Tour Agency will process a full visa, or admit you as you are. (↑/↓ · Enter)");
+    }
+    function beginApplication() {   // 'apply' -> set up the base the flow shapes, then the sign stage
+      intakeStage = "sign"; intakeSel = 0;
       intakeBase = TD_STATS.createBase(TD_RNG.make(((lifeN * 2654435761) ^ 0x5bd1e995) >>> 0 || 1));   // the base the flow will shape
       character.stats = cloneStats(intakeBase); character.sheet = CS.blankSheet();
       character.sign = null; character.visa = null; character.background = null; character.sex = null;
       alloc = { pointsLeft: CS.POOL.POINTS, deltas: {}, picks: {}, base: null };
-      logMsg("Welcome to Harbordtown. Apply for a visa? First, declare your birth sign. (↑/↓ · Enter · Esc to step away)");
+      logMsg("Declare your birth sign. (↑/↓ · Enter · Esc to step away)");
+    }
+    function skipIntake() {   // 'skip' -> keep the random quick-start, issue the Kiosk Standard ticket
+      intakeOpen = false; intakeStage = null; alloc = null;
+      character.ticket = "standard"; character.signalsSeen.add("003");
+      logMsg("“Admitted as you are,” the clerk says, and a grey Standard ticket curls from the slot. The quick way in.");
+      return { skipped: true };
     }
     function cloneStats(s) { var o = {}; for (var k in s) o[k] = s[k]; return o; }
     function recomputeStats() {   // base -> sign sidegrade -> Form-12 allotment -> visa bonuses (allocation rides on top)
@@ -296,6 +313,7 @@ var TD_GAME = (function () {
     }
     function intakeChoose() {
       if (!intakeOpen) return { declared: false };
+      if (intakeStage === "welcome") { var w = intakeListFor("welcome")[intakeSel]; if (w && w.id === "skip") return skipIntake(); if (w) beginApplication(); return { staged: intakeStage }; }
       if (intakeStage === "sign") { var s = intakeListFor("sign")[intakeSel]; if (s) pickSign(s.id); return { staged: "sex" }; }
       if (intakeStage === "sex") { var x = intakeListFor("sex")[intakeSel]; if (x) pickSex(x.id); return { staged: "visa" }; }
       if (intakeStage === "visa") { var v = intakeListFor("visa")[intakeSel]; if (v) pickVisa(v.id); return { staged: "allocate" }; }
@@ -1313,7 +1331,7 @@ var TD_GAME = (function () {
       // CHARACTER E — the creation flow surface (staged). Feel-words only; the budget is a fraction (bar), never a number.
       v.intake = intakeOpen ? (function () {
         var o = { open: true, stage: intakeStage, sel: intakeSel };
-        if (intakeStage === "sign" || intakeStage === "sex" || intakeStage === "visa") o.list = intakeListFor(intakeStage);
+        if (intakeStage === "welcome" || intakeStage === "sign" || intakeStage === "sex" || intakeStage === "visa") o.list = intakeListFor(intakeStage);
         else if (intakeStage === "allocate") {
           o.budget = alloc ? Math.max(0, Math.min(1, alloc.pointsLeft / CS.POOL.POINTS)) : 0;
           o.spent = alloc ? alloc.pointsLeft <= 0.001 : false;
@@ -1359,10 +1377,13 @@ var TD_GAME = (function () {
       if (character.events.clicks.length) { var lvl = character.events.clicks[character.events.clicks.length - 1]; spatial.push("You heard the stair click shut on Level " + lvl + " and kept descending."); }
       return { heading: "BUREAU OF VISITOR OUTCOMES", title: "Certificate of Conclusion", cause: cause, attributions: attributions, spatial: spatial, footer: "The Bureau thanks the deceased for his custom, such as it was." };
     }
-    function newCharacter() { if (!dead) bankKnowledge(); session.lives += 1; freshCharacter(); }
+    // GATE FIX — a new life rolls a random fallback (freshCharacter), then OPENS the creation flow up front
+    // so the stat pool is reachable without hunting for the Agency. 'Skip' in the flow keeps the random roll.
+    function newCharacter() { if (!dead) bankKnowledge(); session.lives += 1; freshCharacter(); startIntake(); }
 
     session.lives += 1;
     freshCharacter();
+    startIntake();
 
     return {
       world: world, session: session,

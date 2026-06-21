@@ -985,6 +985,10 @@ var TD_TOWNMAP = (function () {
     { id: "spa",        label: "a spa",                  glyph: "m", cat: "commerce", size: "medium", where: ["civic", "market", "housing"], weight: 3 },
     { id: "tavern",     label: "a tavern",               glyph: "Y", cat: "commerce", size: "medium", where: ["market", "housing", "civic"], weight: 4 },
     { id: "bank",       label: "the bank",               glyph: "B", cat: "civic",    size: "large",  where: ["civic", "market"], unique: true, weight: 2 },
+    // GATE FIX — the Tour Agency: GUARANTEED civic venue (unique -> always places). Its front (glyph "A",
+    // act "agency") is the in-world door to the staged creation flow (startIntake); without it that flow
+    // was unreachable in normal play.
+    { id: "agency",     label: "the Tour Agency",        glyph: "A", cat: "civic",    size: "medium", where: ["civic", "market"], unique: true, weight: 2 },
     { id: "hotel",      label: "the Gilded Kraken Hotel", glyph: "H", cat: "lodging", size: "large",  where: ["civic", "market", "housing"], unique: true, weight: 2 },
     { id: "warehouse",  label: "a warehouse",            glyph: "W", cat: "commerce", size: "large",  where: ["warehouse"], weight: 6 },
     { id: "chandlery",  label: "a ship chandlery",       glyph: "d", cat: "commerce", size: "medium", where: ["warehouse"], weight: 4 },

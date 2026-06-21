@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "e6e7ca9";</script>
+<script>window.__BUILD = "7eff8a8";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -974,10 +974,10 @@ window.__initPlayMap = function () {
   }
   function renderIntake(vw) {
     var it = vw.intake, st = it.stage, sel = it.sel || 0, body = "", head = "Bureau Admission", hint = "";
-    if (st === "sign" || st === "sex" || st === "visa") {
+    if (st === "welcome" || st === "sign" || st === "sex" || st === "visa") {
       var list = it.list || [];
       body = list.map(function (b, i) { return intakeRow(b.name, b.disposition || b.blurb || b.note, i === sel, i + 1); }).join("");
-      head = (st === "sign") ? "Welcome to Harbordtown — Declare your Birth Sign" : (st === "sex") ? "Form 12 — Sex/Gender (for the allotment)" : "Declaration of Visa";
+      head = (st === "welcome") ? "The Tour Agency — Admission" : (st === "sign") ? "Welcome to Harbordtown — Declare your Birth Sign" : (st === "sex") ? "Form 12 — Sex/Gender (for the allotment)" : "Declaration of Visa";
       hint = "&uarr;/&darr; &nbsp;·&nbsp; <b>1&ndash;" + list.length + "</b> or <b>Enter</b> &nbsp;·&nbsp; <b>Esc</b> step away";
     } else if (st === "allocate") {
       head = "Allocate your Particulars";
@@ -1158,6 +1158,8 @@ window.__initPlayMap = function () {
         if (k === "r") { e.preventDefault(); sim.allocReset(); draw(); return; }
       } else if ((ist === "sign" || ist === "sex" || ist === "visa") && /^[1-9]$/.test(k)) {
         e.preventDefault(); var bl = vw.intake.list || [], bi = (+k) - 1; if (bl[bi]) { if (ist === "sign") sim.pickSign(bl[bi].id); else if (ist === "sex") sim.pickSex(bl[bi].id); else sim.pickVisa(bl[bi].id); } draw(); return;
+      } else if (ist === "welcome" && /^[1-9]$/.test(k)) {   // GATE FIX — 1 apply / 2 skip
+        e.preventDefault(); var wbi = (+k) - 1, wc = vw.intake.sel || 0; while (wc < wbi) { sim.intakeMove("down"); wc++; } while (wc > wbi) { sim.intakeMove("up"); wc--; } sim.intakeChoose(); draw(); return;
       }
       return;   // modal: the flow swallows other input
     }
@@ -1192,7 +1194,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Economy — buy/sell, bank vault, RLD services, fence + bookstore (posted-tariff, frictionful selling)";
+  var VERSION = "Fix — creation up-front; Agency tenant guaranteed (was unreachable)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
