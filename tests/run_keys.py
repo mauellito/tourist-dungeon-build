@@ -243,9 +243,12 @@ F.onload = function(){
     var sbH=doc.getElementById('sb-hunger');
     ok('the sidebar dossier shows the hunger STAGE as a word',
        sbH && LADDER.indexOf((sbH.textContent||'').trim())>=0);
-    // R1 HUD: HP is surfaced as an at-a-glance bar; the map dominates (canvas wider than sidebar)
-    ok('HUD surfaces HP at a glance (a HP meter bar)',
-       /HP/.test(doc.getElementById('dossier').textContent||'') && !!doc.querySelector('#dossier .meter-fill'));
+    // GATE 9 (C) HUD: body condition at a glance — a vitals meter + a FEEL-WORD (no raw HP number)
+    ok('HUD surfaces the body condition at a glance (vitals meter + feel-word, no number)',
+       !!doc.querySelector('#dossier .meter-fill') && /Hale|Grazed|Wounded|Bloodied|Failing/.test((doc.getElementById('sb-hp')||{}).textContent||'') && !/\d/.test((doc.getElementById('sb-hp')||{}).textContent||''));
+    // GATE 9 (C): the equipment PAPERDOLL shows the slots (right hand + body at least)
+    ok('HUD shows the equipment paperdoll (slots named)',
+       !!doc.getElementById('sb-eq-rightHand') && !!doc.getElementById('sb-eq-body'));
     ok('the map viewport dominates the layout (canvas wider than the sidebar column)',
        doc.getElementById('cv').width > doc.getElementById('sidebar').offsetWidth);
     // R1 LOG: small inline log, but the full history is reviewable via L

@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "0ea4b66";</script>
+<script>window.__BUILD = "fbf9f94";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -611,26 +611,55 @@ window.__initPlayMap = function () {
   }
 
   // =========================================================== SIDEBAR ======
+  // GATE 9 (C) — the glanceable dashboard: vitals (feel-words + bars, no raw HP/fatigue number), the
+  // equipment PAPERDOLL (all 11 slots), the metabolism state, the declared identity + stat sheet, and a
+  // compact itinerary/place footer. Feel-words only.
+  function section(t) { return '<div style="margin:7px 0 2px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#8a7c66">' + t + "</div>"; }
+  function vital(label, id, frac, color, word) {
+    var pct = Math.max(0, Math.min(100, Math.round(100 * frac)));
+    return '<div class="meter"><div class="meter-l">' + label + '</div><div class="meter-track"><div class="meter-fill" style="width:' + pct + '%;background:' + color + '"></div></div><div class="meter-v" id="' + id + '">' + escapeHTML(word) + "</div></div>";
+  }
+  function paperdoll(eq, gear) {
+    if (!eq) return section("Equipment") + statrow("Wielded", '<span id="sb-eq-rightHand">' + ((gear && gear.weapon) ? escapeHTML(gear.weapon.name) : "—") + "</span>");
+    function nm(p) { return p ? escapeHTML(p.name) : "—"; }
+    var rh = eq.rightHand, lh = eq.leftHand;
+    var rhTxt = rh ? escapeHTML(rh.name) + (rh.verb ? " — you " + escapeHTML(rh.verb) : "") + ((rh.hands === 2) ? " (both hands)" : "") : "—";
+    var lhTxt = (lh && lh !== rh) ? escapeHTML(lh.name) : (rh && rh.hands === 2 ? "(same weapon)" : "—");
+    return section("Equipment") +
+      statrow("Right hand", '<span id="sb-eq-rightHand">' + rhTxt + "</span>") +
+      statrow("Left hand", '<span id="sb-eq-leftHand">' + lhTxt + "</span>") +
+      statrow("Head", '<span id="sb-eq-head">' + nm(eq.head) + "</span>") +
+      statrow("Body", '<span id="sb-eq-body">' + nm(eq.body) + "</span>") +
+      statrow("Hands", '<span id="sb-eq-hands">' + nm(eq.hands) + "</span>") +
+      statrow("Feet", '<span id="sb-eq-feet">' + nm(eq.feet) + "</span>") +
+      statrow("Waist", '<span id="sb-eq-waist">' + nm(eq.waist) + "</span>") +
+      statrow("Back", '<span id="sb-eq-back">' + nm(eq.back) + "</span>") +
+      statrow("Neck", '<span id="sb-eq-neck">' + nm(eq.neck) + "</span>") +
+      statrow("Rings", '<span id="sb-eq-rings">' + nm(eq.ringL) + " / " + nm(eq.ringR) + "</span>");
+  }
   function renderDossier(vw) {
     var m = vw.meters || {}, hg = vw.hunger || { stage: "—", critical: false };
-    var hpCol = m.hp < 0.25 * m.hpMax ? P.dangerHigh : m.hp < 0.5 * m.hpMax ? P.dangerMed : "#2f6d33";
-    var ftCol = m.fatigue > 80 ? P.dangerHigh : m.fatigue > 55 ? P.dangerMed : "#7a5c3a";
-    var place = vw.phase === "dungeon" ? ("Level " + vw.level) : (vw.phase === "town" ? (vw.title || "The Harbour") : "Indoors");
-    var g = vw.gear || {};   // GATE 2 R2: the equip readout — armour BULK as one feel-word dial stop; weapon as name+verb. No numbers.
+    var hpFrac = m.hpMax ? m.hp / m.hpMax : 0, ftFrac = m.fatigueMax ? m.fatigue / m.fatigueMax : 0;
+    var hpCol = hpFrac < 0.25 ? P.dangerHigh : hpFrac < 0.5 ? P.dangerMed : "#2f6d33";
+    var ftCol = ftFrac > 0.8 ? P.dangerHigh : ftFrac > 0.55 ? P.dangerMed : "#7a5c3a";
+    var hpWord = hpFrac > 0.75 ? "Hale" : hpFrac > 0.5 ? "Grazed" : hpFrac > 0.25 ? "Wounded" : hpFrac > 0.1 ? "Bloodied" : "Failing";
+    var ftWord = (vw.metabolism && vw.metabolism.fatigue) || (ftFrac < 0.2 ? "fresh" : ftFrac < 0.45 ? "winded" : ftFrac < 0.7 ? "tiring" : ftFrac < 0.95 ? "flagging" : "spent");
+    var burden = vw.metabolism ? vw.metabolism.burden : null;
+    var place = vw.phase === "dungeon" ? ("Sublevel " + vw.level) : (vw.phase === "town" ? (vw.title || "The Harbour") : "Indoors");
     dossierEl.innerHTML =
-      bar("HP", m.hp, m.hpMax, hpCol, true) +
-      bar("Fatigue", m.fatigue, m.fatigueMax, ftCol, false) +
-      '<div style="height:5px"></div>' +
+      section("Vitals") +
+      vital("Body", "sb-hp", hpFrac, hpCol, hpWord) +
+      vital("Vigour", "sb-fatigue", ftFrac, ftCol, ftWord) +
       statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
-      statrow("Armour", '<span id="sb-armour">' + (g.armour ? escapeHTML((g.armour.bulk || "—") + " · " + g.armour.name) : "—") + "</span>") +
-      statrow("Weapon", '<span id="sb-weapon">' + (g.weapon ? escapeHTML(g.weapon.name + " — you " + g.weapon.verb) : "—") + "</span>") +
-      // GATE 5 R3 — the slice objective (Bureau itinerary). Feel-words only; colour shifts on progress.
-      (vw.objective ? statrow("Itinerary", '<span id="sb-objective" style="color:' + (vw.objective.stage === "filed" ? "#2f6d33" : vw.objective.stage === "surveyed" ? P.signal : "#8a7c66") + '">' + escapeHTML(vw.objective.line) + "</span>") : "") +
-      // GATE 4.1 — the visitor's CONSTITUTION (the ten stats) as feel-words only (TD_STATS.surface,
-      // digit-safe). Updates live as growth-by-deeds crosses a band. Placed under the gear rows.
+      (burden ? statrow("Burden", '<span id="sb-burden">' + escapeHTML(burden) + "</span>") : "") +
+      // GATE 9 (C) — the equipment paperdoll (all 11 slots) replaces the single Armour/Weapon readout.
+      paperdoll(vw.equipment, vw.gear) +
+      // GATE 4.1/6 — the declared IDENTITY + the ten-stat CONSTITUTION sheet (feel-words, digit-safe).
       statSheet(vw.stats, vw.background) +
-      statrow("Ticket", '<span id="sb-ticket">' + escapeHTML(vw.ticket || "none") + "</span>") +
+      // GATE 5 R3 — the slice objective (Bureau itinerary). Feel-words only; colour shifts on progress.
+      (vw.objective ? section("Itinerary") + statrow("Survey", '<span id="sb-objective" style="color:' + (vw.objective.stage === "filed" ? "#2f6d33" : vw.objective.stage === "surveyed" ? P.signal : "#8a7c66") + '">' + escapeHTML(vw.objective.line) + "</span>") : "") +
       statrow("Place", '<span id="sb-place">' + escapeHTML(place) + "</span>") +
+      statrow("Ticket", '<span id="sb-ticket">' + escapeHTML(vw.ticket || "none") + "</span>") +
       statrow("Turn", '<span id="sb-turn">' + (vw.turn || 0) + "</span>") +
       statrow("Sights", '<span id="sb-sights">' + (vw.phase === "dungeon" ? (vw.requiredDone + " / " + vw.requiredTotal) : "—") + "</span>");
   }
@@ -752,8 +781,9 @@ window.__initPlayMap = function () {
   function renderLog(vw) {
     var msgs = vw.messages || [];
     msgs.forEach(function (m) { if (m && typeof m === "object" && !stampMap.has(m)) stampMap.set(m, vw.turn); });
-    // the Field Log shows the EVENT stream only; the senses stream has its own panel
-    var last = msgs.filter(function (m) { return (m.ch || "event") === "event"; }).slice(-8);
+    // GATE 9 (C): the Field Log is now a COMPACT ticker — the last few event lines only (press L for the
+    // full history). Important lines (urgent/notable) keep their emphasis via tierOf().
+    var last = msgs.filter(function (m) { return (m.ch || "event") === "event"; }).slice(-3);
     msglogEl.innerHTML = last.map(function (m) {
       var text = (m && typeof m === "object") ? m.text : m;
       var t = (m && typeof m === "object" && stampMap.has(m)) ? stampMap.get(m) : (vw.turn || 0);
@@ -818,17 +848,26 @@ window.__initPlayMap = function () {
   }
 
   // =========================================================== OVERLAYS ======
+  // GATE 9 (C) — the pack is GROUPED by item kind (Weapons / Armour / Provisions / Valuables / Documents
+  // / Misc); empty sections hide. Selection letters stay tied to the underlying inventory index, so a-z
+  // still selects the right item across groups.
+  var PACK_CATS = [["Weapons", ["weapon"]], ["Armour", ["armor"]], ["Provisions", ["ration", "food", "bandage", "hotdog"]],
+    ["Valuables", ["coins", "souvenir", "valuable", "gem"]], ["Documents", ["ticket", "document", "note", "map"]], ["Misc", null]];
+  function packCatOf(kind) { for (var i = 0; i < PACK_CATS.length; i++) { if (PACK_CATS[i][1] && PACK_CATS[i][1].indexOf(kind) >= 0) return PACK_CATS[i][0]; } return "Misc"; }
   function renderPack(vw) {
-    var inv = vw.inventory || [], sel = vw.invSel || 0;
-    var items = inv.map(function (it, i) {
-      var letter = String.fromCharCode(97 + i);
-      return '<li class="' + (i === sel ? "sel" : "") + '"><span class="glyph">' + escapeHTML(it.glyph || "·") + "</span>" +
-        letter + ") " + escapeHTML(it.name) + "</li>";
-    }).join("");
+    var inv = vw.inventory || [], sel = vw.invSel || 0, html = "";
+    PACK_CATS.forEach(function (cat) {
+      var rows = "";
+      inv.forEach(function (it, i) {
+        if (packCatOf(it.kind) !== cat[0]) return;
+        var letter = String.fromCharCode(97 + i);
+        rows += '<li class="' + (i === sel ? "sel" : "") + '"><span class="glyph">' + escapeHTML(it.glyph || "·") + "</span>" + letter + ") " + escapeHTML(it.name) + "</li>";
+      });
+      if (rows) html += '<div class="ttl">' + cat[0] + "</div><ul>" + rows + "</ul>";   // empty sections hide
+    });
     var desc = inv.length ? escapeHTML(inv[sel] ? inv[sel].desc : "") : "Your pack is empty.";
     overlay.innerHTML = '<div class="scrim"><div class="panel pack"><div class="head">Your Pack</div>' +
-      '<div class="ttl">What the visitor carries</div>' +
-      (items ? "<ul>" + items + "</ul>" : "<p><i>empty</i></p>") +
+      (html || "<p><i>empty (but for what you carry on your person)</i></p>") +
       '<div class="desc">' + desc + "</div>" +
       '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div></div>';
   }
@@ -1018,7 +1057,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Gate 8 (B) — metabolism: hunger by burden, fatigue by stat + exertion, sprint";
+  var VERSION = "Gate 9 (C) — HUD: inventory by type, equipment paperdoll, compact log";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
