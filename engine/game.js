@@ -540,11 +540,13 @@ var TD_GAME = (function () {
       // TENANT FRONTS (TD_TOWNMAP only): a seed-dealt business sign on a building face.
       // Sits on the building wall cell (bump-to-read; the wall stays solid), coloured by
       // its kind via TD_UI.buildingColor. Fronts-as-flavor: interiors are a later layer.
+      // TOWN C.1 — the RED-LIGHT district is an open perpetual-dusk POCKET you move THROUGH: its fronts are
+      // flavour only (NOT enterable). Everywhere else, every front is ENTERABLE (bump+Enter -> interior).
+      var rlr = m.meta.redlight ? [m.meta.redlight.x0, m.meta.redlight.y0, m.meta.redlight.x1, m.meta.redlight.y1] : null;
       (m.fronts || []).forEach(function (fr) {
-        // TOWN B — every front is now ENTERABLE: it carries `to` an interior (its own if one exists, else a
-        // flavour room) so bump+Enter goes inside; it stays a FEATURE (signage + bark on bump, category colour).
-        var interior = INTERIORS[fr.business] ? fr.business : "empty";
         var vice = (typeof TD_UI !== "undefined" && TD_UI.buildingCategory && TD_UI.buildingCategory(fr.business) === "vice");
+        var inRLD = (rlr && inRect(rlr, fr.x, fr.y)) || vice;   // the RLD's venues (vice) are flavour wherever their doorstep lands
+        var interior = inRLD ? null : (INTERIORS[fr.business] ? fr.business : "empty");   // RLD fronts carry no `to` -> not a door
         features[key(fr.x, fr.y)] = { type: "front", glyph: fr.glyph, col: fr.col, business: fr.business, to: interior, red: vice,
           label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null, act: "look" };
       });

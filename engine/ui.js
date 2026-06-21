@@ -22,7 +22,7 @@ var TD_UI = (function () {
     signal:   "#b98cff",   // violet — any signal plaque / lookout
     critical: "#ff2d1f",   // pure red — critical messages, the --more-- halt, damage taken
     senses:   "#7fa8c9",   // steel blue — the SENSES channel (perceived atmosphere)
-    redlight:  "#e0559a",  // pink — the red-light district (its doors, its archway)
+    redlight:  "#d21f4a",  // TOWN C.1: REDDER crimson-magenta — the red-light district (distinct from critical orange-red #ff2d1f)
     nature:    "#5a8a4a",  // green — trees, gardens, the park
     npc:       "#d9b36a",  // warm tan — friendly townsfolk (the crowd, not a threat)
     rampart:   "#7d7468",  // stone — the TOWN perimeter wall (fortification, not architecture)
@@ -34,7 +34,7 @@ var TD_UI = (function () {
     civic:     "#9aa6b8", // slate — civic / bureaucratic (bank, agency, kiosk, tim, the dungeon office)
     lodging:   "#b58fd0", // lavender — lodging (hotel, motel)
     faith:     "#dcc879", // pale gold — faith (the church)
-    vice:      "#e0559a", // = redlight pink — vice (red-light businesses)
+    vice:      "#d21f4a", // = redlight crimson — vice (red-light businesses)
     // damage-number meanings (kept consistent with the category rules)
     dmgDealt: "#f5c542",   // = player gold (your output)
     dmgTaken: "#ff2d1f",   // = critical red (harm to you)
