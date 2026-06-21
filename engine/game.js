@@ -1170,6 +1170,8 @@ var TD_GAME = (function () {
       v.equipment = character.equipment || null;   // GATE 7 (A) — raw slots, for the Phase-C paperdoll
       v.charsheet = (typeof TD_CHARSYS !== "undefined" && character.sheet) ? TD_CHARSYS.surface(character.sheet) : null;   // Character A — aptitudes as feel-words
       v.name = character.name || null;   // Character E — the visitor's name (stored; surfaced as identity)
+      v.district = isTownScreen(placeId) ? (districtAt(player.x, player.y) || null) : null;   // TOWN C — current district (drives the RLD neon pulse)
+      v.redlightRect = (places.TOWN && places.TOWN.meta && places.TOWN.meta.redlight) ? places.TOWN.meta.redlight.rect : null;
       v.sign = character.sign ? { name: character.sign.name, day: character.sign.day } : null;   // Character C — birth sign + assigned day (feel-words; day is a date, not a stat)
       v.horoscope = character.horoscope ? { line: character.horoscope.line } : null;             // Character C — the run's fixed horoscope (Bureau flavour)
       // the latest log line is the unified "current event", whoever wrote it

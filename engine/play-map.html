@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "cb15be9";</script>
+<script>window.__BUILD = "c8fedf0";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -233,6 +233,12 @@ window.__initPlayMap = function () {
   // ---- game-feel (TD_FEEL) state: smoothed camera, the effect render loop, last hooks fired ----
   var camXs = null, camYs = null, feelRAF = null, lastFeelHooks = [], spawnedFloats = new WeakSet(), prevPhase = null, prevLevel = -1;
   var inputT = 0, lastFrameMs = 0, lastLatencyMs = 0;   // R3 feel telemetry: input->render latency + frame time
+  // TOWN C — the RED-LIGHT neon. A faint residual glow at night; on ENTERING the district it PULSES (a slow
+  // breathe up, then settles). FLAG: gated on isNight — no day/night cycle yet, so the harbour reads as
+  // perpetual dusk (isNight=true); a real cycle that toggles this is future.
+  var TOWN_IS_NIGHT = true, rldT0 = -1e9, rldPrevDistrict = null, rldRAF = null;
+  function rldFlare(now) { var dt = now - rldT0; if (dt < 0 || dt > 1800) return 0; return dt < 600 ? (dt / 600) * 0.22 : 0.22 * (1 - (dt - 600) / 1200); }   // breathe up ~600ms, settle ~1200ms
+  function rldTick() { rldRAF = null; if (nowMs() - rldT0 < 1800) rldRAF = requestAnimationFrame(rldTick); draw(); }
   function nowMs() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
   function feelTick() {
     var now = nowMs(); draw();
@@ -524,6 +530,15 @@ window.__initPlayMap = function () {
       ctx.fillStyle = (f.business && window.TD_UI && TD_UI.buildingColor) ? TD_UI.buildingColor(f.business) : ((f.col && P[f.col]) ? P[f.col] : P.signal);
       ctx.fillText(f.glyph || "?", fx * TS + TS / 2, fy * TS + TS / 2 + 1);
     });
+    // TOWN C — the RED-LIGHT neon wash: a faint residual glow at night + a breathe-PULSE on entering the
+    // district (the same district-entry the banner uses). Crossing out and back re-triggers. Slow, not strobe.
+    if (town && vw.redlightRect && TOWN_IS_NIGHT) {
+      var nowR = nowMs();
+      if (vw.district === "the Red Light District" && rldPrevDistrict !== "the Red Light District") { rldT0 = nowR; if (!rldRAF) rldRAF = requestAnimationFrame(rldTick); }
+      rldPrevDistrict = vw.district;
+      var amp = 0.06 + rldFlare(nowR), rr = vw.redlightRect;   // residual + flare
+      if (amp > 0.001) { ctx.save(); ctx.globalAlpha = amp; ctx.fillStyle = P.redlight; ctx.fillRect(rr[0] * TS, rr[1] * TS, (rr[2] - rr[0] + 1) * TS, (rr[3] - rr[1] + 1) * TS); ctx.restore(); }
+    }
     vw.creatures.forEach(function (c) {
       ctx.fillStyle = c.friendly ? P.npc : P.creature; ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
       if (!c.friendly && typeof c.hp === "number" && typeof c.maxHp === "number" && c.hp < c.maxHp) {
@@ -1109,7 +1124,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Town B — enterable";
+  var VERSION = "Town C — alive";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
