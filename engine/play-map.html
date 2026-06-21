@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "22a5128";</script>
+<script>window.__BUILD = "0f6c131";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -688,13 +688,18 @@ window.__initPlayMap = function () {
     var hpWord = hpFrac > 0.75 ? "Hale" : hpFrac > 0.5 ? "Grazed" : hpFrac > 0.25 ? "Wounded" : hpFrac > 0.1 ? "Bloodied" : "Failing";
     var ftWord = (vw.metabolism && vw.metabolism.fatigue) || (ftFrac < 0.2 ? "fresh" : ftFrac < 0.45 ? "winded" : ftFrac < 0.7 ? "tiring" : ftFrac < 0.95 ? "flagging" : "spent");
     var burden = vw.metabolism ? vw.metabolism.burden : null;
+    var wt = (vw.metabolism && vw.metabolism.weight) ? vw.metabolism.weight : null;
     var place = vw.phase === "dungeon" ? ("Sublevel " + vw.level) : (vw.phase === "town" ? (vw.title || "The Harbour") : "Indoors");
     dossierEl.innerHTML =
       section("Vitals") +
       vital("Body", "sb-hp", hpFrac, hpCol, hpWord) +
       vital("Vigour", "sb-fatigue", ftFrac, ftCol, ftWord) +
       statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
-      (burden ? statrow("Burden", '<span id="sb-burden">' + escapeHTML(burden) + "</span>") : "") +
+      // GATE 3 — TWO CHANNELS in one row, not merged: the carried TOTAL (digits, the in-world coin/stone
+      // mass) sits BESIDE the burden BAND feel-word. Object mass may be numeric; the condition stays a word.
+      (burden ? statrow("Carrying",
+        (wt ? '<span id="sb-weight" style="color:#cdbf9f">' + escapeHTML(wt.label) + "</span> " : "") +
+        '<span id="sb-burden" style="color:#8a7c66">· ' + escapeHTML(burden) + "</span>") : "") +
       // GATE 9 (C) — the equipment paperdoll (all 11 slots) replaces the single Armour/Weapon readout.
       paperdoll(vw.equipment, vw.gear) +
       // GATE 4.1/6 — the declared IDENTITY + the ten-stat CONSTITUTION sheet (feel-words, digit-safe).
@@ -914,13 +919,19 @@ window.__initPlayMap = function () {
       inv.forEach(function (it, i) {
         if (packCatOf(it.kind) !== cat[0]) return;
         var letter = String.fromCharCode(97 + i);
-        rows += '<li class="' + (i === sel ? "sel" : "") + '"><span class="glyph">' + escapeHTML(it.glyph || "·") + "</span>" + letter + ") " + escapeHTML(it.name) + "</li>";
+        // GATE 3 — each item shows its mass: bare coins under a stone ("dagger, 25"), stone-led above ("breastplate, 1 stone, 75").
+        var mass = it.massLabel ? '<span class="mass" style="float:right;color:#8a7c66">' + escapeHTML(it.massLabel) + "</span>" : "";
+        rows += '<li class="' + (i === sel ? "sel" : "") + '"><span class="glyph">' + escapeHTML(it.glyph || "·") + "</span>" + letter + ") " + escapeHTML(it.name) + mass + "</li>";
       });
       if (rows) html += '<div class="ttl">' + cat[0] + "</div><ul>" + rows + "</ul>";   // empty sections hide
     });
+    // GATE 3 — running TOTAL (digits) BESIDE the burden BAND (feel-word): two channels, derived once.
+    var pwt = (vw.metabolism && vw.metabolism.weight) ? vw.metabolism.weight : null, pband = vw.metabolism ? vw.metabolism.burden : null;
+    var totalLine = pwt ? '<div class="packtotal" style="margin-top:6px;padding-top:5px;border-top:1px solid #3a3324">Carried: <b style="color:#cdbf9f">' + escapeHTML(pwt.label) + "</b>" + (pband ? ' <span style="color:#8a7c66">· ' + escapeHTML(pband) + "</span>" : "") + "</div>" : "";
     var desc = inv.length ? escapeHTML(inv[sel] ? inv[sel].desc : "") : "Your pack is empty.";
     overlay.innerHTML = '<div class="scrim"><div class="panel pack"><div class="head">Your Pack</div>' +
       (html || "<p><i>empty (but for what you carry on your person)</i></p>") +
+      totalLine +
       '<div class="desc">' + desc + "</div>" +
       '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div></div>';
   }
@@ -1134,7 +1145,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Combat juice — hit pulses scale 1→5 by damage% (capped, deadpan)";
+  var VERSION = "Inventory weight — stone total (coins the in-world unit); burden stays feel-word";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

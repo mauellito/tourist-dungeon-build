@@ -51,6 +51,20 @@ try{
   var word=B.surface(st(), items(cap*0.85));
   ok('surface() returns the band FEEL-WORD (no number leaks)', word==='Strained' && !/[0-9]/.test(word), word);
 
+  // ---- GATE 3: WEIGHT READOUT — the coin is the in-world MASS unit (25/lb), 1 stone = 350 coins = 14 lb ----
+  ok('massCoins: 1 lb -> 25 coins of mass', B.massCoins(1)===25, "1lb="+B.massCoins(1));
+  ok('massCoins: 14 lb -> 350 coins (= 1 stone)', B.massCoins(14)===350 && B.COINS_PER_STONE===350, "14lb="+B.massCoins(14));
+  ok('itemMassCoins reads it.weight via the SAME rule', B.itemMassCoins({weight:1})===25 && B.itemMassCoins({weight:0})===0);
+  ok('massLabel: under a stone -> bare coins ("25")', B.massLabel(25)==='25', B.massLabel(25));
+  ok('massLabel: exactly a stone -> "1 stone"', B.massLabel(350)==='1 stone', B.massLabel(350));
+  ok('massLabel: leads with STONE + coin remainder ("4 stone, 25")', B.massLabel(4*350+25)==='4 stone, 25', B.massLabel(4*350+25));
+  // the purse weighs itself by the same rule: N coins weigh N/25 lb -> massCoins == N (the purse reads its own count)
+  ok('the purse weighs itself by the same rule (100 coins -> mass 100)', B.massCoins(B.purseWeight({copper:100}))===100, "->"+B.massCoins(B.purseWeight({copper:100})));
+  // per-item AND running-total from ONE derivation (massCoins); total is the authoritative carried figure
+  var totLb=B.carriedWeight([{weight:14},{weight:1}],{copper:25});   // 14 + 1 + 1(=25cu) = 16 lb
+  ok('running total derives from the same massCoins rule (16 lb -> 400 = 1 stone, 50)', B.massLabel(B.massCoins(totLb))==='1 stone, 50', B.massLabel(B.massCoins(totLb)));
+  ok('mass figures are NUMERIC (object mass is allowed digits, unlike the band word)', /[0-9]/.test(B.massLabel(25)));
+
   // ---- determinism ----
   ok('determinism: same inputs -> identical result', JSON.stringify(B.compute(st(),items(60),{gold:7}))===JSON.stringify(B.compute(st(),items(60),{gold:7})));
 

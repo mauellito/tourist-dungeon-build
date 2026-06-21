@@ -28,6 +28,21 @@ var TD_BURDEN = (function () {
   function purseValue(p) { p = p || {}; return (p.copper || 0) * COIN_VALUE.copper + (p.silver || 0) * COIN_VALUE.silver + (p.gold || 0) * COIN_VALUE.gold; }
   function coinWeight(nCoins) { return (nCoins || 0) / COINS_PER_LB; }
 
+  // ---- the WEIGHT READOUT (object mass is numeric-OK; the burden BAND stays a feel-word). The coin is
+  // the in-world unit of MASS: 25 coins = 1 lb, so a 1-lb dagger reads "25". One derivation — massCoins —
+  // feeds BOTH per-item and running-total figures; the purse weighs itself by the very same rule
+  // (N coins weigh N/25 lb -> massCoins == N, so a purse reads its own count). 1 stone = 350 coins = 14 lb.
+  var COINS_PER_STONE = 350;
+  function massCoins(lb) { return Math.round((lb || 0) * COINS_PER_LB); }          // weight (lb) -> coin-mass (THE derivation)
+  function itemMassCoins(it) { return massCoins((it && it.weight) || 0); }
+  // format a coin-mass figure for the dossier: LEAD WITH STONE at >= 1 stone ("4 stone, 25"); under a
+  // stone, bare coins ("25"). Plain digits (the glyph-numeral styling is a PINNED future pass).
+  function massLabel(coins) {
+    coins = Math.round(coins || 0);
+    if (coins >= COINS_PER_STONE) { var st = Math.floor(coins / COINS_PER_STONE), rem = coins - st * COINS_PER_STONE; return rem ? (st + " stone, " + rem) : (st + " stone"); }
+    return "" + coins;
+  }
+
   // ---- caps ----
   function carryCap(stats) {              // lbs, from Might (canon: Might -> carry); floored to avoid /0 at low Might
     var c = (typeof TD_STATS !== "undefined") ? TD_STATS.DERIVED.carry(stats) : 100;
@@ -60,6 +75,7 @@ var TD_BURDEN = (function () {
 
   return {
     COINS_PER_LB: COINS_PER_LB, COIN_VALUE: COIN_VALUE, BANDS: BANDS, BULK_CAP: BULK_CAP,
+    COINS_PER_STONE: COINS_PER_STONE, massCoins: massCoins, itemMassCoins: itemMassCoins, massLabel: massLabel,
     purseCoins: purseCoins, purseWeight: purseWeight, purseValue: purseValue, coinWeight: coinWeight,
     carryCap: carryCap, carriedWeight: carriedWeight, carriedBulk: carriedBulk,
     bandFor: bandFor, compute: compute, surface: surface

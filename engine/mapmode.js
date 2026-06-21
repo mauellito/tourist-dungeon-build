@@ -1484,8 +1484,12 @@ var TD_MAP = (function () {
       var iv = interp.view();
       return {
         w: W, h: H, phase: "dungeon",
-        // GATE 8 (B) — the metabolism state as FEEL-WORDS (hunger stage, fatigue stage, burden band). No numbers.
-        metabolism: { hunger: hungerStage(ctrl.meters).stage, fatigue: fatigueStage(), burden: (function () { var b = playerBand(); return b ? b.band.word : "unburdened"; })() },
+        // GATE 8 (B) — the metabolism state as FEEL-WORDS (hunger/fatigue/burden BAND, no numbers) PLUS the
+        // INVENTORY-WEIGHT readout (object mass IS numeric-OK): the carried total in coin-mass + a stone label,
+        // a second channel that sits BESIDE the burden feel-word. Derived from the same band weight.
+        metabolism: (function () { var b = playerBand(); var lb = b ? b.weight : 0; var c = (typeof TD_BURDEN !== "undefined") ? TD_BURDEN.massCoins(lb) : 0;
+          return { hunger: hungerStage(ctrl.meters).stage, fatigue: fatigueStage(), burden: b ? b.band.word : "unburdened",
+                   weight: { coins: c, label: (typeof TD_BURDEN !== "undefined") ? TD_BURDEN.massLabel(c) : ("" + c) } }; })(),
         grid: ctrl.grid.map(function (r) { return r.join(""); }),
         doors: ctrl.doors, features: ctrl.features,
         roomDoors: (function () { var o = {}; Object.keys(ctrl.roomDoors || {}).forEach(function (k) { if (vis.has(k)) o[k] = ctrl.roomDoors[k]; }); return o; })(),

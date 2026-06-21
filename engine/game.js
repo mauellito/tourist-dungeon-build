@@ -1140,7 +1140,24 @@ var TD_GAME = (function () {
 
     function view() {
       var v = baseView();
-      v.turn = shared.turn; v.messages = shared.messages; v.inventory = invList();
+      v.turn = shared.turn; v.messages = shared.messages;
+      // GATE 3 — per-item WEIGHT readout: each pack item carries its coin-mass + a stone label (object
+      // mass is numeric-OK; one derivation, TD_BURDEN.massCoins). Virtual items (the ticket) stay weightless.
+      v.inventory = invList().map(function (it) {
+        var copy = {}; for (var k in it) copy[k] = it[k];
+        if (typeof it.weight === "number" && typeof TD_BURDEN !== "undefined") { var c = TD_BURDEN.itemMassCoins(it); copy.massCoins = c; copy.massLabel = TD_BURDEN.massLabel(c); }
+        return copy;
+      });
+      // GATE 3 — the TOWN/interior dossier also carries the burden BAND (feel-word) + the numeric carried
+      // TOTAL (the second channel), so the readout is consistent everywhere. The dungeon view already
+      // supplies its own metabolism (with weight); only fill it in when absent.
+      if (!v.metabolism && typeof TD_BURDEN !== "undefined" && character && character.stats) {
+        var bitems = [], eqp = character.equipment, G = (typeof TD_RESOLVE !== "undefined") ? TD_RESOLVE.GEAR : null;
+        if (eqp && G) G.SLOTS.forEach(function (s) { var pc = eqp[s]; if (pc && typeof pc.weight === "number" && (s !== "leftHand" || pc !== eqp.rightHand)) bitems.push(pc); });
+        shared.inventory.forEach(function (it) { if (it && typeof it.weight === "number") bitems.push(it); });
+        var bb = TD_BURDEN.compute(character.stats, bitems, character.purse || {}), tc = TD_BURDEN.massCoins(bb.weight);
+        v.metabolism = { burden: bb.band.word, weight: { coins: tc, label: TD_BURDEN.massLabel(tc) } };
+      }
       v.exitPrompt = !!pendingExit; v.left = !!left;
       v.invOpen = invOpen; v.invSel = invSel;
       v.look = { active: look.active, x: look.x, y: look.y };
