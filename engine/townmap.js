@@ -992,7 +992,11 @@ var TD_TOWNMAP = (function () {
     { id: "redlit",     label: "a members' club",        glyph: "%", cat: "vice",     size: "medium", where: ["redlight"], weight: 3 },
     { id: "redshop",    label: "a red-lit parlour",      glyph: "&", cat: "vice",     size: "small",  where: ["redlight"], weight: 4 },
     { id: "palmreader", label: "a palm-reader",          glyph: "@", cat: "vice",     size: "small",  where: ["redlight"], weight: 3 },
-    { id: "bodega",     label: "a bodega",               glyph: "$", cat: "vice",     size: "small",  where: ["redlight", "market"], weight: 3 }
+    // GATE 4 — a corner store is COMMERCE (enterable buy/sell), not vice (FLAG: moved out of the RLD so it can be a shop).
+    { id: "bodega",     label: "a bodega",               glyph: "$", cat: "commerce", size: "small",  where: ["market", "housing"], weight: 3 },
+    // GATE 4 — the used-book store (research/lore, enterable) + the off-book pawnbroker/fence (sell-only).
+    { id: "bookstore",  label: "a used-book store",      glyph: "b", cat: "commerce", size: "small",  where: ["civic", "market"], weight: 4 },
+    { id: "fence",      label: "a pawnbroker",           glyph: "p", cat: "commerce", size: "small",  where: ["warehouse", "market"], weight: 3 }
   ];
   // CANON VENUES (flavor first-pass): a representative handful of businesses get a named front +
   // signage + ONE voice line, in the venue's register (accent law: word choice + rhythm only, never

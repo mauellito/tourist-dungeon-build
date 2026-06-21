@@ -51,9 +51,9 @@ var TD_GAME = (function () {
     saloon: { title: "The Saloon", glyph: "S", act: "food", counter: "the long bar", sign: ["THE SALOON", "Swinging doors, municipal whiskey, a piano nobody admits to playing."] },
     restaurant: { title: "The Restaurant", glyph: "E", act: "food", counter: "the table", sign: ["THE RESTAURANT", "Prix fixe, prix steep. The fish is local, allegedly."] },
     coffee: { title: "The Coffee Shop", glyph: "O", act: "food", counter: "the counter", sign: ["THE COFFEE SHOP", "Opens early, on the days that have a morning."] },
-    bodega: { title: "The Bodega", glyph: "D", act: "food", counter: "the register", sign: ["THE BODEGA", "Everything, a little dear, all hours."] },
+    bodega: { title: "The Bodega", glyph: "D", act: "shop", counter: "the register", sign: ["THE BODEGA", "Everything, a little dear, all hours."] },
     motel: { title: "The Motel", glyph: "M", act: "rest", counter: "the front desk", sign: ["THE MOTEL", "Vacancy. Always vacancy."] },
-    bank: { title: "The Bank", glyph: "B", act: "flavor", counter: "the teller window", sign: ["THE BANK", "Your deposits are safe, in the municipal sense of safe."] },
+    bank: { title: "The Bank", glyph: "B", act: "vault", counter: "the teller window", sign: ["THE BANK", "Your deposits are safe, in the municipal sense of safe."] },
     blacksmith: { title: "The Blacksmith", glyph: "L", act: "flavor", counter: "the anvil", sign: ["THE BLACKSMITH", "Honest tools. No promises."] },
     barber: { title: "The Barber", glyph: "R", act: "flavor", counter: "the chair", sign: ["THE BARBER", "A trim, a shave, and the news you did not ask for."] },
     church: { title: "The Church", glyph: "C", act: "blessing", counter: "the rail", sign: ["THE CHURCH", "Open to the living and, by appointment, the lately-living."] },
@@ -68,8 +68,10 @@ var TD_GAME = (function () {
     gift2: { title: "Authentic Dungeon Souvenirs", glyph: "2", act: "flavor", counter: "the till", sign: ["AUTHENTIC DUNGEON SOUVENIRS", "The REAL souvenirs. That other place is a tourist trap."] },
     // TOWN B — flavour interiors for the remaining tenants, so EVERY building opens (counter + keeper +
     // bark). act:"flavor" = browse, nothing changes hands (the economy is the next gate).
-    store: { title: "The Outfitter", glyph: "o", act: "flavor", counter: "the counter", sign: ["THE OUTFITTER", "Lanterns, rope, and regret. Going down? Take two."] },
-    apothecary: { title: "The Apothecary", glyph: "a", act: "flavor", counter: "the dispensary", sign: ["THE APOTHECARY", "Tinctures, poultices, and a great many drawers."] },
+    store: { title: "The Outfitter", glyph: "o", act: "shop", counter: "the counter", sign: ["THE OUTFITTER", "Lanterns, rope, and regret. Going down? Take two."] },
+    apothecary: { title: "The Apothecary", glyph: "a", act: "shop", counter: "the dispensary", sign: ["THE APOTHECARY", "Tinctures, poultices, and a great many drawers."] },
+    bookstore: { title: "The Used Book Store", glyph: "b", act: "shop", counter: "the lore desk", sign: ["THE USED BOOK STORE", "Knowledge, secondhand and slightly foxed. The Bureau approves of an informed visitor, in principle."] },
+    fence: { title: "The Pawnbroker", glyph: "p", act: "shop", counter: "the barred window", sign: ["THE PAWNBROKER", "Off-book valuations. No questions, no receipts, no generosity."] },
     tailor: { title: "The Tailor", glyph: "u", act: "flavor", counter: "the cutting table", sign: ["THE TAILOR", "Mended, fitted, and quietly judged."] },
     cobbler: { title: "The Cobbler", glyph: "j", act: "flavor", counter: "the last", sign: ["THE COBBLER", "Soles resoled. Souls, regrettably, not our department."] },
     bakery: { title: "The Bakery", glyph: "q", act: "flavor", counter: "the case", sign: ["THE BAKERY", "Bread by weight, gossip by the loaf."] },
@@ -106,6 +108,7 @@ var TD_GAME = (function () {
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
     var invOpen, invSel, look, sensedWater, vendor, pendingVendor, pendingExit, exitReturn, left, returnScreen, lastDungeonLevel;
+    var shop, vaultUI, pendingService;   // GATE 4 — the town ECONOMY: shop overlay, bank-vault overlay, RLD front-service offer
     var intakeOpen, intakeSel;   // GATE 6 — the Bureau admission intake (background declaration) state
     var intakeStage, intakeBase, alloc;   // CHARACTER E — the staged creation flow (sign->visa->allocate->horoscope) + the pool-spend state
     var lifeN = 0;   // per-life counter so each new character rolls a distinct (deterministic) stat block
@@ -145,12 +148,14 @@ var TD_GAME = (function () {
       // starting gear: a weapon + armour across the 11 slots (Gate 7 A).
       if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("light", "shortsword"); }
       character.purse = { copper: 0, silver: 0, gold: 0 };   // coins picked up in the descent (weight -> encumbrance)
+      character.vault = 0;   // GATE 4 — bank-vault balance (copper-equiv VALUE; vaulted coins weigh nothing)
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
       placeId = START_SCREEN; dungeon = null; dead = false; won = false; returnScreen = START_SCREEN;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 }; intakeOpen = false; intakeSel = 0; intakeStage = null; alloc = null;
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; pendingExit = false; exitReturn = null; left = false;
+      shop = null; vaultUI = null; pendingService = null;   // GATE 4 — economy overlays/offers cleared per life
       lastDungeonLevel = null; announcedAt = {};
       buildPlaces();
       player = { x: places[START_SCREEN].spawn.x, y: places[START_SCREEN].spawn.y };
@@ -415,6 +420,10 @@ var TD_GAME = (function () {
           logMsg("Tim's hint desk is shuttered. A note reads: “Back when the route is ready.”"); break;   // hints DEFERRED
         case "boat":
           logMsg("The clerk nods at the island offshore. “Rentals resume when the tide and the Bureau agree.”"); break;   // goes nowhere yet (FLAG)
+        case "shop":   // GATE 4 — buy/sell counter (Outfitter / apothecary / bodega / bookstore / fence)
+          openShop(placeId); break;
+        case "vault":  // GATE 4 — the bank teller opens the deposit/withdraw grille
+          openVault(); break;
         case "flavor":
           logMsg("You browse. Nothing changes hands today, which is its own kind of transaction."); break;
         case "shrine":
@@ -422,6 +431,122 @@ var TD_GAME = (function () {
       }
     }
     function restore(hp, fat, sat) { meters.hp = hp; meters.fatigue = fat; meters.satiation = sat; }
+
+    // ===================== GATE 4 — TOWN ECONOMY =====================
+    // Posted tariffs live in ONE tunable table (TD_ECON.PRICES); here we hold only PRESENTATION (stock
+    // lists + item templates + which buyback bucket a shop pays from). Coins remain WEIGHT (25/lb), so a
+    // purchase trades coins for cargo and a sale trades cargo for coins+weight. All transactions are
+    // TAX-AGNOSTIC: prices pass through TD_ECON.applyReaction (identity today; the reserved per-NPC
+    // reaction hook is where a FUTURE infatuation tax would fold in — none built now). Tenants drive
+    // which shops exist; the data here is freely editable. (PRICES/BUYBACK/SERVICES = RED-PEN TUNABLE.)
+    var SHOP_STOCK = {
+      store:      ["lantern", "rope", "torch", "dagger", "waterskin", "sack"],
+      apothecary: ["bandage", "tincture", "antidote", "salve"],
+      bodega:     ["ration", "hotdog", "biscuit", "candle"],
+      bookstore:  ["book", "map_scrap", "pamphlet", "ledger"],
+      fence:      []   // off-book: it BUYS your loot (pays least of anyone) and sells nothing
+    };
+    var SHOP_BUYBACK = { store: "shop", apothecary: "shop", bodega: "shop", bookstore: "bookstore", fence: "fence" };
+    var ITEM_TPL = {
+      lantern:   { kind: "lantern",   glyph: "(", name: "a brass lantern",  weight: 2,   desc: "Throws light, eats oil. Going down? Essential." },
+      rope:      { kind: "rope",      glyph: "(", name: "a coil of rope",    weight: 3,   desc: "Forty feet of hemp. Heavy, and worth it." },
+      torch:     { kind: "torch",     glyph: "/", name: "a pitch torch",     weight: 0.5, desc: "Cheap light, brief light." },
+      dagger:    { kind: "dagger",    glyph: ")", name: "a plain dagger",    weight: 1,   desc: "A blade for close, honest disagreements." },
+      waterskin: { kind: "waterskin", glyph: "%", name: "a waterskin",       weight: 1,   desc: "Holds water. Drink it before the dark does." },
+      sack:      { kind: "sack",      glyph: "(", name: "a burlap sack",     weight: 0.5, desc: "For carrying off what isn't nailed down." },
+      bandage:   { kind: "bandage",   glyph: "!", name: "a roll of bandage", weight: 0.2, desc: "Stops the bleeding, mostly." },
+      tincture:  { kind: "tincture",  glyph: "!", name: "a green tincture",  weight: 0.2, desc: "Tastes of municipal regret; mends a little." },
+      antidote:  { kind: "antidote",  glyph: "!", name: "an antidote vial",  weight: 0.2, desc: "For when the dark bites back." },
+      salve:     { kind: "salve",     glyph: "!", name: "a tin of salve",    weight: 0.2, desc: "Greasy, effective, faintly fishy." },
+      ration:    { kind: "ration",    glyph: "*", name: "a field ration",    weight: 0.5, desc: "Edible. The Bureau will not be drawn further." },
+      hotdog:    { kind: "hotdog",    glyph: "*", name: "a hot dog",         weight: 0.3, desc: "Provenance unconfirmed. Filling, regardless." },
+      biscuit:   { kind: "biscuit",   glyph: "*", name: "a hard biscuit",    weight: 0.2, desc: "Keeps forever. Tastes it." },
+      candle:    { kind: "candle",    glyph: "/", name: "a tallow candle",   weight: 0.1, desc: "A small, brief honesty against the dark." },
+      book:      { kind: "book",      glyph: "=", name: "a used book",       weight: 1,   desc: "Someone's marginalia, mostly. The kind of knowledge that banks across lives." },
+      map_scrap: { kind: "map_scrap", glyph: "=", name: "a scrap of map",    weight: 0.1, desc: "A corner of somewhere. Possibly here." },
+      pamphlet:  { kind: "pamphlet",  glyph: "=", name: "a Bureau pamphlet", weight: 0.1, desc: "'YOUR COMMUTE & YOU.' Improving, allegedly." },
+      ledger:    { kind: "ledger",    glyph: "=", name: "an old ledger",     weight: 2,   desc: "Columns of names, half struck through. Lore for the patient." }
+    };
+    function makeStockItem(id) { var t = ITEM_TPL[id]; if (!t) return null; var it = {}; for (var k in t) it[k] = t[k]; return it; }
+    // a coin figure as denominations (gold/silver/copper) — the in-world unit; never a bare "value".
+    function coinLabel(v) { var m = TD_ECON.mint(v), s = []; if (m.gold) s.push(m.gold + "g"); if (m.silver) s.push(m.silver + "s"); if (m.copper || !s.length) s.push(m.copper + "c"); return s.join(" "); }
+    function purseLabel() { return coinLabel(TD_ECON.value(character.purse)); }
+
+    // the buy/sell rows the overlay renders (computed live so coins/affordability stay current).
+    function shopRows() {
+      if (!shop) return [];
+      if (shop.mode === "buy") {
+        return (SHOP_STOCK[shop.kind] || []).map(function (id) { var it = makeStockItem(id), pr = TD_ECON.buyPrice(it, shop.reaction); return { id: id, name: it.name, glyph: it.glyph, price: pr, label: coinLabel(pr), can: TD_ECON.canAfford(character.purse, pr) }; });
+      }
+      var bb = SHOP_BUYBACK[shop.kind] || "shop";
+      return shared.inventory.map(function (it, i) { var pr = TD_ECON.sellPrice(it, bb, shop.reaction); return { idx: i, name: it.name, glyph: it.glyph || "·", price: pr, label: coinLabel(pr), can: true }; })
+        .filter(function (r) { return r.idx != null; });
+    }
+    function openShop(kind) {
+      var sells = !!(SHOP_STOCK[kind] || []).length, isFence = (kind === "fence");
+      shop = { kind: kind, mode: isFence ? "sell" : "buy", sel: 0, canBuy: sells, canSell: true, reaction: null };   // reaction RESERVED (tax-agnostic)
+      logMsg(SHOP_PITCH[kind] || "The keeper waits behind the counter. (Buy / Sell — Tab switches; Enter deals; Esc steps away.)");
+      return view();
+    }
+    function shopClose() { shop = null; }
+    function shopSetMode(m) { if (!shop) return; if (m === "buy" && !shop.canBuy) return; shop.mode = m; shop.sel = 0; }
+    function shopMove(d) { if (!shop) return; var n = shopRows().length; shop.sel = n ? ((shop.sel + d) % n + n) % n : 0; }
+    function shopTransact() {
+      if (!shop) return { dealt: false };
+      var rows = shopRows(), r = rows[shop.sel]; if (!r) { logMsg(shop.mode === "sell" ? "Nothing in your pack to sell." : "Nothing to buy here."); return { dealt: false }; }
+      if (shop.mode === "buy") {
+        var it = makeStockItem(r.id), pr = TD_ECON.buyPrice(it, shop.reaction);
+        if (!TD_ECON.spend(character.purse, pr)) { logMsg("Your purse won't stretch to " + it.name + " (" + coinLabel(pr) + ")."); return { dealt: false }; }
+        shared.inventory.push(it);
+        logMsg("You buy " + it.name + " for " + coinLabel(pr) + ". The coins leave your belt; the weight joins your pack.");
+        return { dealt: "buy", item: it.name, price: pr };
+      }
+      var sit = shared.inventory[r.idx]; if (!sit) return { dealt: false };
+      var bb = SHOP_BUYBACK[shop.kind] || "shop", sp = TD_ECON.sellPrice(sit, bb, shop.reaction);
+      TD_ECON.credit(character.purse, sp); removeReal(sit);
+      logMsg("You sell " + sit.name + " for " + coinLabel(sp) + (bb === "fence" ? " — the fence counts it out slowly, and short." : "; the buyback is poor, as it always is."));
+      var n = shopRows().length; shop.sel = n ? Math.min(shop.sel, n - 1) : 0;
+      return { dealt: "sell", item: sit.name, price: sp };
+    }
+    var SHOP_PITCH = {
+      store: "The Outfitter eyes your boots. “Going down? Then you'll want light, rope, and a blade. Buy or sell — your choice, your funeral.”",
+      apothecary: "The apothecary gestures at a wall of drawers. “Tinctures, poultices, antidotes. We also take back what you don't use, at a discount you'll resent.”",
+      bodega: "The bodega keeper, not looking up: “Everything, a little dear, all hours. Buy, sell, move along.”",
+      bookstore: "The bookseller peers over half-moon spectacles. “Knowledge, secondhand. Cheaper than learning it the hard way, marginally.”",
+      fence: "The fence does not introduce himself. “No questions, no receipts, no generosity. Show me what fell off the back of the dungeon.”"
+    };
+
+    // ---- the BANK VAULT (deposit/withdraw; vaulted coins weigh nothing) ----
+    function openVault() { vaultUI = { open: true }; logMsg("The teller slides the grille aside. “Deposit lightens the belt; withdrawal returns the weight. The vault is dry, discreet, and — for now — free.” (d deposit · w withdraw · Esc done.)"); return view(); }
+    function vaultClose() { vaultUI = null; }
+    function vaultDeposit() {
+      var v = TD_ECON.value(character.purse); if (!v) { logMsg("Your purse is empty; there is nothing to deposit."); return { deposited: 0 }; }
+      character.vault = (character.vault || 0) + v; TD_ECON.setPurse(character.purse, 0);
+      logMsg("You deposit " + coinLabel(v) + ". Off your belt, into the dark of the vault — and weightless there.");
+      return { deposited: v };
+    }
+    function vaultWithdraw() {
+      var v = character.vault || 0; if (!v) { logMsg("The vault holds nothing in your name."); return { withdrawn: 0 }; }
+      TD_ECON.credit(character.purse, v); character.vault = 0;
+      logMsg("You withdraw " + coinLabel(v) + ". The weight settles back onto your belt.");
+      return { withdrawn: v };
+    }
+
+    // ---- RLD FRONT-SERVICES: the red-light district is non-enterable (Gate 1), so its venues TRANSACT at
+    // the FRONT — a deadpan paid service, no interior, no content modelled. Tenants/business drive which. ----
+    function serviceFor(business) { return business === "redlit" ? "membership" : business === "palmreader" ? "palmreading" : business === "redshop" ? "redshop" : "rldservice"; }
+    var SERVICE_LINE = {
+      membership: "A discreet hand takes the fee and returns a numbered token. Membership, the Bureau notes, confers nothing it will confirm.",
+      palmreading: "She turns your palm to the lamp, charges you, and tells you a future indistinguishable from the present.",
+      redshop: "Sundries change hands at the curtained window. The Bureau files the entire exchange under 'sundry'.",
+      rldservice: "Coin changes hands at the front; the service, such as it is, is rendered with municipal efficiency."
+    };
+    function payService(s) {
+      var pr = TD_ECON.servicePrice(s.id, null);   // reaction RESERVED (tax-agnostic)
+      if (!TD_ECON.spend(character.purse, pr)) { logMsg("You haven't the coin for " + (s.label || "the service") + " (" + coinLabel(pr) + ")."); return { paid: false }; }
+      logMsg(SERVICE_LINE[s.id] || SERVICE_LINE.rldservice);
+      return { paid: true, price: pr };
+    }
 
     // ---- places ----------------------------------------------------------
     function blank() { var g = []; for (var y = 0; y < H; y++) { var r = []; for (var x = 0; x < W; x++) r.push("#"); g.push(r); } return g; }
@@ -541,14 +666,16 @@ var TD_GAME = (function () {
       // Sits on the building wall cell (bump-to-read; the wall stays solid), coloured by
       // its kind via TD_UI.buildingColor. Fronts-as-flavor: interiors are a later layer.
       // TOWN C.1 — the RED-LIGHT district is an open perpetual-dusk POCKET you move THROUGH: its fronts are
-      // flavour only (NOT enterable). Everywhere else, every front is ENTERABLE (bump+Enter -> interior).
+      // NOT enterable (no interior). GATE 4 — but the RLD venues still TRANSACT at the front (a deadpan paid
+      // service, act:"rldservice"). Everywhere else, every front is ENTERABLE (bump+Enter -> interior).
       var rlr = m.meta.redlight ? [m.meta.redlight.x0, m.meta.redlight.y0, m.meta.redlight.x1, m.meta.redlight.y1] : null;
       (m.fronts || []).forEach(function (fr) {
         var vice = (typeof TD_UI !== "undefined" && TD_UI.buildingCategory && TD_UI.buildingCategory(fr.business) === "vice");
-        var inRLD = (rlr && inRect(rlr, fr.x, fr.y)) || vice;   // the RLD's venues (vice) are flavour wherever their doorstep lands
+        var inRLD = (rlr && inRect(rlr, fr.x, fr.y)) || vice;   // the RLD's venues (vice) are non-enterable wherever their doorstep lands
         var interior = inRLD ? null : (INTERIORS[fr.business] ? fr.business : "empty");   // RLD fronts carry no `to` -> not a door
         features[key(fr.x, fr.y)] = { type: "front", glyph: fr.glyph, col: fr.col, business: fr.business, to: interior, red: vice,
-          label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null, act: "look" };
+          label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null,
+          act: inRLD ? "rldservice" : "look", service: inRLD ? serviceFor(fr.business) : null };   // GATE 4: RLD fronts SELL a service; others reveal a door
       });
       // meta: district rects (for districtAt's flavour) + the dungeon entrance overlay
       var dmeta = { redlight: null, waterfront: null, market: null };
@@ -750,6 +877,14 @@ var TD_GAME = (function () {
           return { moved: false, interacted: "look", event: lastEvent };
         }
         if (f.act === "shrine") { pendingCounter = null; pendingVendor = false; act("shrine"); return { moved: false, interacted: "shrine", event: lastEvent }; }
+        if (f.act === "rldservice") {   // GATE 4 — an RLD venue: non-enterable, but it TRANSACTS at the front (deadpan, paid)
+          pendingCounter = null; pendingVendor = false; pendingDoor = null;
+          senses(f.text, "seen", "OBJ"); if (f.bark) senses(f.bark, "said", "SUBJ");
+          var sid = f.service || serviceFor(f.business), sp = TD_ECON.servicePrice(sid, null);
+          pendingService = { id: sid, x: nx, y: ny, label: f.label };
+          logMsg((f.label || "The venue") + " — its service is " + coinLabel(sp) + " at the front. Enter to pay; step away to decline.");
+          return { moved: false, bumpedService: true, interacted: "rldservice", event: lastEvent };
+        }
         // a counter/desk: begin the conversation in the keeper's own voice
         pendingDoor = null; pendingVendor = false; pendingCounter = { act: f.act, x: nx, y: ny };
         var vbc = voice(f.act), spoke = false;
@@ -761,7 +896,7 @@ var TD_GAME = (function () {
       }
       if (P.grid[ny][nx] !== ".") return { moved: false };
       var ox = player.x, oy = player.y;
-      player.x = nx; player.y = ny; pendingDoor = null; pendingCounter = null; pendingVendor = false; lastEvent = null;
+      player.x = nx; player.y = ny; pendingDoor = null; pendingCounter = null; pendingVendor = false; pendingService = null; lastEvent = null;
       // the road out of town: stepping onto the exit tile prompts a clean leave
       if (P.exit && nx === P.exit.x && ny === P.exit.y) { pendingExit = true; exitReturn = { x: ox, y: oy }; logMsg("The Bureau reminds departing visitors that itineraries, once surrendered, are not reissued. Leave town? (y / n)"); return { moved: true, exitPrompt: true }; }
       shared.turn += 1;
@@ -950,10 +1085,15 @@ var TD_GAME = (function () {
         if (!vendor || cheby(vendor, player) > 1) { pendingVendor = false; }
         else { pendingVendor = false; buyHotDog(); return { opened: true, dealt: "vendor", event: lastEvent }; }
       }
+      // GATE 4 — a pending RLD front-service closes here (paid at the street; no interior)
+      if (pendingService) {
+        var sv = pendingService; pendingService = null;
+        if (cheby(sv, player) <= 1) { var pr = payService(sv); return { opened: true, dealt: "service", paid: pr.paid, event: lastEvent }; }
+      }
       // a pending counter sale closes only here, while you are still at the desk
       if (pendingCounter) {
         if (cheby(pendingCounter, player) > 1) { pendingCounter = null; }
-        else { var a = pendingCounter.act; pendingCounter = null; act(a); if (!intakeOpen) speak(voice(a), "accept"); return { opened: true, dealt: a, event: lastEvent }; }   // GATE 6: the Agency opens the intake instead of an immediate sale — don't speak 'accept' yet
+        else { var a = pendingCounter.act; pendingCounter = null; act(a); if (!intakeOpen && !shop && !vaultUI) speak(voice(a), "accept"); return { opened: true, dealt: a, event: lastEvent }; }   // GATE 6/4: the Agency opens intake, shops open the counter UI — don't speak 'accept' for those
       }
       var p = pendingDoor;
       if (!p) { logMsg("There is no door before you."); return { opened: false }; }
@@ -1158,6 +1298,9 @@ var TD_GAME = (function () {
         var bb = TD_BURDEN.compute(character.stats, bitems, character.purse || {}), tc = TD_BURDEN.massCoins(bb.weight);
         v.metabolism = { burden: bb.band.word, weight: { coins: tc, label: TD_BURDEN.massLabel(tc) } };
       }
+      // GATE 4 — the economy overlays (shop buy/sell, bank vault). Coins shown as denominations (the in-world unit).
+      v.shop = shop ? { kind: shop.kind, title: (INTERIORS[shop.kind] ? INTERIORS[shop.kind].title : shop.kind), mode: shop.mode, sel: shop.sel, canBuy: shop.canBuy, canSell: shop.canSell, rows: shopRows(), purse: purseLabel() } : null;
+      v.vault = vaultUI ? { open: true, purse: purseLabel(), vault: coinLabel(character.vault || 0) } : null;
       v.exitPrompt = !!pendingExit; v.left = !!left;
       v.invOpen = invOpen; v.invSel = invSel;
       v.look = { active: look.active, x: look.x, y: look.y };
@@ -1227,6 +1370,10 @@ var TD_GAME = (function () {
       wait: wait, get: get, search: search, closeDoor: closeDoor,
       openDoorAuto: openDoorAuto, openDoorDir: openDoorDir, closeDoorAuto: closeDoorAuto, closeDoorDir: closeDoorDir, toggleAutoOpen: toggleAutoOpen,
       toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected,
+      // GATE 4 — town economy verbs (shop overlay, bank vault, RLD front-services)
+      shopMove: shopMove, shopSetMode: shopSetMode, shopTransact: shopTransact, shopClose: shopClose,
+      vaultDeposit: vaultDeposit, vaultWithdraw: vaultWithdraw, vaultClose: vaultClose,
+      _shop: function () { return shop; }, _vaultUI: function () { return vaultUI; }, _pendingService: function () { return pendingService; },
       lookToggle: lookToggle, lookMove: lookMove,
       confirmExit: confirmExit, cancelExit: cancelExit,
       intakeMove: intakeMove, intakeChoose: intakeChoose, intakeCancel: intakeCancel, chooseBackground: chooseBackground,

@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "0f6c131";</script>
+<script>window.__BUILD = "e6e7ca9";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -593,6 +593,8 @@ window.__initPlayMap = function () {
     if (vw.intake && vw.intake.open) renderIntake(vw);
     else if (vw.left) showLeft();
     else if (vw.exitPrompt) showExitPrompt(vw);
+    else if (vw.shop) renderShop(vw);
+    else if (vw.vault) renderVault(vw);
     else if (vw.invOpen) renderPack(vw);
     else if (vw.dead) showPostmortem();
     else if (vw.won) showWin();
@@ -935,6 +937,34 @@ window.__initPlayMap = function () {
       '<div class="desc">' + desc + "</div>" +
       '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div></div>';
   }
+  // GATE 4 — the SHOP overlay (buy/sell). Prices in coin denominations (the in-world unit). The burden/weight
+  // readout (Gate 3) updates live as coins and cargo trade places, so the cost of carrying stays visible.
+  function renderShop(vw) {
+    var s = vw.shop, rows = s.rows || [], sel = Math.max(0, Math.min(rows.length - 1, s.sel || 0));
+    var tabs = (s.canBuy ? tabBtn("Buy", s.mode === "buy") : "") + (s.canSell ? tabBtn("Sell", s.mode === "sell") : "");
+    var list = rows.length ? rows.map(function (r, i) {
+      var afford = (s.mode === "buy") ? r.can : true;
+      return '<li class="' + (i === sel ? "sel" : "") + '" style="display:flex;justify-content:space-between;' + (afford ? "" : "opacity:.45;") + '">' +
+        '<span><span class="glyph">' + escapeHTML(r.glyph || "·") + "</span> " + escapeHTML(r.name) + "</span>" +
+        '<span style="color:' + (afford ? "#d9c89a" : P.dangerMed) + '">' + escapeHTML(r.label) + "</span></li>";
+    }).join("") : "<li><i>" + (s.mode === "sell" ? "nothing in your pack to sell" : "the shelves are bare") + "</i></li>";
+    var pw = (vw.metabolism && vw.metabolism.weight) ? vw.metabolism.weight.label : null, pb = vw.metabolism ? vw.metabolism.burden : null;
+    overlay.innerHTML = '<div class="scrim"><div class="panel pack"><div class="head">' + escapeHTML(s.title || "Shop") + "</div>" +
+      '<div style="margin:2px 0 6px">' + tabs + "</div>" +
+      "<ul>" + list + "</ul>" +
+      '<div class="packtotal" style="margin-top:6px;padding-top:5px;border-top:1px solid #3a3324">Purse: <b style="color:#d9c89a">' + escapeHTML(s.purse) + "</b>" +
+        (pw ? '  &nbsp;·&nbsp; Carrying: <b style="color:#cdbf9f">' + escapeHTML(pw) + "</b>" + (pb ? ' <span style="color:#8a7c66">(' + escapeHTML(pb) + ")</span>" : "") : "") + "</div>" +
+      '<div class="hint">&uarr;/&darr; or a&ndash;z select &nbsp;·&nbsp; <b>Tab</b> buy/sell &nbsp;·&nbsp; <b>Enter</b> deal &nbsp;·&nbsp; <b>Esc</b> leave</div></div></div>';
+  }
+  function tabBtn(label, on) { return '<span style="padding:2px 10px;margin-right:4px;border-radius:4px;border:1px solid ' + (on ? "#8a7c66" : "transparent") + ";" + (on ? "background:#3a3324;color:#f3ecda;" : "color:#8a7c66;") + '">' + label + "</span>"; }
+  // GATE 4 — the BANK VAULT overlay (deposit/withdraw; vaulted coins weigh nothing).
+  function renderVault(vw) {
+    var vt = vw.vault;
+    overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">The Bank — Vault</div>' +
+      '<div style="margin:8px 0;line-height:1.7">On your belt (this weighs): <b style="color:#d9c89a">' + escapeHTML(vt.purse) + "</b><br>" +
+      'In the vault (weightless): <b style="color:#9ac0d9">' + escapeHTML(vt.vault) + "</b></div>" +
+      '<div class="hint"><b>d</b> deposit all &nbsp;·&nbsp; <b>w</b> withdraw all &nbsp;·&nbsp; <b>Esc</b> done</div></div></div>';
+  }
   // CHARACTER E — the staged creation flow overlay (sign -> visa -> allocate -> horoscope). Bureau
   // register, feel-words only (the budget is a bar, never a number). Esc -> step away (use the Kiosk).
   function intakeRow(label, sub, on, idx) {
@@ -1081,6 +1111,23 @@ window.__initPlayMap = function () {
       e.preventDefault(); return;
     }
     if (vw.left) { e.preventDefault(); return; }   // session closed; use the on-screen buttons
+    // GATE 4 — the SHOP overlay is modal (Tab switches buy/sell, so it must precede the label-Tab below)
+    if (vw.shop) {
+      if (k === "Escape") { e.preventDefault(); sim.shopClose(); draw(); return; }
+      if (k === "Tab") { e.preventDefault(); sim.shopSetMode(vw.shop.mode === "buy" ? "sell" : "buy"); draw(); return; }
+      if (k === "ArrowUp") { e.preventDefault(); sim.shopMove(-1); draw(); return; }
+      if (k === "ArrowDown") { e.preventDefault(); sim.shopMove(1); draw(); return; }
+      if (k === "Enter") { e.preventDefault(); sim.shopTransact(); draw(); return; }
+      if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.shopMove((k.charCodeAt(0) - 97) - (vw.shop.sel || 0)); draw(); return; }
+      e.preventDefault(); return;   // modal
+    }
+    // GATE 4 — the BANK VAULT overlay is modal (deposit/withdraw)
+    if (vw.vault) {
+      if (k === "Escape") { e.preventDefault(); sim.vaultClose(); draw(); return; }
+      if (k === "d") { e.preventDefault(); sim.vaultDeposit(); draw(); return; }
+      if (k === "w") { e.preventDefault(); sim.vaultWithdraw(); draw(); return; }
+      e.preventDefault(); return;   // modal
+    }
     if (k === "Tab") { e.preventDefault(); labelsOn = !labelsOn; draw(); return; }
 
     if (vw.look && vw.look.active) {
@@ -1145,7 +1192,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Inventory weight — stone total (coins the in-world unit); burden stays feel-word";
+  var VERSION = "Economy — buy/sell, bank vault, RLD services, fence + bookstore (posted-tariff, frictionful selling)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
@@ -1172,7 +1219,7 @@ window.__initPlayMap = function () {
 (function () {
   // CURRENT ORDER PRESERVED — rng.js ... feel.js. Keep in sync with sync_build.py's self-check.
   var files = [
-    "rng.js", "resolve.js", "stats.js", "charsys.js", "burden.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
+    "rng.js", "resolve.js", "stats.js", "charsys.js", "burden.js", "econ.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
     "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "mapmode.js",
     "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js",
     "smashgrab.js", "sfx.js", "game.js", "ui.js", "feel.js"
