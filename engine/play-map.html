@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "64e65e7";</script>
+<script>window.__BUILD = "c0f8e03";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -558,7 +558,8 @@ window.__initPlayMap = function () {
     maybeBanner(vw);
     renderMore(vw);
 
-    if (vw.left) showLeft();
+    if (vw.intake && vw.intake.open) renderIntake(vw);
+    else if (vw.left) showLeft();
     else if (vw.exitPrompt) showExitPrompt(vw);
     else if (vw.invOpen) renderPack(vw);
     else if (vw.dead) showPostmortem();
@@ -627,7 +628,7 @@ window.__initPlayMap = function () {
       (vw.objective ? statrow("Itinerary", '<span id="sb-objective" style="color:' + (vw.objective.stage === "filed" ? "#2f6d33" : vw.objective.stage === "surveyed" ? P.signal : "#8a7c66") + '">' + escapeHTML(vw.objective.line) + "</span>") : "") +
       // GATE 4.1 — the visitor's CONSTITUTION (the ten stats) as feel-words only (TD_STATS.surface,
       // digit-safe). Updates live as growth-by-deeds crosses a band. Placed under the gear rows.
-      statSheet(vw.stats) +
+      statSheet(vw.stats, vw.background) +
       statrow("Ticket", '<span id="sb-ticket">' + escapeHTML(vw.ticket || "none") + "</span>") +
       statrow("Place", '<span id="sb-place">' + escapeHTML(place) + "</span>") +
       statrow("Turn", '<span id="sb-turn">' + (vw.turn || 0) + "</span>") +
@@ -635,12 +636,17 @@ window.__initPlayMap = function () {
   }
   // GATE 4.1 — render the ten-stat sheet from the digit-safe surface (NAME: feel-word per stat). The
   // surface carries words only; we never print a stat number. Empty string when no spine (legacy harness).
-  function statSheet(stats) {
-    if (!stats || !stats.length) return "";
+  function statSheet(stats, bg) {
+    // GATE 6 — the declared IDENTITY (background name + disposition) sits above the stat sheet, so the
+    // player reads who they chose to be. Quick-start (no background) reads as an unspecialised walk-in.
+    var ident = '<div style="margin:6px 0 2px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#8a7c66">Visitor</div>' +
+      '<div id="sb-bg" style="color:#cdbf9f"><b>' + escapeHTML(bg ? bg.name : "Walk-in (unspecialised)") + "</b>" +
+      (bg && bg.disposition ? '<div style="font-size:11px;opacity:.8">' + escapeHTML(bg.disposition) + "</div>" : "") + "</div>";
+    if (!stats || !stats.length) return ident;
     var rows = stats.map(function (s) {
       return statrow(s.name, '<span id="sb-stat-' + escapeHTML(s.stat) + '">' + escapeHTML(s.word) + "</span>");
     }).join("");
-    return '<div style="margin:6px 0 2px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#8a7c66">Constitution</div>' + rows;
+    return ident + '<div style="margin:6px 0 2px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#8a7c66">Constitution</div>' + rows;
   }
   function bar(label, val, max, color, showMax) {
     var pct = Math.max(0, Math.min(100, Math.round(100 * (val / (max || 1)))));
@@ -826,6 +832,21 @@ window.__initPlayMap = function () {
       '<div class="desc">' + desc + "</div>" +
       '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div></div>';
   }
+  // GATE 6 — the Bureau admission form: declare a background (a run-shaping particular). Bureau register,
+  // feel-words only (the resulting stat sheet reads in the dossier once declared). Esc -> use the Kiosk.
+  function renderIntake(vw) {
+    var list = (vw.intake && vw.intake.list) || [], sel = (vw.intake && vw.intake.sel) || 0;
+    var rows = list.map(function (b, i) {
+      var on = i === sel;
+      return '<div style="padding:7px 10px;border-radius:4px;margin:3px 0;border:1px solid ' + (on ? "#8a7c66" : "transparent") + ';' +
+        (on ? "background:#3a3324;color:#f3ecda;" : "color:#cdbf9f;") + '">' +
+        '<b>' + (i + 1) + ". " + escapeHTML(b.name) + "</b>" +
+        '<div style="font-size:12px;opacity:.85;margin-top:2px">' + escapeHTML(b.disposition) + "</div></div>";
+    }).join("");
+    overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">Bureau Admission — Declaration of Particulars</div>' +
+      '<div class="ttl">Declare one. It will shape your visit.</div>' + rows +
+      '<div class="hint">&uarr;/&darr; consider &nbsp;·&nbsp; <b>1&ndash;' + list.length + '</b> or <b>Enter</b> declare &nbsp;·&nbsp; <b>Esc</b> step away (the Kiosk offers a quick-start)</div></div></div>';
+  }
   function showPostmortem() {
     var pm = sim.postmortem();
     var doors = (pm.attributions || []).map(function (a) { return "<li>" + escapeHTML(a) + "</li>"; }).join("");
@@ -956,6 +977,15 @@ window.__initPlayMap = function () {
       if (k === "ArrowDown") { e.preventDefault(); sim.invSelect((vw.invSel || 0) + 1); draw(); return; }
       if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.invSelect(k.charCodeAt(0) - 97); draw(); return; }
       return;
+    }
+    // GATE 6 — the ADMISSION INTAKE is modal: pick a background (↑/↓ or 1–N), Enter declares, Esc steps away.
+    if (vw.intake && vw.intake.open) {
+      if (k === "ArrowUp") { e.preventDefault(); sim.intakeMove("up"); draw(); return; }
+      if (k === "ArrowDown") { e.preventDefault(); sim.intakeMove("down"); draw(); return; }
+      if (k === "Enter") { e.preventDefault(); sim.intakeChoose(); draw(); return; }
+      if (k === "Escape") { e.preventDefault(); sim.intakeCancel(); draw(); return; }
+      if (/^[1-9]$/.test(k)) { e.preventDefault(); var bl = vw.intake.list || [], bi = (+k) - 1; if (bl[bi]) sim.chooseBackground(bl[bi].id); draw(); return; }
+      return;   // modal: the form swallows other input
     }
     // door command awaiting a direction (o/c then a direction key); Esc / any other key cancels
     if (doorCmd) {

@@ -11,16 +11,42 @@ function TD_GAME_TESTS() {
   function game(seed) { return TD_GAME.create(TD_GEN.generate(seed || 3)); }
 
   // -------------------------------------------------------------- FORK 1
-  test("Agency: SUBJ patter (002) and OBJ fine print (001) ride the senses channel", function () {
+  test("Agency: the admission intake opens; declaring a background issues the ticket (002/001 on senses)", function () {
     var g = game();
-    g._interact("agency");
+    g._interact("agency");                                       // GATE 6: the booking desk opens the intake form
+    assert(g._intakeOpen(), "the Agency opens the admission intake");
+    eq(g._character().ticket, null);                             // no ticket until a particular is declared
+    assert(g._character().signalsSeen.has("002"), "subjective patter 002 seen at the desk");
+    var bgs = g._backgrounds();
+    assert(bgs.length >= 5, "the form offers the declared backgrounds");
+    g.chooseBackground("daytripper");                            // declare -> issues the Guided Package
     eq(g._character().ticket, "agency");
-    assert(g._character().signalsSeen.has("001"), "objective fine print 001 seen");
-    assert(g._character().signalsSeen.has("002"), "subjective patter 002 seen");
+    assert(!g._intakeOpen(), "declaring closes the intake");
+    assert(g._character().background && g._character().background.name === "Day-Tripper", "the declared identity is recorded");
+    assert(g._character().signalsSeen.has("001"), "objective fine print 001 seen on declaration");
     var sens = g._shared().messages.filter(function (m) { return m.ch === "senses"; });
     assert(sens.some(function (m) { return /everywhere worth going/.test(m.text) && m.obj === "SUBJ"; }), "002 is SUBJ senses (said)");
     assert(sens.some(function (m) { return /Valid in Guided Zones/.test(m.text) && m.obj === "OBJ"; }), "001 is OBJ senses (said), and true");
     assert(g._shared().messages.some(function (m) { return m.ch === "event" && /Guided Package/.test(m.text); }), "the mechanical fact is an EVENT line");
+  });
+  // GATE 6 — a declared background biases the roll into a visibly different build + takes its loadout
+  test("Agency backgrounds are distinct, run-shaping declarations (biased roll + gear)", function () {
+    // the bias is applied deterministically: same seed, the Stevedore lands higher Might + lower Dex
+    var generic = TD_STATS.create(TD_RNG.make(42));
+    var steve = TD_STATS.create(TD_RNG.make(42), TD_STATS.BACKGROUNDS.stevedore.bias);
+    assert(steve.might > generic.might, "Stevedore biases Might UP");
+    assert(steve.dex < generic.dex, "Stevedore biases Dex DOWN");
+    var cut = TD_STATS.create(TD_RNG.make(42), TD_STATS.BACKGROUNDS.cutpurse.bias);
+    assert(cut.dex > generic.dex && cut.con < generic.con, "Cutpurse biases Dex up, Con down");
+    // declaring assigns the background's loadout
+    var g = game(); g._interact("agency"); g.chooseBackground("stevedore");
+    eq(g._character().weapon.name, TD_RESOLVE.GEAR.WEAPONS.mace.name);
+    eq(g._character().armor.name, TD_RESOLVE.GEAR.ARMOR.heavy.name);
+    assert(g._character().background.id === "stevedore", "the declared background id is recorded");
+    // a quick-start (kiosk) carries no declared background
+    var q = game(); q._interact("kiosk");
+    eq(q._character().ticket, "standard");
+    eq(q._character().background, null);
   });
 
   // ----------------------------------------------- CHANNEL LAW --------------

@@ -95,11 +95,12 @@ var TD_GAME = (function () {
 
     var meters, character, shared, placeId, player, pendingDoor, pendingCounter, dungeon, lastEvent, lastUrgent, dead, won, returnTile, places;
     var invOpen, invSel, look, sensedWater, vendor, pendingVendor, pendingExit, exitReturn, left, returnScreen, lastDungeonLevel;
+    var intakeOpen, intakeSel;   // GATE 6 — the Bureau admission intake (background declaration) state
     var lifeN = 0;   // per-life counter so each new character rolls a distinct (deterministic) stat block
 
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
-      character = { ticket: null, signalsSeen: new Set(), events: { clicks: [], brassRejected: false, anchorRejected: false } };
+      character = { ticket: null, background: null, signalsSeen: new Set(), events: { clicks: [], brassRejected: false, anchorRejected: false } };
       // TEN-STAT SPINE (combat track R2): each life rolls a bell-curved 1..1000 stat block, surfaced
       // to the player as FEEL-WORDS ONLY. Deeds accrue and realize on rest (scaffold). Numbers never leak.
       // GATE 1 R1: Con -> live HP. The pool is now TD_STATS.DERIVED.hpMax(stats) (Con-derived), so combat
@@ -117,7 +118,7 @@ var TD_GAME = (function () {
       // message log, one turn counter, across town and dungeon.
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
       placeId = START_SCREEN; dungeon = null; dead = false; won = false; returnScreen = START_SCREEN;
-      invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 };
+      invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 }; intakeOpen = false; intakeSel = 0;
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; pendingExit = false; exitReturn = null; left = false;
       lastDungeonLevel = null; announcedAt = {};
       buildPlaces();
@@ -127,6 +128,38 @@ var TD_GAME = (function () {
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
     }
+
+    // GATE 6 — the admission intake (background declaration). The Agency opens the form (act 'agency');
+    // these drive it. Declaring a background RE-ROLLS the stat block with that background's bias, takes
+    // its starting loadout, records the declared identity, and issues the Guided Package. Feel-words only.
+    function intakeList() { return (typeof TD_STATS !== "undefined" && TD_STATS.backgroundList) ? TD_STATS.backgroundList() : []; }
+    function chooseBackground(id) {
+      if (!intakeOpen) return { declared: false };
+      var bg = (typeof TD_STATS !== "undefined" && TD_STATS.BACKGROUNDS) ? TD_STATS.BACKGROUNDS[id] : null;
+      if (!bg) return { declared: false };
+      if (typeof TD_STATS !== "undefined") {
+        character.stats = TD_STATS.create(TD_RNG.make(((lifeN * 2654435761) ^ ((bg.order + 1) * 40503)) >>> 0 || 1), bg.bias);
+        character.progress = TD_STATS.newProgress();
+        var hpm = TD_STATS.DERIVED.hpMax(character.stats); meters.hp = hpm; meters.hpMax = hpm;   // Con -> HP, re-derived for the declared build
+      }
+      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) {
+        if (TD_RESOLVE.GEAR.WEAPONS[bg.weapon]) character.weapon = TD_RESOLVE.GEAR.WEAPONS[bg.weapon];
+        if (TD_RESOLVE.GEAR.ARMOR[bg.armor]) character.armor = TD_RESOLVE.GEAR.ARMOR[bg.armor];
+      }
+      character.background = { id: id, name: bg.name, disposition: bg.disposition };
+      character.ticket = "agency"; character.signalsSeen.add("001"); intakeOpen = false;
+      senses("The clerk stamps the form without quite reading it: “" + SIG["001"].t + ".”", "said", "OBJ");
+      logMsg("Declared: " + bg.name + " — " + bg.disposition + " A Guided Package is stamped into your hand.");
+      return { declared: true, background: id, event: lastEvent };
+    }
+    function intakeMove(dir) {
+      if (!intakeOpen) return { moved: false };
+      var n = intakeList().length; if (!n) return { moved: false };
+      if (dir === "up") intakeSel = (intakeSel - 1 + n) % n; else if (dir === "down") intakeSel = (intakeSel + 1) % n;
+      return { moved: true, sel: intakeSel };
+    }
+    function intakeChoose() { if (!intakeOpen) return { declared: false }; var b = intakeList()[intakeSel]; return b ? chooseBackground(b.id) : { declared: false }; }
+    function intakeCancel() { if (!intakeOpen) return { cancelled: false }; intakeOpen = false; logMsg("You step back from the desk; the clerk reshelves the form with visible relief."); return { cancelled: true }; }
 
     // every line declares a CHANNEL (Channel Law, CLAUDE.md). "event" = mechanical
     // truth; "senses" = perceived (heard/said/seen true; intuition may mislead).
@@ -206,10 +239,11 @@ var TD_GAME = (function () {
         case "lookout": seen("012"); senses(SIG["012"].t, "seen", "OBJ"); break;
         case "agency":
           if (character.ticket) { logMsg("You already hold admission."); break; }
-          character.ticket = "agency"; seen("002"); seen("001");
-          senses("The clerk beams: “" + SIG["002"].t + "”", "said", "SUBJ");          // 002 SUBJ
-          senses("Quieter, the small print she reads aloud: “" + SIG["001"].t + ".”", "said", "OBJ");  // 001 OBJ
-          logMsg("A Guided Package is stamped into your hand."); break;
+          // GATE 6 — the booking desk is the ADMISSION INTAKE: open the declaration of particulars
+          // (pick a background). The ticket is issued only when a background is declared (intakeChoose).
+          intakeOpen = true; intakeSel = 0; seen("002");
+          senses("The clerk slides a form across the marble: “" + SIG["002"].t + "”", "said", "SUBJ");
+          logMsg("ADMISSION INTAKE — declare your particulars. (↑/↓ to consider, Enter to declare, Esc to step away.)"); break;
         case "kiosk":
           if (character.ticket) { logMsg("You already hold admission."); break; }
           character.ticket = "standard"; seen("003");
@@ -764,7 +798,7 @@ var TD_GAME = (function () {
       // a pending counter sale closes only here, while you are still at the desk
       if (pendingCounter) {
         if (cheby(pendingCounter, player) > 1) { pendingCounter = null; }
-        else { var a = pendingCounter.act; pendingCounter = null; act(a); speak(voice(a), "accept"); return { opened: true, dealt: a, event: lastEvent }; }
+        else { var a = pendingCounter.act; pendingCounter = null; act(a); if (!intakeOpen) speak(voice(a), "accept"); return { opened: true, dealt: a, event: lastEvent }; }   // GATE 6: the Agency opens the intake instead of an immediate sale — don't speak 'accept' yet
       }
       var p = pendingDoor;
       if (!p) { logMsg("There is no door before you."); return { opened: false }; }
@@ -960,6 +994,15 @@ var TD_GAME = (function () {
       // emits words only, never numbers). Rebuilt each view so growth-by-deeds (crossed() words) shows live.
       v.stats = (typeof TD_STATS !== "undefined" && character && character.stats) ? TD_STATS.surface(character.stats) : null;
       v.objective = sliceObjective();   // GATE 5 R3 — the slice goal, Bureau register, surfaced in the dossier
+      v.background = character.background || null;                                  // GATE 6 — the declared identity (dossier)
+      v.intake = intakeOpen ? { open: true, sel: intakeSel, list: intakeList() } : null;   // GATE 6 — the admission form, while open
+      // GATE 6 — surface the carried loadout in TOWN too (the dungeon view already carries it), so the
+      // declared background's gear reads in the dossier the moment you've declared. Feel-words only.
+      if (!v.gear) {
+        var w = character.weapon, a = character.armor, WT = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) ? TD_RESOLVE.GEAR.WEAPON_TYPES : {};
+        v.gear = { weapon: w ? { name: w.name, verb: w.verb || (WT[w.type] || {}).verb || "strike" } : null,
+                   armour: a ? { name: a.tierName || a.name, bulk: a.bulkReadout || null } : null };
+      }
       // the latest log line is the unified "current event", whoever wrote it
       // (town counters, dungeon controller, or the top-level verbs here).
       var lastM = shared.messages.length ? shared.messages[shared.messages.length - 1] : null;
@@ -996,6 +1039,8 @@ var TD_GAME = (function () {
       toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected,
       lookToggle: lookToggle, lookMove: lookMove,
       confirmExit: confirmExit, cancelExit: cancelExit,
+      intakeMove: intakeMove, intakeChoose: intakeChoose, intakeCancel: intakeCancel, chooseBackground: chooseBackground,
+      _intakeOpen: function () { return intakeOpen; }, _backgrounds: function () { return intakeList(); },
       say: function (t) { logMsg(t); },   // the Bureau speaks during play (presentation flavour)
       isDead: function () { return dead; }, isComplete: function () { return won; },
       SIG: SIG, brassTarget: brassTarget,
