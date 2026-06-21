@@ -66,6 +66,17 @@ var TD_GAME = (function () {
     clamshack: { title: "the Clam Shack", glyph: "F", act: "food", counter: "the shucking counter", sign: ["THE CLAM SHACK", "Fried, by the water, no questions asked."] },
     gift1: { title: "Ye Olde Dungeon Gifte", glyph: "1", act: "flavor", counter: "the till", sign: ["YE OLDE DUNGEON GIFTE", "Genuine artefacts, genuinely. Ignore the shop next door."] },
     gift2: { title: "Authentic Dungeon Souvenirs", glyph: "2", act: "flavor", counter: "the till", sign: ["AUTHENTIC DUNGEON SOUVENIRS", "The REAL souvenirs. That other place is a tourist trap."] },
+    // TOWN B — flavour interiors for the remaining tenants, so EVERY building opens (counter + keeper +
+    // bark). act:"flavor" = browse, nothing changes hands (the economy is the next gate).
+    store: { title: "The Outfitter", glyph: "o", act: "flavor", counter: "the counter", sign: ["THE OUTFITTER", "Lanterns, rope, and regret. Going down? Take two."] },
+    apothecary: { title: "The Apothecary", glyph: "a", act: "flavor", counter: "the dispensary", sign: ["THE APOTHECARY", "Tinctures, poultices, and a great many drawers."] },
+    tailor: { title: "The Tailor", glyph: "u", act: "flavor", counter: "the cutting table", sign: ["THE TAILOR", "Mended, fitted, and quietly judged."] },
+    cobbler: { title: "The Cobbler", glyph: "j", act: "flavor", counter: "the last", sign: ["THE COBBLER", "Soles resoled. Souls, regrettably, not our department."] },
+    bakery: { title: "The Bakery", glyph: "q", act: "flavor", counter: "the case", sign: ["THE BAKERY", "Bread by weight, gossip by the loaf."] },
+    grocer: { title: "The Grocer", glyph: "g", act: "flavor", counter: "the scale", sign: ["THE GROCER", "Greens, mostly. The Bureau inspects the rest."] },
+    warehouse: { title: "The Warehouse", glyph: "W", act: "flavor", counter: "the loading desk", sign: ["THE WAREHOUSE", "Crates, manifests, and a man with a clipboard who'd rather you left."] },
+    chandlery: { title: "The Ship Chandlery", glyph: "d", act: "flavor", counter: "the chart table", sign: ["THE CHANDLERY", "Rope, tar, lamp-oil, and the smell of going to sea."] },
+    customs: { title: "The Customs House", glyph: "X", act: "flavor", counter: "the inspection desk", sign: ["THE CUSTOMS HOUSE", "Declare everything. Especially the things you forgot."] },
     empty: { title: "An Empty Room", glyph: ".", act: null, counter: null, sign: ["—", "Dust, and the suggestion of former purpose."] }
   };
   // which voice keeps each place (accent map): posh / brooklyn / pastoral / plainspoken / mixed
@@ -530,8 +541,12 @@ var TD_GAME = (function () {
       // Sits on the building wall cell (bump-to-read; the wall stays solid), coloured by
       // its kind via TD_UI.buildingColor. Fronts-as-flavor: interiors are a later layer.
       (m.fronts || []).forEach(function (fr) {
-        features[key(fr.x, fr.y)] = { type: "front", glyph: fr.glyph, col: fr.col, business: fr.business,
-          label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null, act: "look" };   // canon venues carry signage (text) + one voice line (bark)
+        // TOWN B — every front is now ENTERABLE: it carries `to` an interior (its own if one exists, else a
+        // flavour room) so bump+Enter goes inside; it stays a FEATURE (signage + bark on bump, category colour).
+        var interior = INTERIORS[fr.business] ? fr.business : "empty";
+        var vice = (typeof TD_UI !== "undefined" && TD_UI.buildingCategory && TD_UI.buildingCategory(fr.business) === "vice");
+        features[key(fr.x, fr.y)] = { type: "front", glyph: fr.glyph, col: fr.col, business: fr.business, to: interior, red: vice,
+          label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null, act: "look" };
       });
       // meta: district rects (for districtAt's flavour) + the dungeon entrance overlay
       var dmeta = { redlight: null, waterfront: null, market: null };
@@ -727,7 +742,11 @@ var TD_GAME = (function () {
       var f = P.features[key(nx, ny)];
       if (f && f.act) {   // act-features (counters, lookouts). gate/decor features sit on open road and are walked through; labels sit in walls (the floor check blocks them).
         if (f.act === "lookout") { pendingCounter = null; pendingVendor = false; act("lookout"); return { moved: false, interacted: "lookout", event: lastEvent }; }
-        if (f.act === "look") { pendingCounter = null; pendingVendor = false; senses(f.text, "seen", "OBJ"); if (f.bark) senses(f.bark, "said", "SUBJ"); return { moved: false, interacted: "look", event: lastEvent }; }   // signage (seen) + one voice line (said, in register)
+        if (f.act === "look") {   // signage (seen) + one voice line (said). TOWN B: a front (carries `to`) ALSO arms the door so Enter goes inside.
+          pendingCounter = null; pendingVendor = false; senses(f.text, "seen", "OBJ"); if (f.bark) senses(f.bark, "said", "SUBJ");
+          if (f.to) { pendingDoor = { meta: { to: f.to, label: f.label, front: true }, x: nx, y: ny }; logMsg("The way into " + (f.label || "the premises") + ". Press Enter to go in."); return { moved: false, bumpedDoor: true, interacted: "front", event: lastEvent }; }
+          return { moved: false, interacted: "look", event: lastEvent };
+        }
         if (f.act === "shrine") { pendingCounter = null; pendingVendor = false; act("shrine"); return { moved: false, interacted: "shrine", event: lastEvent }; }
         // a counter/desk: begin the conversation in the keeper's own voice
         pendingDoor = null; pendingVendor = false; pendingCounter = { act: f.act, x: nx, y: ny };

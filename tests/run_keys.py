@@ -149,8 +149,8 @@ F.onload = function(){
     ok('canon venues have named, voiced fronts (a representative handful)', canon.length>=3 && canon.indexOf('the Rusty Anchor')>=0, canon.slice(0,6).join(', '));
     ok('ambient townsfolk with on-voice barks are present', folk>=3, folk+' townsfolk');
     if(anyFront){ var fd=goAdjacent(anyFront[0],anyFront[1]); press(fd);   // bump a venue front -> signage (seen) + one voice line (said)
-      var sline=(view().senses||view().messages||[]).map(function(m){return (m&&m.text)||m;}).join(' ');
-      ok('bumping a venue front speaks one line in the senses stream', /[A-Z]{3,}|—|\?/.test(view().lastEvent||sline)); }
+      var sline=(view().messages||[]).filter(function(m){return m&&m.ch==='senses';}).map(function(m){return (m&&m.text)||m;}).join(' ');
+      ok('bumping a venue front speaks one line in the senses stream (sign/bark)', /[A-Z]{3,}|—|\?/.test(sline)); }   // TOWN B: the front now also arms the door (Enter to go in)
 
     // ===== GATE 5: a CLEAN ticket-gated descent (the throwaway contraption is gone) =====
     var anyLever=false, ff=view().features||{}; for(var fk in ff){ if(ff[fk].act==='lever') anyLever=true; }

@@ -209,7 +209,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "f07eca8";</script>
+<script>window.__BUILD = "cb15be9";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -517,6 +517,8 @@ window.__initPlayMap = function () {
     Object.keys(vw.features || {}).forEach(function (k) {
       if (!vis.has(k)) return;
       var f = vw.features[k], xy = k.split(","), fx = +xy[0], fy = +xy[1];
+      // TOWN B — an ENTERABLE front gets a LIT STOOP (distinct from a plain wall/sign).
+      if (f.to && town) { ctx.fillStyle = P.stoopBg; ctx.fillRect(fx * TS, fy * TS, TS, TS); }
       // TOWN A — a building FRONT reads its CATEGORY colour (civic/commerce/food/vice/maritime) via its
       // tenant id; other features keep their palette key. Redundant cue alongside the glyph + named sign.
       ctx.fillStyle = (f.business && window.TD_UI && TD_UI.buildingColor) ? TD_UI.buildingColor(f.business) : ((f.col && P[f.col]) ? P[f.col] : P.signal);
@@ -1107,7 +1109,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Town A — legible";
+  var VERSION = "Town B — enterable";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
