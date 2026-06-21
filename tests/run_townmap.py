@@ -55,8 +55,12 @@ REPORTER = r"""
     var viol = [], seeds = [1,2,3,7,11,42,101,202,777,2024];
     var present = { bank:0, hotel:0, customs:0, agency:0 };   // GATE FIX — the Agency is a guaranteed anchor too
     var agencyRoleBad = 0;
+    // GATE FIX R3 — the TRANSACTING shops are capped at ONE each; track max-per-seed + a stable front fill.
+    var FUNC = ['store','apothecary','bookstore','fence','bodega'], funcMax = {}, frontN = [];
+    FUNC.forEach(function(u){ funcMax[u]=0; });
     seeds.forEach(function(s){
       var g = TM.generate(s), uc = {};
+      frontN.push(g.fronts.length);
       g.fronts.forEach(function(f){
         if (f.cat==='vice' && f.role!=='redlight' && f.business!=='bodega') viol.push('vice@'+f.role+'(s'+s+')');
         if ((f.business==='warehouse'||f.business==='chandlery'||f.business==='customs') && f.role!=='warehouse') viol.push(f.business+'@'+f.role);
@@ -64,6 +68,7 @@ REPORTER = r"""
         uc[f.business]=(uc[f.business]||0)+1;
       });
       ['bank','hotel','customs','agency'].forEach(function(u){ if((uc[u]||0)>1) viol.push('dup-'+u+'='+uc[u]+'(s'+s+')'); if(uc[u]) present[u]++; });
+      FUNC.forEach(function(u){ funcMax[u]=Math.max(funcMax[u], uc[u]||0); });
     });
     ok('district + size constraints honoured (every seed)', viol.length===0, viol.slice(0,4).join(','));
     ok('anchor businesses ALWAYS present (bank, hotel, customs)',
@@ -72,6 +77,12 @@ REPORTER = r"""
     // GATE FIX (R1) — the Tour Agency spawns EXACTLY ONCE every seed, in the civic/market district
     ok('the Tour Agency spawns exactly once EVERY seed (was unreachable)', present.agency===seeds.length, present.agency+' of '+seeds.length+' seeds');
     ok('the Agency front sits in the civic/market district', agencyRoleBad===0, agencyRoleBad+' off-district placements');
+    // GATE FIX (R3) — at most ONE of each functional/transacting shop, any seed (was 24 Outfitters @ seed 1)
+    var funcViol = FUNC.filter(function(u){ return funcMax[u]>1; });
+    ok('functional shops CAPPED at one each (store/apothecary/bookstore/fence/bodega)', funcViol.length===0, JSON.stringify(funcMax));
+    // GATE FIX (R3) — the town still fills its fronts with flavour (no empty slots / collapse after capping)
+    var minFronts = Math.min.apply(null, frontN);
+    ok('town still fills its fronts after capping (>=90 flavour-filled every seed)', minFronts>=90, 'min fronts/seed='+minFronts);
 
     // FRONT VALIDITY: each front sits on a building cell with a walkable street face
     function walkTag(t){ return t==='street'||t==='plaza'||t==='alley'||t==='pier'||t==='bridge'||t==='gate'||t==='dungeon'||t==='park'||t==='graveyard'||t==='landmark'||t==='notice'||t==='vendor'||t==='npc'||t==='kiosk'; }

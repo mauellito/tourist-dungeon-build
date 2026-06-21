@@ -980,8 +980,9 @@ var TD_TOWNMAP = (function () {
     { id: "tattoo",     label: "a tattoo parlour",       glyph: "z", cat: "commerce", size: "small",  where: ["market", "civic"], weight: 3 },
     { id: "tailor",     label: "a tailor",               glyph: "u", cat: "commerce", size: "small",  where: ["housing", "market"], weight: 3 },
     { id: "cobbler",    label: "a cobbler",              glyph: "j", cat: "commerce", size: "small",  where: ["housing", "market"], weight: 3 },
-    { id: "apothecary", label: "an apothecary",          glyph: "a", cat: "commerce", size: "small",  where: ["market", "civic"], weight: 3 },
-    { id: "store",      label: "a general store",        glyph: "o", cat: "commerce", size: "small",  where: ["housing", "market", "civic"], weight: 8 },
+    // GATE FIX R3 — the TRANSACTING shops are CAPPED at one canonical each (unique); generic flavour fills the rest.
+    { id: "apothecary", label: "an apothecary",          glyph: "a", cat: "commerce", size: "small",  where: ["market", "civic"], unique: true, weight: 3 },
+    { id: "store",      label: "the Outfitter",          glyph: "o", cat: "commerce", size: "small",  where: ["housing", "market", "civic"], unique: true, weight: 8 },
     { id: "spa",        label: "a spa",                  glyph: "m", cat: "commerce", size: "medium", where: ["civic", "market", "housing"], weight: 3 },
     { id: "tavern",     label: "a tavern",               glyph: "Y", cat: "commerce", size: "medium", where: ["market", "housing", "civic"], weight: 4 },
     { id: "bank",       label: "the bank",               glyph: "B", cat: "civic",    size: "large",  where: ["civic", "market"], unique: true, weight: 2 },
@@ -997,10 +998,10 @@ var TD_TOWNMAP = (function () {
     { id: "redshop",    label: "a red-lit parlour",      glyph: "&", cat: "vice",     size: "small",  where: ["redlight"], weight: 4 },
     { id: "palmreader", label: "a palm-reader",          glyph: "@", cat: "vice",     size: "small",  where: ["redlight"], weight: 3 },
     // GATE 4 — a corner store is COMMERCE (enterable buy/sell), not vice (FLAG: moved out of the RLD so it can be a shop).
-    { id: "bodega",     label: "a bodega",               glyph: "$", cat: "commerce", size: "small",  where: ["market", "housing"], weight: 3 },
-    // GATE 4 — the used-book store (research/lore, enterable) + the off-book pawnbroker/fence (sell-only).
-    { id: "bookstore",  label: "a used-book store",      glyph: "b", cat: "commerce", size: "small",  where: ["civic", "market"], weight: 4 },
-    { id: "fence",      label: "a pawnbroker",           glyph: "p", cat: "commerce", size: "small",  where: ["warehouse", "market"], weight: 3 }
+    { id: "bodega",     label: "a bodega",               glyph: "$", cat: "commerce", size: "small",  where: ["market", "housing"], unique: true, weight: 3 },
+    // GATE 4 — the used-book store (research/lore, enterable) + the off-book pawnbroker/fence (sell-only). R3: both unique.
+    { id: "bookstore",  label: "a used-book store",      glyph: "b", cat: "commerce", size: "small",  where: ["civic", "market"], unique: true, weight: 4 },
+    { id: "fence",      label: "a pawnbroker",           glyph: "p", cat: "commerce", size: "small",  where: ["warehouse", "market"], unique: true, weight: 3 }
   ];
   // CANON VENUES (flavor first-pass): a representative handful of businesses get a named front +
   // signage + ONE voice line, in the venue's register (accent law: word choice + rhythm only, never
