@@ -46,7 +46,7 @@ var TD_STATS = (function () {
       weapon: "shortsword", armor: "light", bias: { con: 90, grit: 70, lucky: 60 } },
     surveyor: { order: 1, name: "Ward Surveyor", disposition: "Reads the route — sharper warnings, softer blows.",
       desc: "Trained to read a route and file it in triplicate. Sees what others miss; strikes softer than most.",
-      weapon: "dagger", armor: "light", bias: { per: 220, int: 170, intuition: 140, might: -90, con: -50 } },
+      weapon: "dagger", armor: "light", bias: { per: 220, int: 170, intuition: 140, might: -40, con: -20 } },
     stevedore: { order: 2, name: "Harbour Stevedore", disposition: "Heavy and slow — hard to kill, hard to miss.",
       desc: "Hired muscle off the docks, admitted on a labourer's pass. Built to carry and to take a blow; armoured, and slow with it.",
       weapon: "mace", armor: "heavy", bias: { might: 200, con: 190, grit: 90, dex: -190, per: -70 } },
