@@ -213,7 +213,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "0b5ebba";</script>
+<script>window.__BUILD = "271d902";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -704,8 +704,12 @@ window.__initPlayMap = function () {
     // GATE 3 R2 — colour-code the burden BAND by severity so the load reads at a glance (in-voice word, no digit).
     var bCol = /Unencumbered/i.test(burden || "") ? "#2f6d33" : /Laden/i.test(burden || "") ? P.dangerLow : /Strained/i.test(burden || "") ? P.dangerMed : /Overloaded/i.test(burden || "") ? P.dangerHigh : "#8a7c66";
     var place = vw.phase === "dungeon" ? ("Sublevel " + vw.level) : (vw.phase === "town" ? (vw.title || "The Harbour") : "Indoors");
+    var pg = vw.progress || null;
     dossierEl.innerHTML =
       section("Vitals") +
+      // XP + LEVELS (R3) — level as a plain number + an XP-to-next bar (meta-UI; FLAG: number over a rank
+      // feel-word ladder, recommended for legibility). Stat growth still surfaces as a feel-word in the log.
+      (pg ? statrow("Level", '<span id="sb-level" style="color:#cfe3b0">' + pg.level + "</span>") + bar("XP", pg.xp, pg.next, P.signal, false) : "") +
       vital("Body", "sb-hp", hpFrac, hpCol, hpWord) +
       vital("Vigour", "sb-fatigue", ftFrac, ftCol, ftWord) +
       statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
@@ -1212,7 +1216,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Gate A — bestiary WIRED, 223 foes spawn by band";
+  var VERSION = "XP + levels wired — depth-weighted, HP/feel-word growth on level-up";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

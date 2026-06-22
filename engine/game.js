@@ -149,6 +149,7 @@ var TD_GAME = (function () {
       if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("light", "shortsword"); }
       character.purse = { copper: 0, silver: 0, gold: 0 };   // coins picked up in the descent (weight -> encumbrance)
       character.vault = 0;   // GATE 4 — bank-vault balance (copper-equiv VALUE; vaulted coins weigh nothing)
+      character.level = 1; character.xp = 0;   // XP + LEVELS — the progression spine (meta; kills + descent accrue)
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
       shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
@@ -1370,6 +1371,7 @@ var TD_GAME = (function () {
       // GATE 4.1 — the ten-stat SHEET as feel-words for the Visitor Dossier (digit-safe: surface()
       // emits words only, never numbers). Rebuilt each view so growth-by-deeds (crossed() words) shows live.
       v.stats = (typeof TD_STATS !== "undefined" && character && character.stats) ? TD_STATS.surface(character.stats) : null;
+      v.progress = (typeof TD_STATS !== "undefined" && TD_STATS.xpReadout) ? TD_STATS.xpReadout(character) : null;   // R3 — level + XP-to-next bar (meta-UI)
       v.objective = sliceObjective();   // GATE 5 R3 — the slice goal, Bureau register, surfaced in the dossier
       v.background = character.background || null;                                  // GATE 6 — the declared identity (dossier)
       // CHARACTER E — the creation flow surface (staged). Feel-words only; the budget is a fraction (bar), never a number.

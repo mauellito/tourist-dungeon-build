@@ -57,6 +57,25 @@ try{
   ok('the middle bands dominate the average read (>=99% neutral; only rare tail rolls flatter)', midHits/total>0.99 && flatHits/total<0.01, Math.round(100*midHits/total)+'% neutral, '+flatHits+'/'+total+' tail-flatter');
   ok('a base surface reads middling, not a deck of compliments', /middling|even/.test(sampleWords), sampleWords);
 
+  // ---- XP + LEVELS (the progression spine) ----
+  // DEPTH-WEIGHTED, ANTI-GRIND: a band-appropriate kill pays full; a foe far below your level near-zero.
+  ok('a band-appropriate kill pays FULL XP', S.XP.killXP(3,3)===S.XP.KILL_BASE(3) && S.XP.killXP(3,3)>0, 'band3@lvl3='+S.XP.killXP(3,3));
+  ok('a deeper foe is worth more than a shallow one (at-level)', S.XP.killXP(5,5)>S.XP.killXP(1,1));
+  ok('ANTI-GRIND: a foe far BELOW your level pays near-zero', S.XP.killXP(1,4)===0 && S.XP.killXP(1,5)===0, 'band1@lvl4='+S.XP.killXP(1,4));
+  ok('a one-band-below foe still pays a partial (graceful decay, not a cliff)', S.XP.killXP(2,3)>0 && S.XP.killXP(2,3)<S.XP.killXP(3,3));
+  ok('descending grants an XP beat that grows with depth', S.XP.descentXP(5)>S.XP.descentXP(1) && S.XP.descentXP(1)>0);
+  ok('level thresholds ESCALATE', S.XP.threshold(2)>S.XP.threshold(1) && S.XP.threshold(5)>S.XP.threshold(4));
+  // LEVEL-UP: HP grows (Con-derived, meta) + a stat nudge surfaces as a FEEL-WORD (no number)
+  var ch={ level:1, xp:0, stats:S.create(RNG.make(3)) };
+  var r1=S.gainXP(ch, S.XP.threshold(1)+1);   // enough to cross level 1->2
+  ok('crossing a threshold LEVELS UP (level rises, xp carries the remainder)', ch.level===2 && r1.levels===1 && ch.xp>=0, 'lvl='+ch.level+' xp='+ch.xp);
+  ok('level-up grows HP (Con-derived, numeric meta)', r1.hpGain>0, 'hpGain='+r1.hpGain);
+  ok('level-up surfaces a stat gain as a FEEL-WORD (no digit)', r1.words.length>0 && !/[0-9]/.test(r1.words.join(' ')), r1.words.join(' '));
+  var lvlB=ch.level; S.gainXP(ch, 1);   // a trickle, no level
+  ok('a sub-threshold trickle does NOT level up', ch.level===lvlB);
+  ok('a big XP dump can multi-level in one call', S.gainXP({level:1,xp:0,stats:S.create(RNG.make(9))}, 100000).levels>=3);
+  var ro=S.xpReadout(ch); ok('xpReadout gives level + to-next + a 0..1 bar (meta)', ro.level===ch.level && ro.next>0 && ro.frac>=0 && ro.frac<=1, JSON.stringify(ro));
+
   // ---- DERIVED registry (internal numbers; never shown) ----
   var d=S.derive(st);
   ok('derived registry yields the combat inputs (might/dex/con/grit/per/intuition...)', typeof d.damageBonus==='number'&&typeof d.accuracy==='number'&&typeof d.evasion==='number'&&typeof d.hpMax==='number'&&typeof d.mindResist==='number'&&typeof d.perceive==='number'&&typeof d.interpret==='number');

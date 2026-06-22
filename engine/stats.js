@@ -137,11 +137,57 @@ var TD_STATS = (function () {
     return words;                                            // emit words, never numbers
   }
 
+  // ============ XP + LEVELS (the progression spine) ============
+  // XP/level/HP are META progression (numeric, like turn/money) — NOT a stat, so no digit-leak law here.
+  // STAT growth on level-up still surfaces as a FEEL-WORD. No enemy level-scaling anywhere. TUNABLE.
+  var XP = {
+    KILL_BASE: function (band) { return 4 + (band || 1) * 4; },            // a deeper/tougher foe is worth more
+    // DEPTH-WEIGHTED, ANTI-GRIND: a band-appropriate kill (foe band >= your level) pays full; a foe far
+    // BELOW your level decays to near-zero (a level-3 you earns ~nothing farming band-1 fodder).
+    relevance: function (foeBand, level) { var gap = (level || 1) - (foeBand || 1); return gap <= 0 ? 1 : Math.max(0, 1 - 0.45 * gap); },
+    killXP: function (foeBand, level) { return Math.round(XP.KILL_BASE(foeBand) * XP.relevance(foeBand, level)); },
+    descentXP: function (depth) { return 6 + Math.max(0, depth || 1) * 3; },   // a beat for reaching a new floor
+    threshold: function (level) { return Math.round(30 * Math.pow(1.35, (level || 1) - 1)); },   // escalating to-next
+    hpPerLevel: function (con) { return Math.max(4, 6 + Math.round(((con || 500) - 500) / 100)); },   // Con-derived HP growth
+    STAT_STEP: 14
+  };
+  // which stat a level-up nudges (rotates through the combat-relevant lanes) + its feel-word phrasing.
+  var GROWTH_LANES = [
+    { stat: "might", word: "stronger" }, { stat: "con", word: "sturdier" }, { stat: "dex", word: "quicker" },
+    { stat: "per", word: "sharper-eyed" }, { stat: "grit", word: "steadier" }
+  ];
+  function nudgeStat(ch, level) {
+    if (!ch.stats) return null;
+    var lane = GROWTH_LANES[(level - 2 + GROWTH_LANES.length) % GROWTH_LANES.length];   // level 2 -> lane 0, etc.
+    var ov = ch.stats[lane.stat]; ch.stats[lane.stat] = clamp(ov + XP.STAT_STEP);
+    var crossW = crossed(lane.stat, ov, ch.stats[lane.stat]);
+    return "You feel " + (crossW ? crossW : lane.word) + ".";   // a feel-word, never a number
+  }
+  // accumulate XP; cross thresholds -> level up, growing HP (Con-derived, meta) + an occasional stat nudge
+  // (feel-word). Mutates ch.xp/level/stats. Returns { levels, hpGain, words } for the caller to surface.
+  function gainXP(ch, amount) {
+    if (!ch) return { levels: 0, hpGain: 0, words: [] };
+    ch.level = ch.level || 1; ch.xp = (ch.xp || 0) + Math.max(0, Math.round(amount || 0));
+    var levels = 0, hpGain = 0, words = [], guard = 0;
+    while (ch.xp >= XP.threshold(ch.level) && guard++ < 50) {
+      ch.xp -= XP.threshold(ch.level); ch.level += 1; levels += 1;
+      hpGain += XP.hpPerLevel(ch.stats ? ch.stats.con : 500);
+      var w = nudgeStat(ch, ch.level); if (w) words.push(w);
+    }
+    return { levels: levels, hpGain: hpGain, words: words };
+  }
+  // meta-UI readout for the HUD: level + XP-to-next + a 0..1 bar fraction (numbers OK — meta, not a stat).
+  function xpReadout(ch) {
+    if (!ch) return null; var lvl = ch.level || 1, next = XP.threshold(lvl), xp = ch.xp || 0;
+    return { level: lvl, xp: xp, next: next, frac: next > 0 ? Math.max(0, Math.min(1, xp / next)) : 0 };
+  }
+
   return {
     STATS: STATS, NAMES: NAMES, BANDS: BANDS, FEEL: FEEL,
     create: create, createBase: createBase, bell: bell, tier: tier, feel: feel, surface: surface, crossed: crossed,
     luckyThumb: luckyThumb, DERIVED: DERIVED, derive: derive, power: power, powerWord: powerWord,
     newProgress: newProgress, recordDeed: recordDeed, realizeOnRest: realizeOnRest,
+    XP: XP, gainXP: gainXP, nudgeStat: nudgeStat, xpReadout: xpReadout,
     BACKGROUNDS: BACKGROUNDS, backgroundList: backgroundList
   };
 })();

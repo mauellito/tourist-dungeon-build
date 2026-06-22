@@ -1127,6 +1127,17 @@ var TD_MAP = (function () {
       ctrl.meters.hp = r.hp; if (r.dead) die(combatCause(source));
     }
     function die(cause) { if (!ctrl.dead) { ctrl.dead = true; ctrl.cause = cause; logMsg(cause, true); } }
+    // XP + LEVELS — accumulate XP (meta), and on a level-up grow HP (Con-derived, numeric meta) + surface
+    // the modest stat gain as a FEEL-WORD. Level is a plain number (meta, like turn/money). No enemy scaling.
+    function awardXP(amount, why) {
+      var ch = ctrl.character; if (!ch || typeof TD_STATS === "undefined" || !TD_STATS.gainXP || !(amount > 0)) return;
+      var r = TD_STATS.gainXP(ch, amount);
+      if (r.levels > 0) {
+        ctrl.meters.hpMax += r.hpGain; ctrl.meters.hp = Math.min(ctrl.meters.hpMax, ctrl.meters.hp + r.hpGain);
+        logMsg("You reach Level " + ch.level + "." + (r.words.length ? " " + r.words.join(" ") : ""), false);   // level = number (meta); stat gain = feel-word
+      }
+    }
+    function killXP(cr) { var ch = ctrl.character; return (typeof TD_STATS !== "undefined" && TD_STATS.XP) ? TD_STATS.XP.killXP(cr.band || 1, (ch && ch.level) || 1) : 0; }
     // GATE 5 R2 — POISON status (the new mechanic the antidote cures). A poison-tagged foe's hit leaves
     // venom: a small per-turn bite for POISON_TURNS, telegraphed once. NOT a combat-magnitude change.
     var POISON_TURNS = 5, POISON_HP = 2;
@@ -1209,13 +1220,13 @@ var TD_MAP = (function () {
             var dmg = TD_RESOLVE.damage(pf, cr.fighter, rng).damage;
             ctrl.fx.push({ x: cr.x, y: cr.y, amount: dmg, kind: "dealt", max: cr.maxHp || cr.hp });   // max -> hit-pulse band (render only)
             var blow = TD_RESOLVE.strike(cr.hp, dmg); cr.hp = blow.hp; killed = blow.killed;
-            if (killed) { dropLoot(cr); removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
+            if (killed) { dropLoot(cr); removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); awardXP(killXP(cr), "kill"); }
             else logMsg("Your " + ((pf.weapon && pf.weapon.verb) || "blow") + " lands on " + cr.name + "; it still stands.", false);
           } else logMsg("You swing at " + cr.name + " and the blow goes wide.", false);
         } else {                                                  // legacy flat fallback (no stat spine / test harness)
           ctrl.fx.push({ x: cr.x, y: cr.y, amount: PLAYER_DMG, kind: "dealt", max: cr.maxHp || cr.hp });
           var fblow = TD_RESOLVE.strike(cr.hp, PLAYER_DMG); cr.hp = fblow.hp; killed = fblow.killed;
-          if (killed) { dropLoot(cr); removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); }
+          if (killed) { dropLoot(cr); removeCreature(cr); ctrl.kills += 1; logMsg("You strike " + cr.name + " from the register.", false); awardXP(killXP(cr), "kill"); }
           else logMsg("You serve " + cr.name + " notice; it still stands.", false);
         }
         meterTick("fight");
@@ -1533,6 +1544,7 @@ var TD_MAP = (function () {
       // ALWAYS retrace the route to the surface (the climb-home / flee-up escape valve never breaks).
       if (ctrl.node !== fromNode) shared.cameFrom[ctrl.node] = fromNode;
       if (d.type === "oneway") delete shared.cameFrom[ctrl.node];                                     // a one-way stair clicks shut: no return
+      if (curLevel() > fromLevel && typeof TD_STATS !== "undefined" && TD_STATS.XP) awardXP(TD_STATS.XP.descentXP(curLevel()), "descend");   // XP beat for reaching a new floor
       shared.turn += 1;
       buildView();
       return { opened: true, traversed: d.edgeId, recenter: true, won: ctrl.won, to: ctrl.node };
