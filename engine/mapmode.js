@@ -32,7 +32,10 @@ var TD_MAP = (function () {
   var PLAYER_DMG = TD_RESOLVE.COMBAT.PLAYER_DMG;
   // three distinct simple behaviours: wanderer (drifts, occasionally toward you),
   // lurker (still until you come close, then hunts), chaser (relentless pursuit).
-  var CREATURE = TD_RESOLVE.COMBAT.CREATURES;
+  // GATE A — the LIVE spawn source is the 223-foe families/variants bestiary (TD_BESTIARY) when present;
+  // the old ~23 office roster (TD_RESOLVE.COMBAT.CREATURES) is the fallback only for harnesses that don't
+  // load bestiary.js. spawnCreatures + KINDS_BY_BAND read this, so the depth-banded mix draws classic foes.
+  var CREATURE = (typeof TD_BESTIARY !== "undefined" && TD_BESTIARY.ROSTER) ? TD_BESTIARY.ROSTER : TD_RESOLVE.COMBAT.CREATURES;
   // generous slack: walking is cheap, fighting costs, resting recovers fatigue,
   // and a full belly carries you across several levels before food matters.
   var FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4, FATIGUE_PER_SPRINT = 1.5;   // GATE 8 (B): sprint is the costliest pace
@@ -806,7 +809,9 @@ var TD_MAP = (function () {
         var spot = pickSpot();
         if (!spot) continue;
         var kind = pickFoe(L), def = CREATURE[kind];
-        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, arche: def.arche, band: def.band || 1, firstStrike: !!def.firstStrike, tooTough: !!def.tooTough, tags: def.tags || [], family: def.family || null, role: def.role || null, fighter: defFighter(def) });
+        // GATE A R2 — carry the bestiary member's real fields onto the live creature (weapon/armor/stats too).
+        // Mechanic tags with no engine hook yet (regen/ranged/raise) ride along as DATA for later gates (FLAG: not faked).
+        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, arche: def.arche, band: def.band || 1, firstStrike: !!def.firstStrike, tooTough: !!def.tooTough, tags: def.tags || [], family: def.family || null, role: def.role || null, weapon: def.weapon || null, armor: def.armor || null, stats: def.stats || null, fighter: defFighter(def) });
       }
     }
     function pickSpot() {
@@ -943,11 +948,12 @@ var TD_MAP = (function () {
                 ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: dmg2, kind: "taken" });
                 hurt(dmg2, cr);
                 crushTell(cr.fighter.weapon);                                  // R3 hook: impact vs tier-4 plate -> the shell gives inward
+                envenom(cr);                                                   // GATE 5 R2: a poison-tagged foe leaves venom (antidote cures)
                 if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary.", lowHP());
               } else logMsg(cap(cr.name) + " lunges and misses.", false);
             } else {                                                        // legacy flat fallback
               ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: cr.dmg, kind: "taken" });
-              hurt(cr.dmg, cr);
+              hurt(cr.dmg, cr); envenom(cr);
               if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary.", lowHP());
             }
           } else {
@@ -1121,6 +1127,15 @@ var TD_MAP = (function () {
       ctrl.meters.hp = r.hp; if (r.dead) die(combatCause(source));
     }
     function die(cause) { if (!ctrl.dead) { ctrl.dead = true; ctrl.cause = cause; logMsg(cause, true); } }
+    // GATE 5 R2 — POISON status (the new mechanic the antidote cures). A poison-tagged foe's hit leaves
+    // venom: a small per-turn bite for POISON_TURNS, telegraphed once. NOT a combat-magnitude change.
+    var POISON_TURNS = 5, POISON_HP = 2;
+    function envenom(cr) {
+      if (!cr || !cr.tags || cr.tags.indexOf("poison") < 0) return;
+      var was = ctrl.meters.poison || 0;
+      ctrl.meters.poison = Math.max(was, POISON_TURNS);
+      if (!was) senses("A cold venom spreads from the wound — you will want an antidote.", "intuition", "SUBJ");
+    }
 
     // body meters tick on each dungeon action (bible §4.13 anti-scum).
     // mode: "step" (walk), "fight", "rest" (wait — recovers fatigue if safe).
@@ -1146,6 +1161,7 @@ var TD_MAP = (function () {
         else if (worse) logMsg("You grow " + st.toLowerCase() + ".", false);
         ctrl.lastHungerStage = st;
       }
+      if (m.poison > 0) { m.poison -= 1; hurt(POISON_HP, { name: "poison" }); if (m.poison === 0 && !ctrl.dead) senses("The venom finally burns out of your blood.", "intuition", "SUBJ"); }   // GATE 5 R2 poison DOT
       if (hungerStage(m).critical) hurt(STARVE_HP, { name: "hunger", starve: true });
 
       if (m.fatigue >= m.fatigueMax) {
@@ -1352,10 +1368,15 @@ var TD_MAP = (function () {
       return { got: true, equipped: true, slot: (spec && spec.slot) || it.slot, item: it, event: ctrl.lastEvent };
     }
     // GATE 2 — re-equip a backup from the pack ('u' on a weapon/armour). Swaps with the held piece.
-    function equipFromPack(it) {
+    function equipFromPack(it, turnCost) {
       var i = ctrl.inventory.indexOf(it); if (i < 0) return { equipped: false };
       ctrl.inventory.splice(i, 1);
-      return equipFromFloor(it);
+      var r = equipFromFloor(it);
+      // GATE 4 R3 — equipping COSTS TURNS: foes act while you fumble with straps/buckles.
+      var n = Math.max(0, turnCost || 0), t0 = shared.turn;
+      for (var t = 0; t < n && !ctrl.dead; t++) endTurn("rest", false);
+      if (r) r.turns = shared.turn - t0;
+      return r;
     }
 
     // drop an item from the pack onto the floor (called by the town controller).
@@ -1572,6 +1593,7 @@ var TD_MAP = (function () {
         // a second channel that sits BESIDE the burden feel-word. Derived from the same band weight.
         metabolism: (function () { var b = playerBand(); var lb = b ? b.weight : 0; var c = (typeof TD_BURDEN !== "undefined") ? TD_BURDEN.massCoins(lb) : 0;
           return { hunger: hungerStage(ctrl.meters).stage, fatigue: fatigueStage(), burden: b ? b.band.word : "unburdened",
+                   afflict: (ctrl.meters.poison > 0) ? "venom" : null,   // GATE 5 R2 — poison status (feel-word; the antidote clears it)
                    weight: { coins: c, label: (typeof TD_BURDEN !== "undefined") ? TD_BURDEN.massLabel(c) : ("" + c) } }; })(),
         grid: ctrl.grid.map(function (r) { return r.join(""); }),
         doors: ctrl.doors, features: ctrl.features,

@@ -458,7 +458,7 @@ var TD_GAME = (function () {
     // reaction hook is where a FUTURE infatuation tax would fold in — none built now). Tenants drive
     // which shops exist; the data here is freely editable. (PRICES/BUYBACK/SERVICES = RED-PEN TUNABLE.)
     var SHOP_STOCK = {
-      store:      ["lantern", "rope", "torch", "dagger", "waterskin", "sack"],
+      store:      ["lantern", "rope", "torch", "pitons", "waterskin", "sack", "incognito"],   // GATE 5 R1: camping/light/descent + the incognito coat (FLAG: belongs in a Haberdasher once one exists)
       apothecary: ["bandage", "tincture", "antidote", "salve"],
       bodega:     ["ration", "hotdog", "biscuit", "candle"],
       bookstore:  ["book", "map_scrap", "pamphlet", "ledger"],
@@ -472,10 +472,14 @@ var TD_GAME = (function () {
       dagger:    { kind: "dagger",    glyph: ")", name: "a plain dagger",    weight: 1,   desc: "A blade for close, honest disagreements." },
       waterskin: { kind: "waterskin", glyph: "%", name: "a waterskin",       weight: 1,   desc: "Holds water. Drink it before the dark does." },
       sack:      { kind: "sack",      glyph: "(", name: "a burlap sack",     weight: 0.5, desc: "For carrying off what isn't nailed down." },
-      bandage:   { kind: "bandage",   glyph: "!", name: "a roll of bandage", weight: 0.2, desc: "Stops the bleeding, mostly." },
-      tincture:  { kind: "tincture",  glyph: "!", name: "a green tincture",  weight: 0.2, desc: "Bitter and green; mends a little." },
-      antidote:  { kind: "antidote",  glyph: "!", name: "an antidote vial",  weight: 0.2, desc: "For when the dark bites back." },
-      salve:     { kind: "salve",     glyph: "!", name: "a tin of salve",    weight: 0.2, desc: "Greasy, effective, faintly fishy." },
+      // GATE 5 R1/R2 — descent kit + the incognito coat (forward hooks; their consumers — the chasm crossing
+      // and the infatuation read — are the SKIPPED S&G floor / PINNED tax, so these carry FLAGS, not effects yet).
+      pitons:    { kind: "pitons",    glyph: "(", name: "a set of pitons",   weight: 1,   desc: "Iron spikes and a hammer — for the crossings that would rather you didn't." },
+      incognito: { kind: "incognito", glyph: "[", name: "an incognito coat", weight: 2,   desc: "A drab, anonymous overcoat. In it you are no one worth a second look." },
+      bandage:   { kind: "bandage",   glyph: "!", name: "a roll of bandage", weight: 0.2, desc: "Stops the bleeding, mostly.", use: "heal", heal: 30 },
+      tincture:  { kind: "tincture",  glyph: "!", name: "a green tincture",  weight: 0.2, desc: "Bitter and green; mends a little.", use: "heal", heal: 45 },
+      antidote:  { kind: "antidote",  glyph: "!", name: "an antidote vial",  weight: 0.2, desc: "For when the dark bites back; clears venom.", use: "antidote" },
+      salve:     { kind: "salve",     glyph: "!", name: "a tin of salve",    weight: 0.2, desc: "Greasy, effective, faintly fishy.", use: "heal", heal: 25 },
       ration:    { kind: "ration",    glyph: "*", name: "a field ration",    weight: 0.5, desc: "Edible, and not much more than that." },
       hotdog:    { kind: "hotdog",    glyph: "*", name: "a hot dog",         weight: 0.3, desc: "Provenance unconfirmed. Filling, regardless." },
       biscuit:   { kind: "biscuit",   glyph: "*", name: "a hard biscuit",    weight: 0.2, desc: "Keeps forever. Tastes it." },
@@ -1191,6 +1195,11 @@ var TD_GAME = (function () {
     function invList() {
       var list = shared.inventory.slice();
       if (character.ticket) list.push({ kind: "ticket", virtual: true, glyph: "=", name: "your admission ticket (" + character.ticket + ")", desc: ticketDesc(), use: "inspect" });
+      // GATE 5 R3 — the VISA as a non-droppable DOCUMENT (category + grant), surfaced in the pack/sheet.
+      if (character.visa && typeof CS !== "undefined" && CS.VISAS && CS.VISAS[character.visa]) {
+        var vz = CS.VISAS[character.visa], grants = (vz.grants || []).map(function (g) { return g[1]; }).join(", ");
+        list.push({ kind: "document", virtual: true, glyph: "§", name: "your visa — " + vz.name, desc: vz.disposition + (grants ? "  Grants: " + grants + "." : ""), use: "inspect" });
+      }
       return list;
     }
     function removeReal(it) { var i = shared.inventory.indexOf(it); if (i >= 0) shared.inventory.splice(i, 1); }
@@ -1213,14 +1222,30 @@ var TD_GAME = (function () {
       if ((it.kind === "weapon" || it.kind === "armor") && placeId === "DUNGEON" && dungeon && dungeon.equipFromPack) { var r = dungeon.equipFromPack(it); afterDungeon(); clampSel(); return r; }   // GATE 2: u equips a backup (swap; old returns to pack)
       if (it.use === "eat") { meters.satiation = Math.min(meters.satiationMax, meters.satiation + (it.food || 40)); removeReal(it); logMsg("You eat " + it.name + ". The hunger eases."); }
       else if (it.use === "heal") { meters.hp = Math.min(meters.hpMax, meters.hp + (it.heal || 20)); removeReal(it); logMsg("You apply " + it.name + ". Your wounds close a little."); }
+      else if (it.use === "antidote") { var had = (meters.poison || 0) > 0; meters.poison = 0; removeReal(it); logMsg(had ? "You drink " + it.name + "; the venom loosens its grip." : "You drink " + it.name + ". Nothing was poisoning you, but it cannot hurt."); }   // GATE 5 R2 — cures the new poison
       else { logMsg(it.name + " — " + it.desc); }
       clampSel();
       return { used: true, item: it };
     }
+    // GATE 4 R3 — EQUIP COSTS TURNS (tunable, FLAG): a weapon swap is quick (1), armour is a faff (3).
+    var EQUIP_TURN_WEAPON = 1, EQUIP_TURN_ARMOR = 3;
+    function equipSelected() {
+      var l = invList(); if (!l.length) { logMsg("Your pack is empty."); return { equipped: false }; }
+      var it = l[invSel];
+      if (it.virtual || (it.kind !== "weapon" && it.kind !== "armor")) { logMsg((it.name || "That") + " is not something to wear or wield."); return { equipped: false }; }
+      var cost = it.kind === "weapon" ? EQUIP_TURN_WEAPON : EQUIP_TURN_ARMOR;
+      if (placeId === "DUNGEON" && dungeon && dungeon.equipFromPack) {
+        var r = dungeon.equipFromPack(it, cost); afterDungeon(); clampSel();
+        logMsg("You " + (it.kind === "weapon" ? "ready " : "don ") + it.name + "; it takes a moment, and the dark does not wait.", false);
+        return { equipped: r && r.equipped !== false, item: it, turns: (r && r.turns) || cost };
+      }
+      logMsg("Best fit your kit on the descent — there's no call for it on the harbour stones."); // town equip deferred (FLAG)
+      return { equipped: false, item: it };
+    }
     function dropSelected() {
       var l = invList(); if (!l.length) { logMsg("You have nothing to drop."); return { dropped: false }; }
       var it = l[invSel];
-      if (it.virtual) { logMsg("You had better hold on to your ticket."); return { dropped: false }; }
+      if (it.virtual) { logMsg("You had better hold on to your papers."); return { dropped: false }; }
       removeReal(it);
       if (placeId === "DUNGEON" && dungeon) { dungeon.dropItem(it); afterDungeon(); }
       else logMsg("You set " + it.name + " down on the harbour stones and walk on.");
@@ -1335,6 +1360,7 @@ var TD_GAME = (function () {
         v.metabolism = { burden: bb.band.word, weight: { coins: tc, label: TD_BURDEN.massLabel(tc) } };
       }
       // GATE 4 — the economy overlays (shop buy/sell, bank vault). Coins shown as denominations (the in-world unit).
+      v.money = (typeof TD_ECON !== "undefined") ? { coins: TD_ECON.value(character.purse), label: purseLabel(), vault: coinLabel(character.vault || 0) } : null;   // GATE 4 R1 — money in the persistent HUD (meta-UI; numeric OK)
       v.shop = shop ? { kind: shop.kind, title: (INTERIORS[shop.kind] ? INTERIORS[shop.kind].title : shop.kind), mode: shop.mode, sel: shop.sel, canBuy: shop.canBuy, canSell: shop.canSell, rows: shopRows(), purse: purseLabel() } : null;
       v.vault = vaultUI ? { open: true, purse: purseLabel(), vault: coinLabel(character.vault || 0) } : null;
       v.exitPrompt = !!pendingExit; v.left = !!left;
@@ -1409,7 +1435,7 @@ var TD_GAME = (function () {
       move: move, sprint: sprint, open: commit, commit: commit, view: view, postmortem: postmortem, newCharacter: newCharacter,
       wait: wait, get: get, search: search, closeDoor: closeDoor,
       openDoorAuto: openDoorAuto, openDoorDir: openDoorDir, closeDoorAuto: closeDoorAuto, closeDoorDir: closeDoorDir, toggleAutoOpen: toggleAutoOpen,
-      toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected,
+      toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected, equipSelected: equipSelected,
       // GATE 4 — town economy verbs (shop overlay, bank vault, RLD front-services)
       shopMove: shopMove, shopSetMode: shopSetMode, shopTransact: shopTransact, shopClose: shopClose,
       vaultDeposit: vaultDeposit, vaultWithdraw: vaultWithdraw, vaultClose: vaultClose,

@@ -242,11 +242,36 @@ F.onload = function(){
 
     // ============================ INVENTORY: use/consume =================
     pk('i'); ok('i opens the pack', view().invOpen);
+    ok('the HUD shows MONEY (coin total) persistently', !!doc.getElementById('sb-money'));
     var inv0=view().inventory||[]; var bi=-1; for(var ii=0;ii<inv0.length;ii++){ if(inv0[ii].name==="a vendor's bun"){ bi=ii; break; } }
-    pk(String.fromCharCode(97+bi)); pk('u'); var vu=view();
-    ok('selecting the bun and pressing u eats it (consumed)',
+    // GATE 4 R2 — navigate with ARROWS to the highlight (no letter-quick-select), then u uses it
+    var g4=0; while((view().invSel||0)!==bi && g4++<40){ pk((view().invSel||0)<bi?'ArrowDown':'ArrowUp'); }
+    pk('u'); var vu=view();
+    ok('navigating with arrows to the bun and pressing u eats it (consumed)',
        !(vu.inventory||[]).some(function(it){return it.name==="a vendor's bun";}));
+    // GATE 4 R2 — an 11-item list reaches item 11 (no single-digit cap); and 'd' drops the HIGHLIGHT, not item-d
+    var DUN2=win.__TD_SIM()._dungeon();
+    var pad=[]; for(var q=0;q<11;q++) pad.push({kind:'souvenir',glyph:'*',name:'trinket '+q,weight:0.1,desc:'a trinket'});
+    win.__TD_SIM()._shared().inventory.length=0; pad.forEach(function(t){win.__TD_SIM()._shared().inventory.push(t);});
+    pk('i'); pk('i');   // refresh pack view
+    if(!view().invOpen) pk('i');
+    var g5=0; while((view().invSel||0)!==10 && g5++<40){ pk('ArrowDown'); }
+    ok('an 11-item list reaches item 11 via arrows', (view().invSel||0)===10 && (view().inventory||[]).length>=11, 'sel='+view().invSel+' n='+(view().inventory||[]).length);
+    var n0=(view().inventory||[]).length, dropName=(view().inventory||[])[view().invSel].name;
+    pk('d'); var vd=view();
+    ok("'d' drops the HIGHLIGHTED item (the old letter-select bug is gone)",
+       (vd.inventory||[]).length===n0-1 && !(vd.inventory||[]).some(function(it){return it.name===dropName;}), 'dropped '+dropName);
     pk('i'); ok('i closes the pack again', !view().invOpen);
+
+    // GATE 4 R3 — EQUIP COSTS TURNS: donning armour advances the clock (foes act while you buckle up)
+    win.__TD_SIM()._shared().inventory.length=0;
+    win.__TD_SIM()._shared().inventory.push({kind:'armor',slot:'body',name:'a test hauberk',glyph:'[',weight:5,spec:{name:'a test hauberk',slot:'body',robustness:6,encumbrance:3}});
+    pk('i');
+    var g6=0; while((view().invSel||0)!==0 && g6++<40){ pk('ArrowUp'); }
+    var turnBefore=view().turn||0;
+    pk('e'); var turnAfter=view().turn||0;
+    ok('equipping armour PASSES TURNS (the clock advanced)', turnAfter>turnBefore, 'turn '+turnBefore+' -> '+turnAfter);
+    if(view().invOpen) pk('i');
 
     // ============================ DOORS: open / close (plain) ============
     var pn=floorNeighbor(); var pkk=pn.x+','+pn.y; DUN._addPlain(pn.x,pn.y);

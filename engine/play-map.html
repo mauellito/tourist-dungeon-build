@@ -157,7 +157,8 @@
     <button class="ctl" id="reroll">Random</button>
     <span id="meta"></span>
   </div>
-  <div id="verify" class="verify"></div>
+  <div id="verify" class="verify" style="display:none"></div>   <!-- GATE 4 R1: dev checker badge hidden from play -->
+
 
   <div id="game">
     <div class="stage">
@@ -212,7 +213,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "6032a01";</script>
+<script>window.__BUILD = "0b5ebba";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -713,6 +714,10 @@ window.__initPlayMap = function () {
       (burden ? statrow("Carrying",
         (wt ? '<span id="sb-weight" style="color:#cdbf9f">' + escapeHTML(wt.label) + "</span> " : "") +
         '<span id="sb-burden" style="color:' + bCol + '">· ' + escapeHTML(burden) + "</span>") : "") +
+      // GATE 4 R1 — MONEY in the persistent HUD (meta-UI; coin total is numeric, not a stat)
+      (vw.money ? statrow("Coin", '<span id="sb-money" style="color:#d9c89a">' + escapeHTML(vw.money.label) + "</span>" + (vw.money.vault && vw.money.vault !== "0c" ? ' <span style="color:#8a7c66">· vault ' + escapeHTML(vw.money.vault) + "</span>" : "")) : "") +
+      // GATE 5 R2 — an active affliction (poison) reads as a feel-word in the HUD
+      ((vw.metabolism && vw.metabolism.afflict) ? statrow("Afflicted", '<span id="sb-afflict" style="color:' + P.dangerHigh + '">' + escapeHTML(vw.metabolism.afflict) + "</span>") : "") +
       // GATE 9 (C) — the equipment paperdoll (all 11 slots) replaces the single Armour/Weapon readout.
       paperdoll(vw.equipment, vw.gear) +
       // GATE 4.1/6 — the declared IDENTITY + the ten-stat CONSTITUTION sheet (feel-words, digit-safe).
@@ -946,7 +951,7 @@ window.__initPlayMap = function () {
       (html || "<p><i>empty (but for what you carry on your person)</i></p>") +
       totalLine +
       '<div class="desc">' + desc + "</div>" +
-      '<div class="hint">a letter selects &nbsp;·&nbsp; <b>u</b> use/eat/apply &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div></div>';
+      '<div class="hint">&uarr;/&darr; select &nbsp;·&nbsp; <b>u</b> use/eat &nbsp;·&nbsp; <b>e</b> equip &nbsp;·&nbsp; <b>d</b> drop &nbsp;·&nbsp; <b>i</b>/<b>Esc</b> close</div></div></div>';
   }
   // GATE 4 — the SHOP overlay (buy/sell). Prices in coin denominations (the in-world unit). The burden/weight
   // readout (Gate 3) updates live as coins and cargo trade places, so the cost of carrying stays visible.
@@ -1148,13 +1153,15 @@ window.__initPlayMap = function () {
       return;
     }
     if (vw.invOpen) {
+      // GATE 4 R2 — ARROWS navigate the cursor; commands act on the HIGHLIGHT. No letter/digit quick-select
+      // (so 'd' can't accidentally drop the wrong item, and an 11-item list isn't capped by single digits).
       if (k === "Escape" || k === "i") { e.preventDefault(); sim.toggleInventory(); draw(); return; }
-      if (k === "u") { e.preventDefault(); sim.useSelected(); draw(); return; }
-      if (k === "d") { e.preventDefault(); sim.dropSelected(); draw(); return; }
       if (k === "ArrowUp") { e.preventDefault(); sim.invSelect((vw.invSel || 0) - 1); draw(); return; }
       if (k === "ArrowDown") { e.preventDefault(); sim.invSelect((vw.invSel || 0) + 1); draw(); return; }
-      if (/^[a-z]$/.test(k)) { e.preventDefault(); sim.invSelect(k.charCodeAt(0) - 97); draw(); return; }
-      return;
+      if (k === "u") { e.preventDefault(); fireFeel(sim.useSelected()); return; }
+      if (k === "e") { e.preventDefault(); fireFeel(sim.equipSelected()); return; }   // equip the highlight (costs turns -> foes act)
+      if (k === "d") { e.preventDefault(); sim.dropSelected(); draw(); return; }
+      e.preventDefault(); return;
     }
     // CHARACTER E — the staged CREATION FLOW is modal: sign -> visa -> allocate -> horoscope.
     if (vw.intake && vw.intake.open) {
@@ -1205,7 +1212,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Monster AI — archetype pathfinding + animus/persistence/focus";
+  var VERSION = "Gate A — bestiary WIRED, 223 foes spawn by band";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
