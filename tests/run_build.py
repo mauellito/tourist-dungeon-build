@@ -33,6 +33,7 @@ SUITES = [
     ("E2E real keypresses on play-map.html", "run_keys.py"),
     ("FRONT-DOOR smoke: boot -> create -> ticket -> descend", "run_smoke.py"),
     ("bestiary — 200+ foes via families/variants (TD_BESTIARY)", "run_bestiary.py"),
+    ("status engine — poison/bleed/fear/regen (TD_STATUS)", "run_status.py"),
     # Master Directive — the gate is independently verifiable on the mirror now:
     ("vault format + parser (P1)", "run_vaultfmt.py"),
     ("spatial law-suite / THE GATE (P3)", "run_lawsuite.py"),

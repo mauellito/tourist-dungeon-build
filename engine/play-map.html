@@ -213,7 +213,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "271d902";</script>
+<script>window.__BUILD = "e60053c";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1216,7 +1216,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "XP + levels wired — depth-weighted, HP/feel-word growth on level-up";
+  var VERSION = "Gate C — status engine live (poison/fear/bleed/regen), Grit + antidote now matter";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
@@ -1243,7 +1243,7 @@ window.__initPlayMap = function () {
 (function () {
   // CURRENT ORDER PRESERVED — rng.js ... feel.js. Keep in sync with sync_build.py's self-check.
   var files = [
-    "rng.js", "resolve.js", "bestiary.js", "stats.js", "charsys.js", "burden.js", "econ.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
+    "rng.js", "resolve.js", "bestiary.js", "stats.js", "charsys.js", "burden.js", "econ.js", "status.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
     "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "mapmode.js",
     "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js",
     "smashgrab.js", "sfx.js", "game.js", "ui.js", "feel.js"

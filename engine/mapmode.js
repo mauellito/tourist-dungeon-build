@@ -906,6 +906,9 @@ var TD_MAP = (function () {
         if ((cr.tooTough || (cr.band || 1) > curLevel()) && dist <= REVEAL) threatTell(cr);   // R4: a foe too strong for this floor reads as must-flee
         // ---- GATE 3: AI = ANIMUS state machine (dormant->wandering->seeking->fleeing) x per-archetype movement.
         if (cr.mode === undefined) aiInit(cr);
+        // GATE C — a REGEN-tagged foe (troll) heals each turn until burned down: a self-status, ticked here.
+        if (typeof TD_STATUS !== "undefined" && cr.tags && cr.tags.indexOf("regen") >= 0 && !TD_STATUS.has(cr, "regen") && cr.hp < (cr.maxHp || cr.hp)) TD_STATUS.apply(cr, "regen", 999);
+        if (cr.statuses && cr.statuses.length) { cr._regenShown = false; tickCreatureStatuses(cr); if (cr._regenShown && dist <= REVEAL && !toldIntent) { senses(cap(cr.name) + "'s wounds knit shut before your eyes.", "seen", "OBJ"); toldIntent = true; } }
         var sees = pSee.has(key(cr.x, cr.y));                 // LOS-gated perception (no omniscient pursuit)
         if (sees) {
           cr.lastSeen = { x: ctrl.player.x, y: ctrl.player.y }; cr.chaseLeft = cr.persistence;
@@ -1138,14 +1141,25 @@ var TD_MAP = (function () {
       }
     }
     function killXP(cr) { var ch = ctrl.character; return (typeof TD_STATS !== "undefined" && TD_STATS.XP) ? TD_STATS.XP.killXP(cr.band || 1, (ch && ch.level) || 1) : 0; }
-    // GATE 5 R2 — POISON status (the new mechanic the antidote cures). A poison-tagged foe's hit leaves
-    // venom: a small per-turn bite for POISON_TURNS, telegraphed once. NOT a combat-magnitude change.
-    var POISON_TURNS = 5, POISON_HP = 2;
-    function envenom(cr) {
-      if (!cr || !cr.tags || cr.tags.indexOf("poison") < 0) return;
-      var was = ctrl.meters.poison || 0;
-      ctrl.meters.poison = Math.max(was, POISON_TURNS);
-      if (!was) senses("A cold venom spreads from the wound — you will want an antidote.", "intuition", "SUBJ");
+    // GATE C — STATUS ON HIT (generic engine TD_STATUS). A struck-by foe applies the statuses its bestiary
+    // tags carry: poison (DoT, antidote-curable), bleed (DoT), fear (Grit-RESISTED on application). Durations
+    // are META + TUNABLE (FLAG). Telegraphed honestly (two-channel law).
+    var POISON_TURNS = 5, BLEED_TURNS = 4, FEAR_TURNS = 4;
+    function gritResist() { var s = ctrl.character && ctrl.character.stats; if (!s) return 0; return Math.max(0, Math.min(0.9, ((s.grit || 500) - 300) / 700)); }
+    function envenom(cr) {   // (name kept for callers) — apply all of the attacker's on-hit statuses
+      if (!cr || !cr.tags || typeof TD_STATUS === "undefined") return;
+      var t = cr.tags, m = ctrl.meters;
+      if (t.indexOf("poison") >= 0 && !TD_STATUS.has(m, "poison")) { TD_STATUS.apply(m, "poison", POISON_TURNS); senses("A cold venom spreads from the wound — you will want an antidote.", "intuition", "SUBJ"); }
+      if (t.indexOf("bleed") >= 0 && !TD_STATUS.has(m, "bleed")) { TD_STATUS.apply(m, "bleed", BLEED_TURNS); senses("The cut will not close on its own; you are bleeding.", "seen", "OBJ"); }
+      if (t.indexOf("fear") >= 0 && !TD_STATUS.has(m, "fear")) {
+        if (rng.chance(gritResist())) senses("Dread claws at you — you set your jaw and it passes.", "intuition", "SUBJ");   // Grit RESISTS
+        else { TD_STATUS.apply(m, "fear", FEAR_TURNS); senses("A wave of dread takes you; you are afraid.", "intuition", "SUBJ"); }
+      }
+    }
+    // tick a creature's own statuses (e.g. a TROLL's regen heals it each turn until burned down).
+    function tickCreatureStatuses(cr) {
+      if (!cr || !cr.statuses || typeof TD_STATUS === "undefined") return;
+      TD_STATUS.tick(cr, { heal: function (a) { var was = cr.hp; cr.hp = Math.min(cr.maxHp || cr.hp, cr.hp + a); if (cr.hp > was) cr._regenShown = true; } });
     }
 
     // body meters tick on each dungeon action (bible §4.13 anti-scum).
@@ -1172,7 +1186,11 @@ var TD_MAP = (function () {
         else if (worse) logMsg("You grow " + st.toLowerCase() + ".", false);
         ctrl.lastHungerStage = st;
       }
-      if (m.poison > 0) { m.poison -= 1; hurt(POISON_HP, { name: "poison" }); if (m.poison === 0 && !ctrl.dead) senses("The venom finally burns out of your blood.", "intuition", "SUBJ"); }   // GATE 5 R2 poison DOT
+      // GATE C — tick the player's STATUS EFFECTS (poison/bleed DoT, etc.) through the generic engine.
+      if (typeof TD_STATUS !== "undefined") {
+        var sev = TD_STATUS.tick(m, { hurt: function (a, id) { hurt(a, { name: id }); } });
+        sev.forEach(function (e) { if (e.expired && !ctrl.dead) { if (e.id === "poison") senses("The venom finally burns out of your blood.", "intuition", "SUBJ"); else if (e.id === "bleed") senses("The bleeding stops.", "seen", "OBJ"); else if (e.id === "fear") senses("The dread loosens; your nerve returns.", "intuition", "SUBJ"); } });
+      }
       if (hungerStage(m).critical) hurt(STARVE_HP, { name: "hunger", starve: true });
 
       if (m.fatigue >= m.fatigueMax) {
@@ -1185,6 +1203,12 @@ var TD_MAP = (function () {
     function move(dir) {
       ctrl.lastEvent = null; ctrl.lastUrgent = false; ctrl.fx = [];
       if (ctrl.dead || ctrl.won || !DIRS[dir]) return { moved: false };
+      // GATE C — FEAR: while afraid your step may falter (erratic), the chance reduced by Grit. The turn still
+      // passes (foes act), so fear is a real cost, not a freeze. (Only ever applied by a fear-foe's hit.)
+      if (typeof TD_STATUS !== "undefined" && TD_STATUS.has(ctrl.meters, "fear") && rng.chance((TD_STATUS.def("fear").flinch) * (1 - gritResist()))) {
+        senses("Fear locks your legs for a beat; you do not go where you meant to.", "intuition", "SUBJ");
+        endTurn("rest"); return { moved: false, flinched: true, event: ctrl.lastEvent };
+      }
       var nx = ctrl.player.x + DIRS[dir][0], ny = ctrl.player.y + DIRS[dir][1];
       if (!inb(nx, ny)) return { moved: false };
 
@@ -1605,7 +1629,7 @@ var TD_MAP = (function () {
         // a second channel that sits BESIDE the burden feel-word. Derived from the same band weight.
         metabolism: (function () { var b = playerBand(); var lb = b ? b.weight : 0; var c = (typeof TD_BURDEN !== "undefined") ? TD_BURDEN.massCoins(lb) : 0;
           return { hunger: hungerStage(ctrl.meters).stage, fatigue: fatigueStage(), burden: b ? b.band.word : "unburdened",
-                   afflict: (ctrl.meters.poison > 0) ? "venom" : null,   // GATE 5 R2 — poison status (feel-word; the antidote clears it)
+                   afflict: (typeof TD_STATUS !== "undefined" ? TD_STATUS.surface(ctrl.meters) : []).join(", ") || null,   // GATE C — active statuses as feel-words (poisoned/bleeding/afraid)
                    weight: { coins: c, label: (typeof TD_BURDEN !== "undefined") ? TD_BURDEN.massLabel(c) : ("" + c) } }; })(),
         grid: ctrl.grid.map(function (r) { return r.join(""); }),
         doors: ctrl.doors, features: ctrl.features,

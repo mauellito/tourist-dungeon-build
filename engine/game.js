@@ -1223,7 +1223,7 @@ var TD_GAME = (function () {
       if ((it.kind === "weapon" || it.kind === "armor") && placeId === "DUNGEON" && dungeon && dungeon.equipFromPack) { var r = dungeon.equipFromPack(it); afterDungeon(); clampSel(); return r; }   // GATE 2: u equips a backup (swap; old returns to pack)
       if (it.use === "eat") { meters.satiation = Math.min(meters.satiationMax, meters.satiation + (it.food || 40)); removeReal(it); logMsg("You eat " + it.name + ". The hunger eases."); }
       else if (it.use === "heal") { meters.hp = Math.min(meters.hpMax, meters.hp + (it.heal || 20)); removeReal(it); logMsg("You apply " + it.name + ". Your wounds close a little."); }
-      else if (it.use === "antidote") { var had = (meters.poison || 0) > 0; meters.poison = 0; removeReal(it); logMsg(had ? "You drink " + it.name + "; the venom loosens its grip." : "You drink " + it.name + ". Nothing was poisoning you, but it cannot hurt."); }   // GATE 5 R2 — cures the new poison
+      else if (it.use === "antidote") { var had = (typeof TD_STATUS !== "undefined") && (TD_STATUS.clearCurable(meters) > 0); removeReal(it); logMsg(had ? "You drink " + it.name + "; the venom loosens its grip." : "You drink " + it.name + ". Nothing was poisoning you, but it cannot hurt."); }   // GATE C/E — antidote clears the curable statuses (poison)
       else { logMsg(it.name + " — " + it.desc); }
       clampSel();
       return { used: true, item: it };
