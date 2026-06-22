@@ -220,13 +220,17 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "0a7fd766";</script>
+<script>window.__BUILD = "1d081b9e";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
 // it must not run at parse time — the dynamic loader gates it on the last script's load event.
 window.__initPlayMap = function () {
-  var TS = 22, FONT = "18px Consolas, monospace", camera = null;
+  // P2 — premium monospace FACE, defined ONCE and routed everywhere a glyph is drawn. Cascadia Code (ships
+  // with Win11 Terminal) has crisp box-drawing + wide Unicode coverage for the premium glyph set; graceful
+  // fallback to other quality monos, then Consolas. No webfont fetch (offline / single-file-friendly).
+  var FACE = '"Cascadia Code", "Cascadia Mono", "JetBrains Mono", "DejaVu Sans Mono", "Consolas", monospace';
+  var TS = 22, FONT = "18px " + FACE, camera = null;
   var P = TD_UI.PALETTE;   // the single palette table — every colour means one thing
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   var stageEl = document.querySelector(".stage");
@@ -376,7 +380,7 @@ window.__initPlayMap = function () {
     var availH = Math.min(940, Math.max(340, (window.innerHeight || 820) - 165));   // TOWN R3 — no bottom strip: map reclaims the vertical space
     var HEADER = 56;   // reserved top strip for the readout (so it never overlaps the grid)
     TS = Math.max(16, Math.min(40, Math.floor(Math.min(availW / sg.w, availH / sg.h))));
-    FONT = (TS - 4) + "px Consolas, monospace";
+    FONT = (TS - 4) + "px " + FACE;
     var cvW = sg.w * TS, cvH = sg.h * TS + HEADER;
     if (cv.width !== cvW || cv.height !== cvH) { cv.width = cvW; cv.height = cvH; }
     var shk = TD_FEEL.isEnabled() ? TD_FEEL.shakeOffset(now) : { dx: 0, dy: 0 };
@@ -409,13 +413,13 @@ window.__initPlayMap = function () {
     ctx.restore();
     // readout (top): a status line + a LOAD/SPRINT line + controls
     ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.font = "bold 17px Consolas, monospace";
+    ctx.font = "bold 17px " + FACE;
     var loadStr = "LOAD: " + sg.load + " — SPRINT: " + (sg.sprintable ? "yes" : "NO") + "   ·   SCORE: $" + sg.score;
     if (sg.escaped) { ctx.fillStyle = P.item; ctx.fillText("ESCAPED with $" + sg.score + " — clear of the §24. Press V to re-run.", cv.width / 2, 6); }
     else if (sg.dead) { ctx.fillStyle = P.critical; ctx.fillText((sg.swallowed ? "SWALLOWED by the collapse" : "SUMMARILY VOIDED — sealed in") + " — $" + sg.score + " lost. Press V to re-run.", cv.width / 2, 6); }
     else if (sg.tripped) { var lead = sg.collapse.lead; ctx.fillStyle = (sg.doorRemaining <= 5 || lead <= 3) ? P.critical : P.signal; ctx.fillText("RUN — collapse " + (lead <= 0 ? "AT YOUR HEELS" : lead + " behind") + " · slab seals in " + sg.doorRemaining + " · $" + sg.score, cv.width / 2, 6); }
     else { ctx.fillStyle = P.signal; ctx.fillText("§24 — loot $ (richer the DEEPER) then grab an artifact (g); the floor falls behind + the slab seals ahead", cv.width / 2, 6); }
-    ctx.font = "13px Consolas, monospace";
+    ctx.font = "13px " + FACE;
     ctx.fillStyle = sg.sprintable ? P.signal : P.critical; ctx.fillText(loadStr + "   (threshold " + TD_SMASHGRAB.TUNE.SPRINT_THRESHOLD + ")", cv.width / 2, 28);
     var snd = (typeof TD_SFX !== "undefined") ? ("sound " + (TD_SFX.isEnabled() ? "on" : "off") + " (k) · vol " + Math.round(TD_SFX.volume() * 100) + "% ([ ])") : "";
     ctx.fillStyle = P.faint || "#8a7c66"; ctx.fillText("arrows / W A S D move · g grab · Esc leave · V re-run · " + snd, cv.width / 2, 46);
@@ -462,7 +466,7 @@ window.__initPlayMap = function () {
     } else {
       TS = Math.max(12, Math.min(30, Math.floor(Math.min(availW / vw.w, availH / vw.h))));
     }
-    FONT = (TS - 4) + "px Consolas, monospace";
+    FONT = (TS - 4) + "px " + FACE;
     var cvW = VPW * TS, cvH = VPH * TS;
     if (cv.width !== cvW || cv.height !== cvH) { cv.width = cvW; cv.height = cvH; }
     camera = { x: camX, y: camY, ts: TS, vpw: VPW, vph: VPH, town: town };   // for screen<->world mapping (clicks)
@@ -497,26 +501,26 @@ window.__initPlayMap = function () {
           else if (door.type === "oneway") glyph = "^";
           else glyph = "+";
         } else if (plain) {
-          bg = (vw.pendingDoor === k) ? P.pendingBg : "#37301f"; glyph = plain.open ? "'" : "+"; col = P.door;
+          bg = (vw.pendingDoor === k) ? P.pendingBg : P.roomDoorBg; glyph = plain.open ? "'" : "+"; col = P.door;
         } else if (rdoor) {
           // v21 — a room doorway in a wall run, rendered by state (Dungeon Architecture Law):
           // closed "+", ajar "╎", open "'". One hue (the door hue); glyph distinguishes state.
-          bg = "#37301f"; col = P.door; glyph = rdoor.state === "open" ? "'" : (rdoor.state === "ajar" ? "╎" : "+");
+          bg = P.roomDoorBg; col = P.door; glyph = rdoor.state === "open" ? "'" : (rdoor.state === "ajar" ? "╎" : "+");
         } else if (ch === ".") {
           var gt = vw.ground && vw.ground[k];                                  // C3 ground variation (render-only)
-          if (gt === "redlight") { bg = "#3a1622"; glyph = "·"; col = P.redlight; }   // the red-lit district
-          else if (gt === "grass") { bg = "#28331d"; glyph = "ˌ"; col = P.grass; }
-          else if (gt === "sand") { bg = "#3b3320"; glyph = "·"; col = P.sand; }
-          else if (gt === "plank") { bg = "#2e2417"; glyph = "‗"; col = P.plank; }
-          else if (gt === "stone") { bg = "#34322c"; glyph = "·"; col = P.stone; }
-          else if (gt === "dirt") { bg = "#2c2418"; glyph = "·"; col = P.dirt; }
-          else { bg = bright ? "#42454a" : "#26282b"; glyph = "·"; col = bright ? P.cobble : dim(P.cobble); }   // cobble main street
+          if (gt === "redlight") { bg = P.groundRlBg; glyph = "·"; col = P.redlight; }   // the red-lit district
+          else if (gt === "grass") { bg = P.groundGrassBg; glyph = "ˌ"; col = P.grass; }
+          else if (gt === "sand") { bg = P.groundSandBg; glyph = "·"; col = P.sand; }
+          else if (gt === "plank") { bg = P.groundPlankBg; glyph = "‗"; col = P.plank; }
+          else if (gt === "stone") { bg = P.groundStoneBg; glyph = "·"; col = P.stone; }
+          else if (gt === "dirt") { bg = P.groundDirtBg; glyph = "·"; col = P.dirt; }
+          else { bg = bright ? P.cobbleBg : P.cobbleBgDim; glyph = "·"; col = bright ? P.cobble : dim(P.cobble); }   // cobble main street
         }
         else if (ch === "~") { bg = P.water; glyph = "≈"; col = P.waterGlyph; }
         else if (ch === "t") { bg = bright ? P.floorBg : P.floorBgDim; glyph = "♣"; col = P.nature; }
-        else if (ch === "=") { bg = "#23211c"; glyph = "▓"; col = P.rampart; }   // town perimeter rampart (Amendment 1)
+        else if (ch === "=") { bg = P.rampartBg; glyph = "▓"; col = P.rampart; }   // town perimeter rampart (Amendment 1)
         else if (ch === ":") { bg = bright ? P.floorBg : P.floorBgDim; glyph = ":"; col = P.fence; }   // an enclosure fence (see-through)
-        else if (ch === "X") { bg = "#0a0a0c"; glyph = vw.pendingFall === k ? "▼" : "·"; col = "#3a3a44"; }
+        else if (ch === "X") { bg = P.chasm; glyph = vw.pendingFall === k ? "▼" : "·"; col = P.chasmGlyph; }
         else if (ch === "#") {
           // GATE 1 — the CHURCH footprint reads in the sanctified jewel palette (stained-glass), so the
           // landmark is unmistakable against the bone-coloured ordinary walls.
@@ -535,13 +539,13 @@ window.__initPlayMap = function () {
     // by KIND (civic/lodging/faith/commerce/vice). You read the town without entering.
     (vw.buildings || []).forEach(function (b) {
       if (!b.landmark && !/^[A-Z0-9]$/.test(b.glyph || "")) return;        // named buildings + landmarks (skip filler sheds/homes)
-      ctx.font = Math.round(TS * (b.landmark ? 2.3 : 1.7)) + "px Consolas, monospace";   // GATE 1: the church cross looms larger than its neighbours
+      ctx.font = Math.round(TS * (b.landmark ? 2.3 : 1.7)) + "px " + FACE;   // GATE 1: the church cross looms larger than its neighbours
       ctx.fillStyle = (window.TD_UI && TD_UI.buildingColor) ? TD_UI.buildingColor(b.id) : P.wall;
       ctx.fillText(b.glyph, (b.x0 + b.w / 2) * TS, (b.y0 + b.h / 2) * TS + 1);
     });
     if (vw.dungeonEntrance) {                                              // the dungeon entrance mouth, largest of all
       var de = vw.dungeonEntrance;
-      ctx.font = Math.round(TS * 1.9) + "px Consolas, monospace";
+      ctx.font = Math.round(TS * 1.9) + "px " + FACE;
       ctx.fillStyle = (window.TD_UI && TD_UI.buildingColor) ? TD_UI.buildingColor("DUNGEON") : P.door;
       ctx.fillText("Ω", (de.rect[0] + de.rect[2] + 1) / 2 * TS, (de.rect[1] + de.rect[3] + 1) / 2 * TS + 1);
     }
@@ -574,14 +578,14 @@ window.__initPlayMap = function () {
       ctx.fillStyle = c.friendly ? P.npc : P.creature; ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
       if (!c.friendly && typeof c.hp === "number" && typeof c.maxHp === "number" && c.hp < c.maxHp) {
         var frac = Math.max(0, c.hp / c.maxHp);
-        ctx.fillStyle = "#2a0d0a"; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, TS - 4, 3);
+        ctx.fillStyle = P.hpbarBg; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, TS - 4, 3);
         ctx.fillStyle = P.creature; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 3);
       }
     });
     var pl = vw.player;
     ctx.fillStyle = P.player; ctx.fillText("@", pl.x * TS + TS / 2, pl.y * TS + TS / 2 + 1);
     if (vw.look && vw.look.active) {
-      ctx.strokeStyle = "#f4e3a0"; ctx.lineWidth = 2;
+      ctx.strokeStyle = P.lookRing; ctx.lineWidth = 2;
       ctx.strokeRect(vw.look.x * TS + 1, vw.look.y * TS + 1, TS - 2, TS - 2);
     }
     if (labelsOn) drawLabels(vw);
@@ -626,7 +630,7 @@ window.__initPlayMap = function () {
   // labels-everything (the Cogmind conceit): every visible notable, at once
   function drawLabels(vw) {
     var ls = TD_UI.labels(vw);
-    ctx.font = "11px Consolas, monospace"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.font = "11px " + FACE; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     ls.forEach(function (L) {
       var px = L.x * TS, py = L.y * TS, tw = ctx.measureText(L.text).width;
       var lx = px + TS + 3, ly = py + TS / 2 + 4;
@@ -644,7 +648,7 @@ window.__initPlayMap = function () {
   function drawShimmer(e) {
     var txt = e.mode === "death" ? "C O N C L U D E D" : "D E S C E N D I N G";
     var cols = [P.player, P.signal, P.item, P.door, P.dmgDealt], chars = txt.split(""), step = 18;
-    ctx.save(); ctx.font = "bold 26px Consolas, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.save(); ctx.font = "bold 26px " + FACE; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.globalAlpha = Math.sin(e.p * Math.PI);
     var x0 = cv.width / 2 - (chars.length * step) / 2 + step / 2, y = cv.height / 2;
     chars.forEach(function (c, i) { ctx.fillStyle = cols[(i + Math.floor(e.p * 12)) % cols.length]; ctx.fillText(c, x0 + i * step, y); });
@@ -1241,7 +1245,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Premium ASCII P1 — tile-cell data contract (TD_UI.deriveCell), testable; renderer pass begins.";
+  var VERSION = "Premium ASCII P2 — clean glyph pass: premium monospace face + all terrain/chrome colour from PALETTE.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

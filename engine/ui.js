@@ -57,7 +57,17 @@ var TD_UI = (function () {
     dangerHigh: "#ff2d1f", dangerMed: "#e0902a", dangerLow: "#caa15a",
     // COMBAT JUICE: the MUTED hit-tick (a blow fully absorbed / de-minimis) — a quiet grey pulse,
     // deliberately colourless so it reads as "nothing got through", distinct from the player/critical hues.
-    muted: "#6a6356"
+    muted: "#6a6356",
+    // P2 (clean glyph pass) — terrain/chrome BACKGROUNDS migrated out of inline draw() literals so EVERY
+    // colour the renderer paints is defined ONCE here (Brogue colour discipline). Values are unchanged.
+    roomDoorBg:   "#37301f",   // a plain / room doorway tile bg (distinct from the lit-stoop doorBg)
+    groundRlBg:   "#3a1622",   // red-lit district ground bg
+    groundGrassBg:"#28331d", groundSandBg:"#3b3320", groundPlankBg:"#2e2417", groundStoneBg:"#34322c", groundDirtBg:"#2c2418",
+    cobbleBg:     "#42454a", cobbleBgDim: "#26282b",   // main-street cobble, lit / remembered
+    rampartBg:    "#23211c",   // town perimeter rampart bg
+    chasm:        "#0a0a0c", chasmGlyph: "#3a3a44",    // a chasm tile bg + its dotted floor-edge glyph
+    hpbarBg:      "#2a0d0a",   // the depleted track behind a creature's health pip
+    lookRing:     "#f4e3a0"    // the inspect/look cursor ring
   };
   // the category hues that the Brogue rule requires to be distinct
   var CATEGORY_KEYS = ["player", "creature", "item", "door", "signal", "critical"];
