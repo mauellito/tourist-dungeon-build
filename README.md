@@ -31,3 +31,18 @@ real engine in headless Chrome):
 
 This runs the P1 instrument tests, the visual map mode tests, the town/forks
 tests, and a **real-keypress end-to-end playthrough** of `engine/play-map.html`.
+
+## Build / cache-buster verification (QB)
+`engine/play-map.html` loads its engine scripts as `"<file>?b=<__BUILD>"`, where
+`window.__BUILD` is a **content fingerprint** of the exact files the page serves
+(a short SHA-1 over them). It is NOT a git hash — a file can't contain its own
+commit's id, and this public mirror is a separate repo with different ids, so a
+git hash could never match here. The fingerprint instead changes whenever any
+served file changes (which is all cache-busting needs) and is identical on both
+repos. Verify it:
+
+    python scripts/stamp_build.py --check     # prints the expected fingerprint
+
+That value MUST equal `window.__BUILD` in `engine/play-map.html`. Belt-and-
+suspenders (no script needed): `__BUILD` MUST differ between any two pushes that
+change a served file — diff it across commits to confirm.
