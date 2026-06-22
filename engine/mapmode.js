@@ -38,7 +38,8 @@ var TD_MAP = (function () {
   var CREATURE = (typeof TD_BESTIARY !== "undefined" && TD_BESTIARY.ROSTER) ? TD_BESTIARY.ROSTER : TD_RESOLVE.COMBAT.CREATURES;
   // generous slack: walking is cheap, fighting costs, resting recovers fatigue,
   // and a full belly carries you across several levels before food matters.
-  var FATIGUE_PER_FIGHT = 6, REST_RECOVER = 4, FATIGUE_PER_SPRINT = 1.5;   // GATE 8 (B): sprint is the costliest pace
+  var FATIGUE_PER_FIGHT = 3, REST_RECOVER = 4, FATIGUE_PER_SPRINT = 1.5;   // RE-TUNE: per-fight 6->3 (one fight isn't a big chunk of the bar)
+  var PASSIVE_RECOVER = 1.2;   // RE-TUNE: slow trickle each turn while NOT exerting (unencumbered step / safe, no foe adjacent) — FLAG tunable
   // GATE 8.1: WALKING IS FREE when unencumbered — a "step" costs fatigue only via the BURDEN band (still
   // x fatigueResist). Unburdened -> 0 (you walk a floor and arrive fresh); heavier -> tiring. Fight + sprint
   // keep their costs. (A jump, if added, would cost like a sprint — reserved.)
@@ -824,6 +825,7 @@ var TD_MAP = (function () {
 
     function visibleSet() { return losFrom(ctrl.player.x, ctrl.player.y); }
     function enemiesVisible() { var vis = visibleSet(); return ctrl.creatures.some(function (c) { return vis.has(key(c.x, c.y)); }); }
+    function foeAdjacent() { var p = ctrl.player; return ctrl.creatures.some(function (c) { return Math.max(Math.abs(c.x - p.x), Math.abs(c.y - p.y)) <= 1; }); }   // RE-TUNE: in melee = no passive breather
 
     // ---- the world acts only when the player acts (turn-based) ---------------
     function endTurn(mode, noWorld) {
@@ -1172,8 +1174,19 @@ var TD_MAP = (function () {
       var m = ctrl.meters, bnd = playerBand(), bk = bnd ? bnd.band.key : "unencumbered";
       // FATIGUE: rest recovers; walking is FREE unencumbered (cost via the burden band only); fight + sprint
       // keep their costs; all gains x fatigueResist (Con/Grit/Might tire slower).
-      if (mode === "rest") { if (!enemiesVisible()) m.fatigue = Math.max(0, m.fatigue - REST_RECOVER); }
-      else { var base = mode === "fight" ? FATIGUE_PER_FIGHT : mode === "sprint" ? FATIGUE_PER_SPRINT : (FATIGUE_STEP_BAND[bk] || 0); m.fatigue = Math.min(m.fatigueMax, m.fatigue + base * fatigueResist()); }
+      // RE-TUNE: fighting/sprinting/encumbered-walking are the SINKS; unexerted turns (unencumbered step or
+      // a safe stand with no foe adjacent) TRICKLE fatigue back, so explore-and-fight doesn't ratchet to
+      // collapse — but back-to-back melee (foe adjacent) and overloaded exertion still climb toward exhaustion.
+      if (mode === "fight") { m.fatigue = Math.min(m.fatigueMax, m.fatigue + FATIGUE_PER_FIGHT * fatigueResist()); }
+      else if (mode === "sprint") { m.fatigue = Math.min(m.fatigueMax, m.fatigue + FATIGUE_PER_SPRINT * fatigueResist()); }
+      else {
+        var stepCost = (mode === "rest") ? 0 : (FATIGUE_STEP_BAND[bk] || 0);   // encumbered walk is a sink; unencumbered = 0
+        if (stepCost > 0) { m.fatigue = Math.min(m.fatigueMax, m.fatigue + stepCost * fatigueResist()); }
+        else {
+          var rec = (mode === "rest" && !enemiesVisible()) ? REST_RECOVER : (!foeAdjacent() ? PASSIVE_RECOVER : 0);   // big rest when safe; else a passive breather unless in melee
+          m.fatigue = Math.max(0, m.fatigue - rec);
+        }
+      }
       // HUNGER: a long, body-scaled clock — base x burden band x body-size; sprint costs a touch more food.
       var smul = SATIATION_BAND[bk] || 1;
       m.satiation = Math.max(0, m.satiation - SATIATION_PER_STEP * smul * bodyFactor() * (mode === "sprint" ? 1.4 : 1));
