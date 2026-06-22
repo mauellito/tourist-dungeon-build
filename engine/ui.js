@@ -242,10 +242,11 @@ var TD_UI = (function () {
   var CATEGORY_COLOR = { civic: "civic", food: "food", vice: "vice", maritime: "maritime", commerce: "storefront", faith: "sanctified", lodging: "food" };
   function buildingCategory(id) { return BUILDING_KIND[id] || "commerce"; }   // commerce is the default frontage
   function buildingColor(id) { return PALETTE[CATEGORY_COLOR[buildingCategory(id)] || "storefront"]; }
+  function categoryColor(cat) { return PALETTE[CATEGORY_COLOR[cat] || "storefront"]; }   // TOWN — a category's hue (for tinting building MASS, not just the front)
 
   return {
     PALETTE: PALETTE, CATEGORY_KEYS: CATEGORY_KEYS,
-    buildingCategory: buildingCategory, buildingColor: buildingColor,
+    buildingCategory: buildingCategory, buildingColor: buildingColor, categoryColor: categoryColor,
     autoExplore: autoExplore, stepToFrontier: stepToFrontier,
     labels: labels, threats: threats, moreGate: moreGate,
     Barker: Barker, BARK_LINES: BARK_LINES,

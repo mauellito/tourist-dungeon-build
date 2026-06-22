@@ -1096,7 +1096,7 @@ var TD_TOWNMAP = (function () {
       var pick = assigned[i]; if (!pick) continue; var slot = slots[i];
       var canon = CANON[pick.id] || null;
       fronts.push({ x: slot.front.x, y: slot.front.y, business: pick.id, label: canon ? canon.name : pick.label, cat: pick.cat,
-        col: CAT_COL[pick.cat] || "storefront", glyph: pick.glyph, role: slot.role,
+        col: CAT_COL[pick.cat] || "storefront", glyph: pick.glyph, role: slot.role, cells: slot.cells, slotId: i,   // TOWN — the building MASS cells (for category tinting) + a stable slot id (shade variance)
         text: canon ? canon.sign : ("The front of " + pick.label + ". (Going inside arrives with the interiors pass.)"),
         bark: canon ? canon.bark : null, accent: canon ? canon.accent : null });
     }

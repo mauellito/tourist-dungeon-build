@@ -703,6 +703,7 @@ var TD_GAME = (function () {
       // NOT enterable (no interior). GATE 4 — but the RLD venues still TRANSACT at the front (a deadpan paid
       // service, act:"rldservice"). Everywhere else, every front is ENTERABLE (bump+Enter -> interior).
       var rlr = m.meta.redlight ? [m.meta.redlight.x0, m.meta.redlight.y0, m.meta.redlight.x1, m.meta.redlight.y1] : null;
+      var buildingTint = {};   // TOWN — every building-mass cell -> { cat, shade } so the renderer tints the WHOLE block by tenant category (not flat wall)
       (m.fronts || []).forEach(function (fr) {
         var vice = (typeof TD_UI !== "undefined" && TD_UI.buildingCategory && TD_UI.buildingCategory(fr.business) === "vice");
         var inRLD = (rlr && inRect(rlr, fr.x, fr.y)) || vice;   // the RLD's venues (vice) are non-enterable wherever their doorstep lands
@@ -710,6 +711,11 @@ var TD_GAME = (function () {
         features[key(fr.x, fr.y)] = { type: "front", glyph: fr.glyph, col: fr.col, business: fr.business, to: interior, red: vice,
           label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null,
           act: inRLD ? "rldservice" : "look", service: inRLD ? serviceFor(fr.business) : null };   // GATE 4: RLD fronts SELL a service; others reveal a door
+        // TOWN — tag the building MASS (the slot's wall cells) with the tenant CATEGORY + a per-building shade
+        // variance (so a row of same-category shops isn't uniform). The renderer fills "#" by this, not P.wall.
+        var cat = (typeof TD_UI !== "undefined" && TD_UI.buildingCategory) ? TD_UI.buildingCategory(fr.business) : "commerce";
+        var shade = (((fr.slotId || 0) * 1103515245 + 12345) >>> 8) % 3 - 1;   // -1 / 0 / +1 shade step
+        (fr.cells || []).forEach(function (c) { buildingTint[key(c[0], c[1])] = { cat: cat, shade: shade }; });   // slot.cells are [x,y] pairs
       });
       // meta: district rects (for districtAt's flavour) + the dungeon entrance overlay
       var dmeta = { redlight: null, waterfront: null, market: null };
@@ -734,7 +740,7 @@ var TD_GAME = (function () {
         folk++;
       }
       cells = cells.filter(function (c) { return !features[key(c.x, c.y)]; });   // folk cells are bump-to-read, not walk-through
-      return { id: "TOWN", title: "The Harbour", grid: grid, doors: doors, features: features, ground: ground, occupants: [], actors: [], cells: cells, spawn: spawn, exit: null, buildings: buildings, piers: [], meta: meta, H: Ht, W: Wt };
+      return { id: "TOWN", title: "The Harbour", grid: grid, doors: doors, features: features, ground: ground, buildingTint: buildingTint, occupants: [], actors: [], cells: cells, spawn: spawn, exit: null, buildings: buildings, piers: [], meta: meta, H: Ht, W: Wt };
     }
 
     function occupantName(spec) {
@@ -1317,7 +1323,7 @@ var TD_GAME = (function () {
       return {
         phase: town ? "town" : "interior", w: pw, h: ph, screen: placeId,
         grid: P.grid.map(function (r) { return r.join(""); }),
-        doors: P.doors, features: P.features, ground: P.ground || {}, items: {}, plain: {},
+        doors: P.doors, features: P.features, ground: P.ground || {}, buildingTint: town ? (P.buildingTint || {}) : {}, items: {}, plain: {},
         buildings: town ? (P.buildings || []) : [], dungeonEntrance: town && P.meta ? P.meta.dungeonEntrance : null,   // E2: read at a glance
         player: { x: player.x, y: player.y },
         creatures: town

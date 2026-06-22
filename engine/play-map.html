@@ -26,7 +26,7 @@
   .stage { position:relative; flex:0 1 auto; max-width:100%; }
   canvas { background:#07060a; border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); max-width:100%; height:auto; }   /* FIX: never force horizontal overflow */
 
-  aside#sidebar { flex:0 0 200px; display:flex; flex-direction:column; gap:8px; }
+  aside#sidebar { flex:0 0 264px; display:flex; flex-direction:column; gap:8px; }   /* TOWN R3 — widened (~264px) so the relocated log + cue read in the right column (FLAG: tunable width) */
   /* a compact controls footer (moved out of the prime sidebar — not immediately actionable) */
   .legendfoot { margin-top:10px; }
   .legendfoot .card-b { padding:6px 10px; }
@@ -61,8 +61,8 @@
   .glyphkey { display:flex; flex-wrap:wrap; gap:3px 10px; margin-top:4px; }
   .glyphkey span b { font-family:"Consolas",monospace; }
 
-  .cue { margin:12px 0 0; min-height:24px; padding:7px 12px; border:1px solid var(--rule); border-left:4px solid var(--accent);
-    background:var(--panel); border-radius:4px; font-size:14px; color:var(--ink); }
+  .cue { margin:0; min-height:24px; padding:7px 10px; border:1px solid var(--rule); border-left:4px solid var(--accent);
+    background:var(--panel); border-radius:4px; font-size:13px; color:var(--ink); }   /* TOWN R3 — sits in the right column now */
   .cue.act { font-weight:bold; }
   .cue.look { border-left-color:#3a6ea5; font-style:italic; }
   .cue .pre { font-family:"Consolas",monospace; color:var(--accent); }
@@ -180,21 +180,18 @@
         <div class="card-h">What You Sense</div>
         <div class="card-b senses" id="senses"></div>
       </div>
+      <!-- TOWN R3 — the contextual cue + the Field Log live in the RIGHT COLUMN now (no bottom strip). -->
+      <div class="cue" id="cue"></div>
+      <div class="card" id="msgpanel">
+        <div class="card-h">Field Log <span style="float:right;font-weight:normal;text-transform:none;letter-spacing:0">press <b>L</b> for history</span></div>
+        <div class="card-b log" id="msglog"></div>
+      </div>
+      <div class="card legendfoot">
+        <div class="card-h">Controls &amp; Key</div>
+        <div class="card-b legend" id="legend"></div>
+      </div>
     </aside>
   </div>
-
-  <div class="cue" id="cue"></div>
-
-  <div class="card" id="msgpanel">
-    <div class="card-h">Field Log <span style="float:right;font-weight:normal;text-transform:none;letter-spacing:0">last lines — press <b>L</b> for the full reviewable history</span></div>
-    <div class="card-b log" id="msglog"></div>
-  </div>
-
-  <div class="card legendfoot">
-    <div class="card-h">Controls &amp; Key</div>
-    <div class="card-b legend" id="legend"></div>
-  </div>
-</div>
 
 <div id="review">
   <div class="rv-head">
@@ -213,7 +210,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "f3663a7";</script>
+<script>window.__BUILD = "e8b2ef5";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -365,8 +362,8 @@ window.__initPlayMap = function () {
   }
   function drawSmashGrab() {
     var sg = TD_SMASHGRAB.view(), now = nowMs();
-    var availW = Math.min(1500, Math.max(640, (window.innerWidth || 1280) - 244));
-    var availH = Math.min(900, Math.max(340, (window.innerHeight || 820) - 300));
+    var availW = Math.min(1500, Math.max(560, (window.innerWidth || 1280) - 320));   // TOWN R3 — wider sidebar (264) + gaps
+    var availH = Math.min(940, Math.max(340, (window.innerHeight || 820) - 165));   // TOWN R3 — no bottom strip: map reclaims the vertical space
     var HEADER = 56;   // reserved top strip for the readout (so it never overlaps the grid)
     TS = Math.max(16, Math.min(40, Math.floor(Math.min(availW / sg.w, availH / sg.h))));
     FONT = (TS - 4) + "px Consolas, monospace";
@@ -443,8 +440,8 @@ window.__initPlayMap = function () {
     // RESPONSIVE: the map fills the available window (minus the slim sidebar + the chrome), so it
     // DOMINATES the screen at any common size and never overflows. Town scrolls (fixed tile size);
     // dungeon/interior fit the whole floor to the window at the biggest legible tile.
-    var availW = Math.min(1500, Math.max(640, (window.innerWidth || 1280) - 244));
-    var availH = Math.min(900, Math.max(340, (window.innerHeight || 820) - 264));
+    var availW = Math.min(1500, Math.max(560, (window.innerWidth || 1280) - 320));   // TOWN R3 — wider sidebar (264) + gaps
+    var availH = Math.min(940, Math.max(340, (window.innerHeight || 820) - 165));   // TOWN R3 — no bottom strip: map reclaims the vertical space
     if (town) {
       TS = 26;
       VPW = Math.min(vw.w, Math.max(12, Math.floor(availW / TS)));
@@ -514,7 +511,9 @@ window.__initPlayMap = function () {
           // GATE 1 — the CHURCH footprint reads in the sanctified jewel palette (stained-glass), so the
           // landmark is unmistakable against the bone-coloured ordinary walls.
           var cr = town && vw.churchRect;
+          var bt = (town && vw.buildingTint) ? vw.buildingTint[k] : null;   // TOWN — this wall cell's owning-building category
           if (cr && x >= cr[0] && x <= cr[2] && y >= cr[1] && y <= cr[3]) { bg = P.sanctifiedBg; glyph = "▓"; col = bright ? P.sanctified : dim(P.sanctified); }
+          else if (bt) { var bcol = (window.TD_UI && TD_UI.categoryColor) ? TD_UI.categoryColor(bt.cat) : P.wall; bg = darkTint(bcol, bt.shade); glyph = "#"; col = bright ? bcol : dim(bcol); }   // tint the MASS by tenant category
           else { glyph = "#"; col = bright ? P.wall : P.wallDim; }
         }
         if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
@@ -544,8 +543,9 @@ window.__initPlayMap = function () {
     Object.keys(vw.features || {}).forEach(function (k) {
       if (!vis.has(k)) return;
       var f = vw.features[k], xy = k.split(","), fx = +xy[0], fy = +xy[1];
-      // TOWN B — an ENTERABLE front gets a LIT STOOP (distinct from a plain wall/sign).
-      if (f.to && town) { ctx.fillStyle = P.stoopBg; ctx.fillRect(fx * TS, fy * TS, TS, TS); }
+      // TOWN — EVERY building front shows a DOOR tile: a LIT STOOP if enterable, a plain doorway if not
+      // (RLD venues transact at the street with no interior — door still drawn, FLAG: not enterable).
+      if (town && f.type === "front") { ctx.fillStyle = f.to ? P.stoopBg : P.doorBg; ctx.fillRect(fx * TS, fy * TS, TS, TS); }
       // TOWN A — a building FRONT reads its CATEGORY colour (civic/commerce/food/vice/maritime) via its
       // tenant id; other features keep their palette key. Redundant cue alongside the glyph + named sign.
       ctx.fillStyle = (f.business && window.TD_UI && TD_UI.buildingColor) ? TD_UI.buildingColor(f.business) : ((f.col && P[f.col]) ? P[f.col] : P.signal);
@@ -1098,6 +1098,12 @@ window.__initPlayMap = function () {
     var c = hex.replace("#", ""); var r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
     return "rgb(" + Math.floor(r * 0.5) + "," + Math.floor(g * 0.5) + "," + Math.floor(b * 0.5) + ")";
   }
+  // TOWN — a DARK tint of a category hue for a building mass (shade -1/0/+1 varies a row so it isn't uniform).
+  function darkTint(hex, shade) {
+    var c = hex.replace("#", ""); var r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+    var f = 0.26 + (shade || 0) * 0.05;
+    return "rgb(" + Math.round(r * f) + "," + Math.round(g * f) + "," + Math.round(b * f) + ")";
+  }
   function escapeHTML(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
 
   // =========================================================== INPUT =========
@@ -1221,7 +1227,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Gate F — win + end screens; loop closes";
+  var VERSION = "Town — buildings category-tinted + doored; log on the side";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
