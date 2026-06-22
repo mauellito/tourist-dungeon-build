@@ -201,12 +201,12 @@ function TD_UI_TESTS() {
 
   test("P1: an UNDISCOVERED cell is unrendered (returns null)", function () {
     var c = cell({ x: 5, y: 5, terrain: ".", player: { x: 5, y: 5 }, explored: exV([]), visible: exV([]) });
-    eq(c, null, "undiscovered → null");
+    eq(c, null, "undiscovered -> null");
   });
 
   test("P1: a DISCOVERED-but-not-visible cell is remembered (visible:false, light:0)", function () {
     var c = cell({ x: 2, y: 2, terrain: ".", player: { x: 5, y: 5 }, explored: exV(["2,2"]), visible: exV([]) });
-    assert(c, "discovered → a cell");
+    assert(c, "discovered -> a cell");
     eq(c.discovered, true, "discovered");
     eq(c.visible, false, "not visible");
     eq(c.light, 0, "remembered cell is unlit (drawn dim by the renderer)");
@@ -248,11 +248,12 @@ function TD_UI_TESTS() {
     eq(brute.category, "hostile", "hostile category");
     eq(brute.glyph, "O", "live bestiary glyph kept, not overwritten");
     eq(brute.threatBand, 5, "the REAL creature.band is surfaced as threatBand");
-    eq(brute.fg, TD_UI.PALETTE.dangerHigh, "band 5 → high-danger hue");
+    eq(brute.fg, TD_UI.PALETTE.dangerHigh, "band 5 -> high-danger hue");
     eq(brute.animState, "threat", "threat pulse (gated on band)");
     var weak = cell({ x: 6, y: 6, terrain: ".", entity: { glyph: "r", band: 1, kind: "rat" },
                       player: { x: 5, y: 5 }, explored: exV(["6,6"]), visible: exV(["6,6"]) });
-    eq(weak.fg, TD_UI.PALETTE.creature, "band 1 → base creature hue (distinct from a brute)");
+    eq(weak.fg, TD_UI.bandColor(1), "band 1 -> low-danger hue on the severity ramp (distinct from a brute)");
+    assert(weak.fg !== brute.fg, "a band-1 nuisance and a band-5 brute are not the same colour");
   });
 
   test("P1: a FRIENDLY npc is not a threat (npc hue, no threatBand)", function () {
@@ -281,7 +282,7 @@ function TD_UI_TESTS() {
   test("P1: deriveCell accepts a real Set (not just an array) for explored/visible", function () {
     var ex = new Set(["3,3"]), vis = new Set(["3,3"]);
     var c = cell({ x: 3, y: 3, terrain: "#", player: { x: 3, y: 3 }, explored: ex, visible: vis });
-    eq(c.category, "stone", "wall → stone");
+    eq(c.category, "stone", "wall -> stone");
     eq(c.fg, TD_UI.PALETTE.wall, "wall hue");
   });
 
@@ -294,6 +295,52 @@ function TD_UI_TESTS() {
       return inPalette(c.fg) && (c.bg === null || inPalette(c.bg));
     });
     assert(ok, "every category's fg/bg is a PALETTE value or null");
+  });
+
+  // ====== PREMIUM-ASCII RENDERER P3 — the COLOUR GRAMMAR ======
+  test("P3: bandColor ramps creature hue by THREAT BAND on the shared severity scale", function () {
+    eq(TD_UI.bandColor(1), TD_UI.PALETTE.dangerLow, "band 1 = low danger");
+    eq(TD_UI.bandColor(2), TD_UI.PALETTE.dangerLow, "band 2 = low danger");
+    eq(TD_UI.bandColor(3), TD_UI.PALETTE.dangerMed, "band 3 = medium");
+    eq(TD_UI.bandColor(4), TD_UI.PALETTE.dangerMed, "band 4 = medium");
+    eq(TD_UI.bandColor(5), TD_UI.PALETTE.dangerHigh, "band 5 = high");
+    eq(TD_UI.bandColor(6), TD_UI.PALETTE.dangerHigh, "band 6 = high");
+    eq(TD_UI.bandColor(), TD_UI.PALETTE.dangerLow, "missing band defaults to low, never throws");
+    var lo = TD_UI.bandColor(1), md = TD_UI.bandColor(3), hi = TD_UI.bandColor(5);
+    assert(lo !== md && md !== hi && lo !== hi, "the three threat tiers are visually distinct");
+  });
+
+  test("P3: the dungeon colour grammar categories each own a distinct PALETTE hue", function () {
+    var cats = ["bureau", "ancient", "corruption", "organic", "artifact", "rubble", "unknown", "water"];
+    var hues = cats.map(function (c) { return TD_UI.cellColors(c).fg; });
+    hues.forEach(function (h) { assert(inPalette(h), "grammar hue " + h + " comes from PALETTE"); });
+    var uniq = hues.filter(function (v, i, a) { return a.indexOf(v) === i; });
+    eq(uniq.length, cats.length, "Bureau/Ancient/Corruption/Organic/Artifact/Rubble/Unknown/Water are all distinct");
+  });
+
+  test("P3: a hostile cell's hue follows its REAL band (deriveCell agrees with bandColor)", function () {
+    function h(band) {
+      return cell({ x: 6, y: 5, terrain: ".", entity: { glyph: "X", band: band, kind: "foe" },
+                    player: { x: 5, y: 5 }, explored: exV(["6,5"]), visible: exV(["6,5"]) }).fg;
+    }
+    eq(h(1), TD_UI.bandColor(1), "band 1 hue");
+    eq(h(6), TD_UI.bandColor(6), "band 6 hue");
+    assert(h(1) !== h(6), "a kitten and a boss are not the same colour");
+  });
+
+  test("P3: TOWN colour derives from tenant ACT but STAYS in the muted town set (mute directive honoured)", function () {
+    eq(TD_UI.actColor("agency"), TD_UI.townTone("civic"), "agency -> civic tone");
+    eq(TD_UI.actColor("food"), TD_UI.townTone("food"), "food -> food tone");
+    eq(TD_UI.actColor("spa"), TD_UI.townTone("maritime"), "spa -> maritime tone");
+    eq(TD_UI.actColor("blessing"), TD_UI.townTone("faith"), "church blessing -> faith tone");
+    eq(TD_UI.actColor("shop"), TD_UI.townTone("commerce"), "a shop -> commerce tone");
+    eq(TD_UI.actColor("???"), TD_UI.townTone("commerce"), "unknown act -> commerce default");
+    // muted means every town tone is the same low saturation as TOWN_TONE (no vivid dungeon hue leaks in)
+    var tones = ["kiosk", "agency", "hotel", "spa", "food", "shop", "blessing", "boat"].map(TD_UI.actColor);
+    tones.forEach(function (t) {
+      var vals = Object.keys(TD_UI.TOWN_TONE).map(function (k) { return TD_UI.TOWN_TONE[k]; });
+      assert(vals.indexOf(t) >= 0, "act tone " + t + " is a muted TOWN_TONE value, not a vivid grammar hue");
+    });
   });
 
   var pass = results.filter(function (r) { return r.ok; }).length;

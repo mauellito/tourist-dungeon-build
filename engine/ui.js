@@ -67,7 +67,16 @@ var TD_UI = (function () {
     rampartBg:    "#23211c",   // town perimeter rampart bg
     chasm:        "#0a0a0c", chasmGlyph: "#3a3a44",    // a chasm tile bg + its dotted floor-edge glyph
     hpbarBg:      "#2a0d0a",   // the depleted track behind a creature's health pip
-    lookRing:     "#f4e3a0"    // the inspect/look cursor ring
+    lookRing:     "#f4e3a0",   // the inspect/look cursor ring
+    // P3 (colour grammar) — the dungeon's SEMANTIC category hues (each means exactly one thing). Distinct
+    // from the town set above. Hostile uses the existing dangerLow/Med/High severity ramp via bandColor().
+    bureau:       "#4fb0d6",   // Bureau / municipal structure (cyan-blue) — the § structures
+    ancient:      "#e0a83a",   // Ancient / temple stone (amber-gold)
+    corruption:   "#c44fd6",   // Corruption / blight (magenta-purple)
+    organic:      "#6fae54",   // Organic / fungal growth (green)
+    artifact:     "#ffe9a8",   // an Artifact (bright gold-white) — the ◊
+    rubble:       "#8a857c",   // rubble / debris (grey, below worked stone)
+    unknownC:     "#9fb0c0"    // Unknown / unclassified (pale steel — a flicker in render)
   };
   // the category hues that the Brogue rule requires to be distinct
   var CATEGORY_KEYS = ["player", "creature", "item", "door", "signal", "critical"];
@@ -291,25 +300,54 @@ var TD_UI = (function () {
     "<": "exit", ">": "exit", "~": "water", "?": "unknown", "$": "item",
     "X": "void", "t": "nature", ":": "fence"
   };
-  // category -> { fg, bg } resolved from PALETTE (NEVER a literal hex). P3 EXTENDS this map
-  // with the colour grammar (Bureau/Ancient/Corruption/Organic/Artifact) + finer band hues.
+  // CREATURE colour by THREAT BAND (1..6) — the danger signal, on the shared severity ramp the threats
+  // panel uses (one meaning: severity). band derives from the REAL creature.band; family/element are NOT
+  // pursued as hues this phase (they are dropped at the mapmode spawn copy — FLAG: re-expose at
+  // mapmode.js:815 if family/element hues are ever wanted). Higher band = hotter = more lethal.
+  function bandColor(band) {
+    var b = band || 1;
+    return b >= 5 ? PALETTE.dangerHigh : b >= 3 ? PALETTE.dangerMed : PALETTE.dangerLow;
+  }
+  // TOWN colour by tenant ACT (kiosk/agency/hotel/spa/food/shop/rest/vault/blessing/boat/flavor...).
+  // Routes the act to its town CATEGORY and through the MUTED TOWN_TONE — so "derive town colour from act"
+  // is satisfied WITHOUT undoing the deliberate muted-town palette (FLAG: the recent mute-the-palette
+  // directive governs town saturation; the vivid grammar above is for the DUNGEON, not the town).
+  var ACT_CAT = {
+    kiosk: "civic", agency: "civic", vault: "civic", tim: "civic",
+    hotel: "food", rest: "food", food: "food",
+    spa: "maritime", boat: "maritime",
+    shop: "commerce", flavor: "commerce",
+    blessing: "faith"
+  };
+  function actCategory(act) { return ACT_CAT[act] || "commerce"; }
+  function actColor(act) { return townTone(actCategory(act)); }
+
+  // category -> { fg, bg } resolved from PALETTE (NEVER a literal hex). The colour grammar:
+  // Bureau=cyan, Ancient=amber-gold, Hostile=red/orange (by band), Corruption=magenta, Organic=green,
+  // Water=cyan, Stone/rubble=grey, Artifact=gold-white, Unknown=pale flicker.
   function cellColors(cat, band) {
     var P = PALETTE;
     switch (cat) {
-      case "player":  return { fg: P.player, bg: null };
-      case "hostile": return { fg: band >= 5 ? P.dangerHigh : band >= 3 ? P.dangerMed : P.creature, bg: null };
-      case "npc":     return { fg: P.npc, bg: null };
-      case "floor":   return { fg: P.floor, bg: P.floorBg };
-      case "stone":   return { fg: P.wall, bg: null };
-      case "door":    return { fg: P.door, bg: P.doorBg };
-      case "exit":    return { fg: P.door, bg: null };
-      case "water":   return { fg: P.waterGlyph, bg: P.water };
-      case "item":    return { fg: P.item, bg: null };
-      case "nature":  return { fg: P.nature, bg: null };
-      case "fence":   return { fg: P.fence, bg: null };
-      case "unknown": return { fg: P.senses, bg: null };
-      case "void":    return { fg: P.voidc, bg: P.voidc };
-      default:        return { fg: P.muted, bg: null };
+      case "player":     return { fg: P.player, bg: null };
+      case "hostile":    return { fg: bandColor(band), bg: null };
+      case "npc":        return { fg: P.npc, bg: null };
+      case "floor":      return { fg: P.floor, bg: P.floorBg };
+      case "stone":      return { fg: P.wall, bg: null };
+      case "rubble":     return { fg: P.rubble, bg: null };
+      case "door":       return { fg: P.door, bg: P.doorBg };
+      case "exit":       return { fg: P.door, bg: null };
+      case "water":      return { fg: P.waterGlyph, bg: P.water };
+      case "item":       return { fg: P.item, bg: null };
+      case "artifact":   return { fg: P.artifact, bg: null };
+      case "nature":     return { fg: P.nature, bg: null };
+      case "organic":    return { fg: P.organic, bg: null };
+      case "fence":      return { fg: P.fence, bg: null };
+      case "bureau":     return { fg: P.bureau, bg: null };
+      case "ancient":    return { fg: P.ancient, bg: null };
+      case "corruption": return { fg: P.corruption, bg: null };
+      case "unknown":    return { fg: P.unknownC, bg: null };
+      case "void":       return { fg: P.voidc, bg: P.voidc };
+      default:           return { fg: P.muted, bg: null };
     }
   }
   function chebyshev(ax, ay, bx, by) { var dx = Math.abs(ax - bx), dy = Math.abs(ay - by); return dx > dy ? dx : dy; }
@@ -354,6 +392,7 @@ var TD_UI = (function () {
 
   return {
     RENDER_GLYPHS: RENDER_GLYPHS, TERRAIN_CAT: TERRAIN_CAT, cellColors: cellColors, deriveCell: deriveCell,
+    bandColor: bandColor, actColor: actColor, actCategory: actCategory,
     PALETTE: PALETTE, CATEGORY_KEYS: CATEGORY_KEYS,
     buildingCategory: buildingCategory, buildingColor: buildingColor, categoryColor: categoryColor, townTone: townTone, TOWN_TONE: TOWN_TONE,
     autoExplore: autoExplore, stepToFrontier: stepToFrontier,

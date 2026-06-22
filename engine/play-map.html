@@ -220,7 +220,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "1d081b9e";</script>
+<script>window.__BUILD = "09019e6d";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -575,11 +575,14 @@ window.__initPlayMap = function () {
       if (inside) { var rr = vw.redlightRect; ctx.save(); ctx.globalAlpha = rldBreathe(nowMs()); ctx.fillStyle = P.redlight; ctx.fillRect(rr[0] * TS, rr[1] * TS, (rr[2] - rr[0] + 1) * TS, (rr[3] - rr[1] + 1) * TS); ctx.restore(); }
     }
     vw.creatures.forEach(function (c) {
-      ctx.fillStyle = c.friendly ? P.npc : P.creature; ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
+      // P3 colour grammar — a hostile reads its THREAT BAND as its hue (the real danger signal); friendly
+      // townsfolk stay the warm npc tan. Glyph still tells the kind; colour tells how lethal.
+      var ccol = c.friendly ? P.npc : ((window.TD_UI && TD_UI.bandColor) ? TD_UI.bandColor(c.band) : P.creature);
+      ctx.fillStyle = ccol; ctx.fillText(c.glyph || "r", c.x * TS + TS / 2, c.y * TS + TS / 2 + 1);
       if (!c.friendly && typeof c.hp === "number" && typeof c.maxHp === "number" && c.hp < c.maxHp) {
         var frac = Math.max(0, c.hp / c.maxHp);
         ctx.fillStyle = P.hpbarBg; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, TS - 4, 3);
-        ctx.fillStyle = P.creature; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 3);
+        ctx.fillStyle = ccol; ctx.fillRect(c.x * TS + 2, c.y * TS + 1, Math.round((TS - 4) * frac), 3);
       }
     });
     var pl = vw.player;
@@ -1245,7 +1248,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Premium ASCII P2 — clean glyph pass: premium monospace face + all terrain/chrome colour from PALETTE.";
+  var VERSION = "Premium ASCII P3 — colour grammar: creatures coloured by threat band; town hues from tenant act (muted).";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);
