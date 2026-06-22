@@ -153,10 +153,27 @@ var TD_MAP = (function () {
   // . floor, + door, ? secret, $ loot, < up-stair, > down-stair); we read those into the controller's
   // structures WITHOUT changing the walkable footprint (so its 0 open corners survive verbatim).
   var GEN2_WALL = { "#": 1, "o": 1 };   // pillar renders as rock; chasm/water keep their own glyph
+  var GEN2_OPTS = { size: "regular", grammar: "worked", skin: "stone" };   // live floor params (the SINGLE source the leak sweep reads)
+  var GEN2_MAXTRY = 64;                                                     // bounded reseeds; 1.2% leak rate => exhaustion is astronomically unlikely
+  // PART A — the LIVE-FLOOR LEAK GATE. gen2 ships ~1.2% of worked floors with one open diagonal corner
+  // (the "1 open corner = failure" law). We do NOT weaken the law; we gate the pipeline: reseed and
+  // regenerate until TD_GEN2.measure says leaks===0 AND regions===1 AND both stairs exist, THEN render.
+  // nextSeed() supplies fresh gen2 seeds (deterministic per node). Returns the level + _tries/_clean.
+  function gen2Clean(nextSeed) {
+    var last = null;
+    for (var t = 0; t < GEN2_MAXTRY; t++) {
+      var cand = TD_GEN2.generateLevel(nextSeed() >>> 0, GEN2_OPTS);
+      last = cand; cand._tries = t + 1;
+      var m = TD_GEN2.measure(cand.grid);
+      if (m.leaks === 0 && m.regions === 1 && cand.up && cand.down) { cand._clean = true; return cand; }
+    }
+    last._clean = false; return last;   // exhausted (should never happen live) — ship the last + caller logs
+  }
   function composeNodeGen2(seed, nodeKey, numDoors) {
     if (typeof TD_GEN2 === "undefined") return null;
     var R = nodeRng(seed, nodeKey + ":g2");
-    var lvl = TD_GEN2.generateLevel(R.int(1, 2000000000) >>> 0, { size: "regular", grammar: "worked", skin: "stone" });
+    var lvl = gen2Clean(function () { return R.int(1, 2000000000); });
+    if (!lvl._clean) console.error("composeNodeGen2: NO clean floor in " + GEN2_MAXTRY + " tries (" + nodeKey + ") — the leak law could not be met; shipping last candidate");
     var src = lvl.grid;
     var g = [], rawGrid = [], roomDoors = [], secrets = [], loot = [], nF = 0, ax = 0, ay = 0;
     for (var y = 0; y < H; y++) {
@@ -200,8 +217,9 @@ var TD_MAP = (function () {
     };
   }
   function composeNode(seed, nodeKey, numDoors) {
-    // LIVE = TD_GEN2, rendered directly (no retrofit). gen2 is deterministic + always returns a valid
-    // floor, so no retries are needed. If gen2 is absent: the test-only legacy carver (when a suite flips
+    // LIVE = TD_GEN2, rendered directly (no retrofit). gen2 is deterministic; composeNodeGen2 now GATES it
+    // (reseed until the leak law + single-region + both-stairs hold), so the rendered floor is always clean.
+    // If gen2 is absent: the test-only legacy carver (when a suite flips
     // TD_MAP.setLegacy(true)) else a LOUD console.error + an unmistakable debug floor (never a blob).
     var a = composeNodeGen2(seed, nodeKey, numDoors);
     if (a) { asmTally.gen2++; asmTally.assembler++; return a; }
@@ -1741,6 +1759,10 @@ var TD_MAP = (function () {
   return {
     create: create, _W: W, _H: H, _CREATURE: CREATURE, _ITEMS: ITEMS, makeItem: makeItem, hungerStage: hungerStage,
     setLegacy: function (b) { ALLOW_LEGACY = !!b; },
+    // PART A sweep hook — run the SAME live leak-gate for one seed and return {grid,up,down,_tries,_clean}.
+    // Used by tests/run_leakgate.py to prove 0 leaks / single region / both stairs across seeds 1..N.
+    _gen2Clean: function (seed) { var r = nodeRng((seed >>> 0) || 1, "leaksweep:g2"); return gen2Clean(function () { return r.int(1, 2000000000); }); },
+    _gen2Opts: GEN2_OPTS,
     // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
     CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_MIX: COIN_MIX
   };

@@ -41,6 +41,7 @@ SUITES = [
     ("vault assembler, gated (P2/P4)", "run_assembler.py"),
     ("STANDARD drift bands + type params", "run_drift.py"),
     ("dungeon legibility (clean floors / speckle)", "run_legibility.py"),
+    ("LIVE-FLOOR LEAK GATE (0 open corners / single region / both stairs)", "run_leakgate.py"),
     ("LIVE-PLAY WALK (both generators live, spawn->descend)", "walk_liveplay.py"),
 ]
 
