@@ -806,7 +806,7 @@ var TD_MAP = (function () {
         var spot = pickSpot();
         if (!spot) continue;
         var kind = pickFoe(L), def = CREATURE[kind];
-        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, arche: def.arche, band: def.band || 1, firstStrike: !!def.firstStrike, tooTough: !!def.tooTough, fighter: defFighter(def) });
+        ctrl.creatures.push({ x: spot.x, y: spot.y, kind: kind, hp: def.hp, maxHp: def.hp, dmg: def.dmg, name: def.name, glyph: def.glyph, arche: def.arche, band: def.band || 1, firstStrike: !!def.firstStrike, tooTough: !!def.tooTough, tags: def.tags || [], family: def.family || null, role: def.role || null, fighter: defFighter(def) });
       }
     }
     function pickSpot() {
@@ -894,16 +894,38 @@ var TD_MAP = (function () {
     }
     function creaturesStep() {
       var toldIntent = false;   // one telegraph per step keeps the senses panel readable, not spammy
+      var pSee = losFrom(ctrl.player.x, ctrl.player.y);   // GATE 3: LOS once/step — a foe sees you iff its cell is lit
       ctrl.creatures.forEach(function (cr) {
         var dist = Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y);
         if (dist > 1) cr.poised = false;                     // out of reach -> must re-telegraph before its next strike
         if ((cr.tooTough || (cr.band || 1) > curLevel()) && dist <= REVEAL) threatTell(cr);   // R4: a foe too strong for this floor reads as must-flee
-        var move = null, a = cr.arche || "drift";            // GATE 3: behaviour by ARCHETYPE
-        if (a === "ambush") { if (dist <= REVEAL) move = greedy(cr); }            // wakes only when you're near
-        else if (a === "pursue" || a === "skirmish" || a === "rush") move = greedy(cr);   // come straight on (skirmisher's edge is evasion; rush is its speed-by-fragility)
-        else if (a === "slow") { cr._slow = !cr._slow; if (cr._slow) move = greedy(cr); } // armoured bruiser/drone: advances every OTHER turn
-        else if (a === "hold") { if (dist === 1) move = greedy(cr); }             // blocker: holds ground, strikes only when reached (control space / go around)
-        else move = rng.chance(0.7) ? greedy(cr) : wander(cr);                    // drift
+        // ---- GATE 3: AI = ANIMUS state machine (dormant->wandering->seeking->fleeing) x per-archetype movement.
+        if (cr.mode === undefined) aiInit(cr);
+        var sees = pSee.has(key(cr.x, cr.y));                 // LOS-gated perception (no omniscient pursuit)
+        if (sees) {
+          cr.lastSeen = { x: ctrl.player.x, y: ctrl.player.y }; cr.chaseLeft = cr.persistence;
+          if (cr.animus === "dormant" || cr.animus === "wandering") { cr.animus = "seeking"; if (cr.mode === "ambush" && !toldIntent) { senses(cap(cr.name) + " uncoils from its stillness.", "seen", "OBJ"); toldIntent = true; } }
+        } else if (cr.animus === "seeking") {
+          cr.chaseLeft = (cr.chaseLeft || 0) - 1;             // PERSISTENCE: chase from memory, then give up (break-LOS escapes the flighty)
+          if (cr.chaseLeft <= 0) { cr.animus = "wandering"; cr.lastSeen = null; }
+        }
+        if (cr.fleeLow && cr.hp > 0 && cr.hp < 0.25 * (cr.maxHp || cr.hp)) cr.animus = "fleeing";   // fleeing-low
+        var move = null, m = cr.mode;
+        var tgt = sees ? { x: ctrl.player.x, y: ctrl.player.y } : (cr.lastSeen || null);
+        if (cr.animus === "fleeing") move = fleeStep(cr);
+        else if (cr.animus === "dormant") move = null;        // asleep until you cross its sight
+        else if (cr.animus === "seeking" && tgt) {
+          if (m === "chase") move = pathStep(cr, tgt.x, tgt.y) || greedy(cr, tgt.x, tgt.y);            // real pathfind (around walls)
+          else if (m === "plod") { cr._slow = !cr._slow; if (cr._slow) move = pathStep(cr, tgt.x, tgt.y) || greedy(cr, tgt.x, tgt.y); }   // every other turn
+          else if (m === "kite") move = kiteStep(cr);                                                  // keep range (archer/caster)
+          else if (m === "hold") { move = (dist <= REVEAL) ? (pathStep(cr, tgt.x, tgt.y) || greedy(cr, tgt.x, tgt.y)) : returnToPost(cr); }   // leashed to its post
+          else if (m === "wander") move = rng.chance(0.45) ? greedy(cr, tgt.x, tgt.y) : wander(cr);    // a drifter that spots you only loosely drifts your way
+          else move = greedy(cr, tgt.x, tgt.y);                                                        // beeline / ambush / roused predator
+        } else {                                              // wandering (no target)
+          if (m === "hold") move = returnToPost(cr);          // SINGULAR FOCUS = return to post
+          else if (m === "wander") move = rng.chance(0.6) ? wander(cr) : null;
+          else move = rng.chance(0.3) ? wander(cr) : null;    // idle patrol after losing you
+        }
         if (move) {
           if (move.x === ctrl.player.x && move.y === ctrl.player.y) {        // it reaches you: it strikes
             // TELEGRAPH LAW: a stat-blocked foe NEVER commits un-telegraphed. If it has not been poised
@@ -936,16 +958,77 @@ var TD_MAP = (function () {
         }
       });
     }
-    function greedy(cr) {
-      var best = null, bestD = Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y);
+    // GATE 3 — derive a foe's AI from its archetype + tags (data-driven; lazy so every spawn path + test
+    // injection is covered). MODE = movement style; PERSISTENCE = turns it chases from memory after LOS is
+    // lost (low = break-LOS escapes; high = relentless); FOCUS = fixate vs return-to-post; fleeLow = breaks
+    // at low HP unless stalwart (guardian/hold/leader/must-flee colossus hold the line).
+    function aiInit(cr) {
+      var a = cr.arche || "drift", tags = cr.tags || [];
+      var MODE = { pursue: "chase", skirmish: "beeline", rush: "beeline", kite: "kite", ambush: "ambush", slow: "plod", hold: "hold", drift: "wander" };
+      cr.mode = MODE[a] || "wander";
+      if (tags.indexOf("guardian") >= 0) cr.mode = "hold";
+      if (tags.indexOf("ranged") >= 0 && (cr.mode === "beeline" || cr.mode === "wander")) cr.mode = "kite";   // archers/casters keep range
+      var P = { chase: 12, plod: 8, hold: 14, beeline: 4, kite: 3, ambush: 6, wander: 2 };
+      cr.persistence = P[cr.mode] || 4;
+      if (cr.tooTough) cr.persistence = Math.max(cr.persistence, 14);
+      cr.focus = (cr.mode === "hold") ? "post" : "fixate";
+      cr.home = { x: cr.x, y: cr.y };
+      cr.fleeLow = !(cr.mode === "hold" || cr.tooTough || tags.indexOf("guardian") >= 0 || tags.indexOf("leader") >= 0);
+      cr.animus = (cr.mode === "ambush") ? "dormant" : "wandering";
+      cr.chaseLeft = 0;
+    }
+    // greedy step toward a TARGET (default the player). Stepping onto the player is always allowed (a strike).
+    function greedy(cr, tx, ty) {
+      if (tx == null) { tx = ctrl.player.x; ty = ctrl.player.y; }
+      var best = null, bestD = Math.abs(cr.x - tx) + Math.abs(cr.y - ty);
       STEP4.forEach(function (d) {
         var nx = cr.x + DIRS[d][0], ny = cr.y + DIRS[d][1];
         var onPlayer = (nx === ctrl.player.x && ny === ctrl.player.y);
         if (!onPlayer && (!passable(nx, ny) || creatureAt(nx, ny))) return;
-        var nd = Math.abs(nx - ctrl.player.x) + Math.abs(ny - ctrl.player.y);
+        var nd = Math.abs(nx - tx) + Math.abs(ny - ty);
         if (nd < bestD) { bestD = nd; best = { x: nx, y: ny }; }
       });
       return best;
+    }
+    // real BFS pathfind toward a target (pursuers only; capped for perf). Returns the first step or null.
+    function pathStep(cr, tx, ty) {
+      if (cr.x === tx && cr.y === ty) return null;
+      var q = [[cr.x, cr.y]], seen = {}, prev = {}, start = key(cr.x, cr.y), n = 0;
+      seen[start] = 1;
+      while (q.length && n++ < 500) {
+        var c = q.shift();
+        for (var i = 0; i < STEP4.length; i++) {
+          var d = STEP4[i], nx = c[0] + DIRS[d][0], ny = c[1] + DIRS[d][1], kk = key(nx, ny);
+          if (seen[kk]) continue;
+          var onTgt = (nx === tx && ny === ty), onPlayer = (nx === ctrl.player.x && ny === ctrl.player.y);
+          if (!onTgt && !onPlayer && (!passable(nx, ny) || creatureAt(nx, ny))) continue;
+          seen[kk] = 1; prev[kk] = key(c[0], c[1]);
+          if (onTgt) { var step = kk, p = prev[step]; while (p && p !== start) { step = p; p = prev[step]; } var xy = step.split(","); return { x: +xy[0], y: +xy[1] }; }
+          q.push([nx, ny]);
+        }
+      }
+      return null;
+    }
+    function fleeStep(cr) {
+      var best = null, bestD = Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y);
+      STEP4.forEach(function (d) {
+        var nx = cr.x + DIRS[d][0], ny = cr.y + DIRS[d][1];
+        if (!passable(nx, ny) || creatureAt(nx, ny)) return;
+        var nd = Math.abs(nx - ctrl.player.x) + Math.abs(ny - ctrl.player.y);
+        if (nd > bestD) { bestD = nd; best = { x: nx, y: ny }; }
+      });
+      return best;
+    }
+    // kite: hold an ideal stand-off range — back off if crowded, close if too far, hold (and "fire") in band.
+    function kiteStep(cr) {
+      var ideal = 3, d = Math.abs(cr.x - ctrl.player.x) + Math.abs(cr.y - ctrl.player.y);
+      if (d < ideal) return fleeStep(cr);
+      if (d > ideal + 1) return greedy(cr);
+      return null;
+    }
+    function returnToPost(cr) {
+      if (!cr.home || (cr.x === cr.home.x && cr.y === cr.home.y)) return null;
+      return pathStep(cr, cr.home.x, cr.home.y) || greedy(cr, cr.home.x, cr.home.y);
     }
     function wander(cr) {
       for (var t = 0; t < 4; t++) {
