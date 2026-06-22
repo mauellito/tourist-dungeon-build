@@ -220,7 +220,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "bda6c476";</script>
+<script>window.__BUILD = "f2431821";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -743,7 +743,7 @@ window.__initPlayMap = function () {
       // TACTICS (combat-gate directive) — three FEEL-WORDS, always visible: chosen Stance, net Footing
       // (Dex+burden+stance, folded once), armour Protection (bulkReadout). HARD CHECK: no number/+/- here.
       (vw.tactics ? section("Tactics") +
-        statrow("Stance", '<span id="sb-stance" title="' + escapeHTML(vw.tactics.readout || "") + '" style="color:' + P.signal + '">' + escapeHTML(vw.tactics.stance) + "</span>") +
+        statrow("Stance", '<span id="sb-stance" title="' + escapeHTML(vw.tactics.stance) + '" style="color:' + P.signal + '">' + escapeHTML(vw.tactics.readout || vw.tactics.stance) + "</span>") +
         statrow("Footing", '<span id="sb-footing" style="color:#cdbf9f">' + escapeHTML(vw.tactics.footing || "—") + "</span>") +
         statrow("Protection", '<span id="sb-protection" style="color:#cdbf9f">' + escapeHTML(vw.tactics.protection || "—") + "</span>") : "") +
       // GATE 9 (C) — the equipment paperdoll (all 11 slots) replaces the single Armour/Weapon readout.

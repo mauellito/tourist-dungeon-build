@@ -245,15 +245,15 @@ var TD_RESOLVE = (function () {
   var STANCE_EVA = { guard: 6, full: 12 };   // PLACEHOLDER evasion bias — opposite sign to accuracy (the honest trade)
   var STANCES = [
     { key: "coward",   name: "Coward",   acc: -STANCE_ACC.full,  eva: +STANCE_EVA.full,
-      readout: "Self-Preservation Posture", trade: "You give all ground — you are struck hardly at all, and you land hardly at all." },
+      readout: "Self-Preserving (conduct approved)", trade: "Present a small target and a smaller account of yourself. Hard to hit; you strike feebly." },
     { key: "guarded",  name: "Guarded",  acc: -STANCE_ACC.guard, eva: +STANCE_EVA.guard,
-      readout: "Defensive Footing", trade: "You keep your guard up — you are struck less, and you land less." },
+      readout: "Guarded", trade: "Guard up. Harder to hit; your blows pull a little." },
     { key: "measured", name: "Measured", acc: 0, eva: 0,
-      readout: "Measured Engagement", trade: "You trade on even terms — neither pressing nor yielding." },
+      readout: "Measured", trade: "Even footing. You strike and are struck as you are." },
     { key: "pressing", name: "Pressing", acc: +STANCE_ACC.guard, eva: -STANCE_EVA.guard,
-      readout: "Forward Pressure", trade: "You press the attack — you land more, and you are struck more." },
+      readout: "Pressing", trade: "You lean in. Strike truer; struck truer." },
     { key: "berserk",  name: "Berserk",  acc: +STANCE_ACC.full,  eva: -STANCE_EVA.full,
-      readout: "Total Abandon", trade: "You abandon all guard — you hit a great deal, and are hit a great deal." }
+      readout: "Unrestrained (the Office disclaims liability)", trade: "All guard abandoned. You hit a great deal and are hit a great deal." }
   ];
   var STANCE_DEFAULT = "measured";
   function stanceByKey(k) { for (var i = 0; i < STANCES.length; i++) if (STANCES[i].key === k) return STANCES[i]; return STANCES[2]; }

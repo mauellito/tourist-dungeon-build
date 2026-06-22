@@ -123,7 +123,8 @@ try{
   ok('FOOTING folds burden via the SINGLE-SOURCE applyBurdenEvasion (same as the dungeon path)', typeof T.applyBurdenEvasion==='function' && T.applyBurdenEvasion(T.GEAR.ARMOR.light,'strained').encumbrance>T.GEAR.ARMOR.light.encumbrance);
   // PROTECTION reads the existing bulkReadout; HARD CHECK: tactics words carry NO digit/sign
   ok('PROTECTION: armour bulk readout word (Unhindered..Encased), no digit', /^(Unhindered|Cushioned|Shelled|Encased)$/.test(T.protectionReadout(T.fighter(st(),null,T.GEAR.ARMOR.heavy))));
-  ok('HARD CHECK: no stance/footing/protection word contains a number or +/-', T.STANCES.every(function(s){return !/[0-9+\-]/.test(s.name);}) && !/[0-9+\-]/.test(T.footingReadout(heavyF)) && !/[0-9+\-]/.test(T.protectionReadout(heavyF)));
+  function clean(s){return !/[0-9]/.test(s) && !/[+\-]\d/.test(s);}   // no digit, no +N/-N modifier (a word hyphen like 'Self-Preserving' is fine)
+  ok('HARD CHECK: no number or +/-N modifier in any displayed tactics text (stance name+readout, footing, protection)', T.STANCES.every(function(s){return clean(s.name)&&clean(s.readout);}) && clean(T.footingReadout(heavyF)) && clean(T.protectionReadout(heavyF)));
 
   // ---- determinism ----
   function seq(seed){var rng=RNG.make(seed),out=[];for(var i=0;i<8;i++){out.push(T.hit(A,D,rng).hit?1:0);out.push(T.damage(A,heavy,rng).damage);}return out.join(",");}
