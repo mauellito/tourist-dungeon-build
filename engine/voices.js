@@ -357,6 +357,22 @@ var TD_VOICES = (function () {
     };
   }
 
+  // ---- CANON TOWN CAST (R3): named NPCs with contact dialogue (greetings/chat). Deadpan, light sprinkle,
+  // accents by idiom only (no phonetic spelling). FLAG: each one's deeper role-system (horoscope / training /
+  // pawn-loan) is NOT built yet — the NPC + dialogue exist; the role hook is a placeholder. ----
+  SPECS.jimmy = { name: "Jimmy the Shoeshine", role: "oracle (horoscope) — HOOK PENDING", accent: "brooklyn",
+    bible: { register: "streetwise patter, warm and sly", rhythm: "quick, then a held beat", tic: "reads you before you sit", neverSays: ["destiny", "behold"] },
+    greetings: ["Shine? No — you have the look of a man who wants his stars read, not his shoes.", "Jimmy's the name. Futures and footwear, in that order.", "Sit. The box is comfortable; the fortunes, less so.", "You walked past the Agency and came to me. Smart.", "Mind the polish. Mind the stars more."],
+    chat: ["The stars do not lie. They only mumble.", "I read a fellow's horoscope down by the harbour last week. He did not come back.", "The Bureau does not license fortune-telling. The Bureau does not license the weather either.", "Down the market they sell luck by the pound. Mine is free, and worth exactly that.", "Cross my palm and I will cross yours back — once the reading desk is varnished. (Later.)", "The Gilded Kraken would not let me near their guests' shoes. Their loss; I see further than their concierge.", "Every visitor bound for the dungeon has the same line on their palm. It is short."] };
+  SPECS.veteran = { name: "the Grizzled Veteran", role: "trainer / quest-advisor — HOOK PENDING", accent: "mixed",
+    bible: { register: "dry old soldier, earned and unhurried", rhythm: "flat statements, the odd grim joke", tic: "frames everything as a lesson", neverSays: ["glory", "easy"] },
+    greetings: ["You want to last down there, you listen to a man who did not.", "Pull up a stool. The Anchor pours, I talk.", "New blood. The dungeon files those under 'optimistic'.", "Sit before you fall; you will do enough falling below.", "Buy me a drink and I will sell you a long life. Roughly."],
+    chat: ["Past the middle floors it stops being about your blade and starts being about your legs.", "I would drill you in the yard, but the yard is not open yet. Remember the lesson regardless.", "Grit. That is the one the Agency does not sell you.", "The Rusty Anchor has poured for every fool who went down sure of himself. Myself included.", "Watch the turnstile wardens up top; below, nothing turns you back but the dark.", "Down the dock they say the deep floors moved again. Down the dock they say a great deal.", "The Bureau counts the dead by sublevel. Try not to be a tidy number."] };
+  SPECS.poncho = { name: "Poncho the Pawnbroker", role: "pawnbroker — HOOK PENDING", accent: "brooklyn",
+    bible: { register: "fast, transactional, fond of you anyway", rhythm: "clipped, a wink under it", tic: "prices everything, including the conversation", neverSays: ["charity", "free"] },
+    greetings: ["Buying, selling, or just browsing my misfortune?", "Poncho. No questions, fair-ish prices.", "Everything has a price. Yours is on the tag, mostly.", "You bring it, I weigh it, we both pretend to be pleased.", "Come in, come in. Mind the merchandise; it bites on credit."],
+    chat: ["Everything in here belonged to someone braver than its present owner.", "I would lend against that, but the ledger is still at the printer — sell it outright or hold on.", "The bank up the way will not touch what I touch. That is the whole of my business model.", "Down the market they call me a fence; the Bureau calls me 'unlicensed'; I call me open.", "Dock crews bring me the strangest things. I ask the dungeon, never them.", "Off-book? Around here everything is off some book or other.", "The Agency sells you a ticket down; I buy back whatever climbs out."] };
+
   // dungeon cast — reserved voices, NO lines yet (canon arrives as design data)
   var DUNGEON_CAST = ["janitor", "elevator_operator", "oracle", "bookie"];
   DUNGEON_CAST.forEach(function (id) { SPECS[id] = { name: id, role: "dungeon NPC", accent: "mixed", placeholder: true, bible: { register: "TBD", rhythm: "TBD", tic: "TBD", neverSays: [] }, lines: {} }; });

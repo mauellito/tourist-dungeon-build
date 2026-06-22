@@ -382,6 +382,14 @@ var TD_GAME = (function () {
       if (!line) { c.used = {}; line = pickLine(pool, c.used); }   // exhausted -> recycle
       if (line) { var t = (typeof line === "string") ? line : line[0], obj = (typeof line === "string") ? "SUBJ" : line[1]; senses(cap(npc.name) + ": “" + t + "”", "said", obj); }
     }
+    // R2 — the 't' / talk verb: address the nearest adjacent townsperson without moving into them.
+    function talkNearby() {
+      if (!isTownScreen(placeId)) { logMsg("There is no one here to address."); return { talked: false }; }
+      var list = npcs(), best = null;
+      for (var i = 0; i < list.length; i++) { if (cheby(player, list[i]) === 1) { best = list[i]; break; } }
+      if (!best) { logMsg("No one is close enough to address."); return { talked: false }; }
+      lastEvent = null; talkTo(best); return { talked: true, who: best.name, event: lastEvent };
+    }
     // the most salient player state, for NPC reactions
     function playerState() {
       var hg = TD_MAP.hungerStage(meters);
@@ -670,6 +678,11 @@ var TD_GAME = (function () {
         churchCells.forEach(function (c) { if (c.x < cx0) cx0 = c.x; if (c.y < cy0) cy0 = c.y; if (c.x > cx1) cx1 = c.x; if (c.y > cy1) cy1 = c.y; });
         churchRect = [cx0, cy0, cx1, cy1];
         buildings.push({ id: "church", glyph: "†", x0: cx0, y0: cy0, w: cx1 - cx0 + 1, h: cy1 - cy0 + 1, landmark: true });   // † cross
+        // R4 — a real DOOR into the church: a front on a footprint edge that faces the street arms entry to
+        // the church INTERIOR (the blessing/rite happens inside). The solid jewel silhouette is unchanged.
+        var cdoor = null, NB = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        for (var ci = 0; ci < churchCells.length && !cdoor; ci++) { var cc = churchCells[ci]; for (var ni = 0; ni < 4; ni++) { var nx = cc.x + NB[ni][0], ny = cc.y + NB[ni][1]; if (grid[ny] && grid[ny][nx] === ".") { cdoor = cc; break; } } }
+        if (cdoor) features[key(cdoor.x, cdoor.y)] = { type: "front", glyph: "†", col: "sanctified", business: "church", to: "church", label: "the church door", text: "The church door, open to the living and — by appointment — the lately-living.", act: "look" };
       }
       // spawn JUST INSIDE the gate, on the spine side (toward the dungeon mouth /
       // map centre) — the gate sits on the map border, so spawning on it would jam
@@ -891,8 +904,11 @@ var TD_GAME = (function () {
             return { moved: false, bumpedVendor: true, event: lastEvent };
           }
           pendingDoor = null; pendingCounter = null; pendingVendor = false; lastEvent = null;
-          if (displaceFriendly(npc, nx, ny, P, npcList)) { displaceBark(); shared.turn += 1; walkersStep(); maybeGiftDuel(); maybeAmbientBark(); return { moved: true, displaced: true, event: lastEvent }; }
-          return { moved: false };                         // truly boxed in (rare)
+          // R2 — ADDRESS the townsperson: bumping opens their dialogue (greeting first, chat after) in the
+          // senses channel, then you swap past so movement never stops.
+          if (displaceFriendly(npc, nx, ny, P, npcList)) { talkTo(npc); shared.turn += 1; walkersStep(); maybeGiftDuel(); maybeAmbientBark(); return { moved: true, displaced: true, talked: true, event: lastEvent }; }
+          talkTo(npc); return { moved: false, talked: true, event: lastEvent };   // boxed in -> still address them
+
         }
       }
       // inside an establishment: patrons are DISPLACED too (the keeper behind the
@@ -1086,6 +1102,17 @@ var TD_GAME = (function () {
       many(3, "sailor", "j", "a drunk sailor", "sailor", 60, wf, { wobble: true });
       spawn({ id: "salty", type: "sailor", glyph: "j", name: "Salty Pete", voiceId: "salty", speed: 60, wobble: true }, wf);
       many(2, "shopper", "p", "a furtive shopper", "lowlife", 90);
+      // R3 — the CANON town cast: Jimmy (oracle), the Grizzled Veteran (trainer, at the tavern), Poncho
+      // (pawnbroker, at the pawn shop). Stationary, addressable (bump or 't'); placed near their haunt when
+      // it exists, else seeded in the relevant district. Role-systems (horoscope/training/pawn) are HOOKS.
+      function frontOf(biz) { var f = T.features || {}; for (var k in f) { if (f[k].business === biz) { var p = k.split(","); return { x: +p[0], y: +p[1] }; } } return null; }
+      function spawnNamed(a, near) {
+        if (near) { var d4 = [[0, 1], [0, -1], [1, 0], [-1, 0]]; for (var i = 0; i < 4; i++) { var x = near.x + d4[i][0], y = near.y + d4[i][1], ci = -1; for (var j = 0; j < pool.length; j++) { if (pool[j].x === x && pool[j].y === y) { ci = j; break; } } if (ci >= 0) { var t = pool.splice(ci, 1)[0]; a.x = t.x; a.y = t.y; a.home = { x: t.x, y: t.y }; a.energy = 0; a.acts = 0; a.frozen = true; a.barksUsed = {}; T.actors.push(a); return a; } } }
+        return spawn(a, null);   // fallback: a free cell anywhere
+      }
+      spawnNamed({ id: "jimmy", type: "oracle", glyph: "J", name: "Jimmy the Shoeshine", voiceId: "jimmy", speed: 0, frozen: true }, market || main);
+      spawnNamed({ id: "veteran", type: "trainer", glyph: "V", name: "the Grizzled Veteran", voiceId: "veteran", speed: 0, frozen: true }, frontOf("tavern"));
+      spawnNamed({ id: "poncho", type: "pawnbroker", glyph: "K", name: "Poncho the Pawnbroker", voiceId: "poncho", speed: 0, frozen: true }, frontOf("fence"));
       spawnTroop(T);
     }
     function spawnTroop(T) {
@@ -1446,6 +1473,7 @@ var TD_GAME = (function () {
       wait: wait, get: get, search: search, closeDoor: closeDoor,
       openDoorAuto: openDoorAuto, openDoorDir: openDoorDir, closeDoorAuto: closeDoorAuto, closeDoorDir: closeDoorDir, toggleAutoOpen: toggleAutoOpen,
       toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected, equipSelected: equipSelected,
+      talkNearby: talkNearby,   // R2 — the 't' talk verb
       // GATE 4 — town economy verbs (shop overlay, bank vault, RLD front-services)
       shopMove: shopMove, shopSetMode: shopSetMode, shopTransact: shopTransact, shopClose: shopClose,
       vaultDeposit: vaultDeposit, vaultWithdraw: vaultWithdraw, vaultClose: vaultClose,
