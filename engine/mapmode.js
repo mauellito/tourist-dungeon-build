@@ -391,6 +391,7 @@ var TD_MAP = (function () {
       inventory: shared.inventory || (shared.inventory = []),
       messages: shared.messages || (shared.messages = []),
       kills: 0, lastHungerStage: "well fed", wasExhausted: false,
+      stance: shared.stance || (typeof TD_RESOLVE !== "undefined" ? TD_RESOLVE.STANCE_DEFAULT : "measured"),   // TACTICS: free-switch combat stance (persists via shared)
       sensedSkitter: false, toldDoors: {}
     };
     // the turn counter lives on the shared object so town + dungeon agree on it.
@@ -1085,8 +1086,8 @@ var TD_MAP = (function () {
       return { stats: stats, weapon: weapon || { name: def.name, type: "blade", base: def.dmg, acc: 0 }, armor: armor || G.ARMOR.light };
     }
     // ENCUMBRANCE (R2): the carried loadout (gear + weighty inventory + purse) -> a TD_BURDEN band ->
-    // worse EVASION (folded into the player fighter) + slower MOVE/tempo. PLACEHOLDER magnitudes.
-    var ENC_EVASION = { unencumbered: 0, laden: 2, strained: 5, overloaded: 9 };   // band -> evasion-dulling (placeholder)
+    // worse EVASION (folded into the player fighter) + slower MOVE/tempo. The burden->evasion fold is now
+    // the SINGLE SOURCE TD_RESOLVE.applyBurdenEvasion (so the HUD footing reads the SAME effect, not a copy).
     // GATE 7 (A): the player's effective {weapon, armor} aggregated from the 11-slot equipment.
     function playerLoadout() {
       var ch = ctrl.character;
@@ -1110,7 +1111,7 @@ var TD_MAP = (function () {
       var ch = ctrl.character, lo = playerLoadout();
       if (!ch || !ch.stats || !lo || typeof TD_RESOLVE === "undefined" || typeof TD_RESOLVE.fighter !== "function") return null;
       var armor = lo.armor, bnd = playerBand();
-      if (bnd) { var pen = ENC_EVASION[bnd.band.key] || 0; if (pen) armor = { name: armor.name, robustness: armor.robustness, encumbrance: (armor.encumbrance || 0) + pen, heavy: armor.heavy, crushTell: armor.crushTell }; }   // burden dulls evasion
+      if (bnd && TD_RESOLVE.applyBurdenEvasion) armor = TD_RESOLVE.applyBurdenEvasion(armor, bnd.band.key);   // burden dulls evasion (single source: TD_RESOLVE)
       // CHARACTER A — PROFICIENCY competence layer: a weapon-family rank folds a small acc/damage modifier
       // into the EFFECTIVE weapon (combat magnitudes untouched). Default untrained -> no change.
       var weapon = lo.weapon;
@@ -1118,7 +1119,9 @@ var TD_MAP = (function () {
         var pr = TD_CHARSYS.profRankOf(ch.sheet, weapon.type);
         if (pr !== 1) { var pm = TD_CHARSYS.profMod(pr), w2 = {}; for (var kk in weapon) w2[kk] = weapon[kk]; w2.acc = (weapon.acc || 0) + pm.acc; w2.base = (weapon.base || 0) + pm.dmg; weapon = w2; }
       }
-      return TD_RESOLVE.fighter(ch.stats, weapon, armor);
+      var f = TD_RESOLVE.fighter(ch.stats, weapon, armor);
+      if (TD_RESOLVE.stanceByKey) f.stance = TD_RESOLVE.stanceByKey(ctrl.stance);   // STANCE biases hit() (acc as attacker, eva as defender)
+      return f;
     }
     // GATE 8 (B): fatigue RESISTANCE — Con + Grit + Might make you tire slower (a multiplier on all
     // fatigue GAIN). avg 500 = neutral (x1); hardy/willful/strong (high avg) tire far slower; the frail
@@ -1699,8 +1702,37 @@ var TD_MAP = (function () {
         // any growth-by-deeds). Lets the player read their standing against the floor's rising danger.
         // Never a number; null when no stat spine (test harness).
         power: (ctrl.character && ctrl.character.stats && typeof TD_STATS !== "undefined" && TD_STATS.powerWord) ? TD_STATS.powerWord(ctrl.character.stats, ctrl.character.progress) : null,
+        // TACTICS HUD (R2) — three FEEL-WORDS, never numbers: the chosen stance, net Footing (Dex+burden+stance,
+        // folded once), and armour Protection (bulkReadout). Computed from the live player fighter.
+        tactics: (function () {
+          var st = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.stanceByKey) ? TD_RESOLVE.stanceByKey(ctrl.stance) : null;
+          var pf = playerFighter();
+          return {
+            stance: st ? st.name : "Measured", readout: st ? st.readout : "",
+            footing: (pf && TD_RESOLVE.footingReadout) ? TD_RESOLVE.footingReadout(pf) : null,
+            protection: (pf && TD_RESOLVE.protectionReadout) ? TD_RESOLVE.protectionReadout(pf) : null
+          };
+        })(),
         dead: ctrl.dead, won: ctrl.won, cause: ctrl.cause
       };
+    }
+
+    // TACTICS STANCE — a FREE switch (no turn cost; foes do NOT act). Cycles the ordered stance list and
+    // telegraphs the honest-trade line on the EVENT channel (always factually true). Persists via shared.
+    function setStance(key) {
+      if (typeof TD_RESOLVE === "undefined" || !TD_RESOLVE.STANCES) return { stance: ctrl.stance };
+      var st = TD_RESOLVE.stanceByKey(key); if (!st) return { stance: ctrl.stance };
+      var changed = st.key !== ctrl.stance;
+      ctrl.stance = st.key; shared.stance = st.key;
+      if (changed) { ctrl.lastEvent = null; ctrl.lastUrgent = false; logMsg(st.trade, false, { ch: "event" }); }   // R3 telegraph
+      buildView();
+      return { stance: ctrl.stance, name: st.name, free: true, changed: changed };
+    }
+    function cycleStance(dir) {
+      if (typeof TD_RESOLVE === "undefined" || !TD_RESOLVE.STANCES) return { stance: ctrl.stance };
+      var order = TD_RESOLVE.STANCES, i = TD_RESOLVE.stanceIndex(ctrl.stance);
+      i = (i + (dir || 1) + order.length) % order.length;
+      return setStance(order[i].key);
     }
 
     buildView();
@@ -1711,6 +1743,7 @@ var TD_MAP = (function () {
       wait: wait, get: get, dropItem: dropItem, search: search, closeDoor: closeDoor, equipFromPack: equipFromPack,
       openDoorDir: openDoorDir, openDoorAuto: openDoorAuto, closeDoorDir: closeDoorDir, closeDoorAuto: closeDoorAuto,
       toggleAutoOpen: toggleAutoOpen, setAutoOpen: setAutoOpen, autoOpen: function () { return ctrl.autoOpenDoors; },
+      cycleStance: cycleStance, setStance: setStance, _stance: function () { return ctrl.stance; },
       isDead: function () { return ctrl.dead; }, isComplete: function () { return ctrl.won; },
       // helpers for the town layer + tests
       _doors: function () { return ctrl.doors; },

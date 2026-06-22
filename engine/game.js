@@ -152,7 +152,8 @@ var TD_GAME = (function () {
       character.level = 1; character.xp = 0;   // XP + LEVELS — the progression spine (meta; kills + descent accrue)
       // the run-context shared with the dungeon controller: one inventory, one
       // message log, one turn counter, across town and dungeon.
-      shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0 };
+      shared = { meters: meters, character: character, inventory: [], messages: [], turn: 0,
+        stance: (typeof TD_RESOLVE !== "undefined" ? TD_RESOLVE.STANCE_DEFAULT : "measured") };   // TACTICS: free-switch stance, persists town<->dungeon
       placeId = START_SCREEN; dungeon = null; dead = false; won = false; returnScreen = START_SCREEN;
       invOpen = false; invSel = 0; look = { active: false, x: 0, y: 0 }; intakeOpen = false; intakeSel = 0; intakeStage = null; alloc = null;
       returnTile = null; pendingDoor = null; pendingCounter = null; sensedWater = false; pendingVendor = false; pendingExit = false; exitReturn = null; left = false;
@@ -331,6 +332,40 @@ var TD_GAME = (function () {
       lastEvent = t; lastUrgent = !!urgent;
       shared.messages.push({ text: t, urgent: !!urgent, ch: meta.ch || "event", kind: meta.kind || null, obj: meta.obj || null, banner: !!meta.banner });
       if (shared.messages.length > 120) shared.messages.shift();
+    }
+    // TACTICS — the town-side player fighter (for the always-visible Footing/Protection HUD). Folds burden
+    // through the SAME single-source TD_RESOLVE.applyBurdenEvasion the dungeon uses (never a parallel effect).
+    function townFighter() {
+      if (!character || !character.stats || typeof TD_RESOLVE === "undefined" || !TD_RESOLVE.GEAR || !TD_RESOLVE.fighter) return null;
+      var lo = TD_RESOLVE.GEAR.aggregate(character.equipment || {}), armor = lo.armor;
+      if (typeof TD_BURDEN !== "undefined" && TD_BURDEN.compute) {
+        var bitems = [], eqp = character.equipment, G = TD_RESOLVE.GEAR;
+        if (eqp) G.SLOTS.forEach(function (s) { var pc = eqp[s]; if (pc && typeof pc.weight === "number" && (s !== "leftHand" || pc !== eqp.rightHand)) bitems.push(pc); });
+        shared.inventory.forEach(function (it) { if (it && typeof it.weight === "number") bitems.push(it); });
+        var bb = TD_BURDEN.compute(character.stats, bitems, character.purse || {});
+        if (bb && TD_RESOLVE.applyBurdenEvasion) armor = TD_RESOLVE.applyBurdenEvasion(armor, bb.band.key);
+      }
+      var f = TD_RESOLVE.fighter(character.stats, lo.weapon, armor);
+      if (TD_RESOLVE.stanceByKey) f.stance = TD_RESOLVE.stanceByKey(shared.stance || TD_RESOLVE.STANCE_DEFAULT);
+      return f;
+    }
+    function townTactics() {
+      if (typeof TD_RESOLVE === "undefined" || !TD_RESOLVE.stanceByKey) return null;
+      var st = TD_RESOLVE.stanceByKey(shared.stance || TD_RESOLVE.STANCE_DEFAULT), f = townFighter();
+      return { stance: st.name, readout: st.readout,
+               footing: f && TD_RESOLVE.footingReadout ? TD_RESOLVE.footingReadout(f) : null,
+               protection: f && TD_RESOLVE.protectionReadout ? TD_RESOLVE.protectionReadout(f) : null };
+    }
+    // TACTICS STANCE — a FREE switch in BOTH town and dungeon (no turn; foes don't act). Telegraphs the
+    // honest-trade line on the EVENT channel. In the dungeon the controller owns it (its log); in town here.
+    function cycleStance(dir) {
+      if (placeId === "DUNGEON" && dungeon && dungeon.cycleStance) { var r = dungeon.cycleStance(dir); lastEvent = dungeon.view().lastEvent; return r; }
+      if (typeof TD_RESOLVE === "undefined" || !TD_RESOLVE.STANCES) return { stance: shared.stance };
+      var order = TD_RESOLVE.STANCES, i = TD_RESOLVE.stanceIndex(shared.stance || TD_RESOLVE.STANCE_DEFAULT);
+      i = (i + (dir || 1) + order.length) % order.length;
+      var st = order[i];
+      if (st.key !== shared.stance) { shared.stance = st.key; logMsg(st.trade); }   // R3 telegraph (EVENT channel)
+      return { stance: shared.stance, name: st.name, free: true };
     }
     // E1 — ENTRY ANNOUNCEMENT: on crossing into a named space, the Bureau welcomes
     // you (one line, banner-flagged). Debounced per-label so quick re-entry of the
@@ -1406,6 +1441,7 @@ var TD_GAME = (function () {
       v.stats = (typeof TD_STATS !== "undefined" && character && character.stats) ? TD_STATS.surface(character.stats) : null;
       v.progress = (typeof TD_STATS !== "undefined" && TD_STATS.xpReadout) ? TD_STATS.xpReadout(character) : null;   // R3 — level + XP-to-next bar (meta-UI)
       v.tally = { depth: (shared.deepest || 0), kills: (dungeon ? (dungeon.view().kills || 0) : 0), level: (character.level || 1) };   // GATE F — run tally for the end screens (meta)
+      if (!v.tactics) v.tactics = townTactics();   // TACTICS HUD (R2): dungeon view supplies its own; town fills it here
       v.objective = sliceObjective();   // GATE 5 R3 — the slice goal, Bureau register, surfaced in the dossier
       v.background = character.background || null;                                  // GATE 6 — the declared identity (dossier)
       // CHARACTER E — the creation flow surface (staged). Feel-words only; the budget is a fraction (bar), never a number.
@@ -1474,6 +1510,8 @@ var TD_GAME = (function () {
       openDoorAuto: openDoorAuto, openDoorDir: openDoorDir, closeDoorAuto: closeDoorAuto, closeDoorDir: closeDoorDir, toggleAutoOpen: toggleAutoOpen,
       toggleInventory: toggleInventory, invSelect: invSelect, useSelected: useSelected, dropSelected: dropSelected, equipSelected: equipSelected,
       talkNearby: talkNearby,   // R2 — the 't' talk verb
+      cycleStance: cycleStance, setStance: function (k) { if (placeId === "DUNGEON" && dungeon && dungeon.setStance) { var r = dungeon.setStance(k); lastEvent = dungeon.view().lastEvent; return r; } var st = TD_RESOLVE.stanceByKey(k); if (st && st.key !== shared.stance) { shared.stance = st.key; logMsg(st.trade); } return { stance: shared.stance }; },
+      _stance: function () { return shared.stance; },
       // GATE 4 — town economy verbs (shop overlay, bank vault, RLD front-services)
       shopMove: shopMove, shopSetMode: shopSetMode, shopTransact: shopTransact, shopClose: shopClose,
       vaultDeposit: vaultDeposit, vaultWithdraw: vaultWithdraw, vaultClose: vaultClose,

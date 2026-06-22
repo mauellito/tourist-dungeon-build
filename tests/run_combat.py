@@ -93,6 +93,38 @@ try{
   var sure=0; for(var s2=0;s2<200;s2++){ var r2=T.read(obsHi,tgt,RNG.make(s2)); if(r2.sense.reliable) sure++; }
   ok('THE READ: high Intuition is reliable (SUBJ matches truth)', sure===200, sure+"/200 reliable");
 
+  // ---- TACTICS STANCE: biases HIT ONLY (acc as attacker, eva as defender); NEVER damage ----
+  ok('STANCE: five ordered stances Coward..Berserk, default Measured', T.STANCES.length===5 && T.STANCES.map(function(s){return s.key;}).join(',')==='coward,guarded,measured,pressing,berserk' && T.STANCE_DEFAULT==='measured');
+  ok('STANCE: Measured is the neutral middle (no acc/eva bias)', T.stanceByKey('measured').acc===0 && T.stanceByKey('measured').eva===0);
+  ok('STANCE: accuracy/evasion trade in OPPOSITE directions (honest trade)', T.stanceByKey('berserk').acc>0 && T.stanceByKey('berserk').eva<0 && T.stanceByKey('coward').acc<0 && T.stanceByKey('coward').eva>0);
+  // attacker: Berserk lands MORE than Coward against the same defender (acc up toward Berserk)
+  var swA={name:"s",base:10,type:"blade",acc:0};
+  function aSt(key){var f=T.fighter(st({dex:500}),swA); f.stance=T.stanceByKey(key); return f;}
+  var Dn=T.fighter(st({dex:500}),swA);
+  var pBerA=T.hit(aSt('berserk'),Dn,RNG.make(1)).p, pMeasA=T.hit(aSt('measured'),Dn,RNG.make(1)).p, pCowA=T.hit(aSt('coward'),Dn,RNG.make(1)).p;
+  ok('STANCE (attacker): Berserk lands more than Measured more than Coward', pBerA>pMeasA && pMeasA>pCowA, "coward/meas/berserk p "+pCowA.toFixed(2)+"/"+pMeasA.toFixed(2)+"/"+pBerA.toFixed(2));
+  // defender: a Coward is HARDER to hit than a Berserk (own evasion up toward Coward)
+  function dSt(key){var f=T.fighter(st({dex:500}),swA); f.stance=T.stanceByKey(key); return f;}
+  var pVsCow=T.hit(Dn,dSt('coward'),RNG.make(1)).p, pVsBer=T.hit(Dn,dSt('berserk'),RNG.make(1)).p;
+  ok('STANCE (defender): a Coward is harder to hit than a Berserk', pVsCow<pVsBer, "p vs coward/berserk "+pVsCow.toFixed(2)+"/"+pVsBer.toFixed(2));
+  // DAMAGE is untouched by stance (the firewall)
+  var dgA=T.fighter(st({might:600})); var dgD=T.fighter(st());
+  var dmgMeas=T.damage(dgA,dgD,null).damage; dgA.stance=T.stanceByKey('berserk'); var dmgBer=T.damage(dgA,dgD,null).damage;
+  ok('STANCE never touches DAMAGE (firewall)', dmgMeas===dmgBer, "meas="+dmgMeas+" berserk="+dmgBer);
+
+  // ---- FOOTING (HUD): NET evasion feel-word folding Dex + burden + stance ONCE (no parallel maths) ----
+  ok('FOOTING: five words Rooted..Slippery, returns a WORD with no digit', typeof T.footingReadout(T.fighter(st()))==='string' && !/[0-9]/.test(T.footingReadout(T.fighter(st()))));
+  var nimbleF=T.fighter(st({dex:900})), heavyF=T.fighter(st({dex:900}),null,T.GEAR.ARMOR.heavy);
+  var ix=function(w){return ["Rooted","Lumbering","Even","Nimble","Slippery"].indexOf(w);};
+  ok('FOOTING: heavy armour encumbrance worsens footing (folds the EXISTING evasion effect, not a parallel one)', ix(T.footingReadout(heavyF))<ix(T.footingReadout(nimbleF)), T.footingReadout(heavyF)+" < "+T.footingReadout(nimbleF));
+  var baseFt=T.fighter(st({dex:600})), cowFt=T.fighter(st({dex:600})); cowFt.stance=T.stanceByKey('coward');
+  var berFt=T.fighter(st({dex:600})); berFt.stance=T.stanceByKey('berserk');
+  ok('FOOTING: Coward stance shifts footing more evasive, Berserk less', ix(T.footingReadout(cowFt))>=ix(T.footingReadout(baseFt)) && ix(T.footingReadout(berFt))<=ix(T.footingReadout(baseFt)), T.footingReadout(cowFt)+" >= "+T.footingReadout(baseFt)+" >= "+T.footingReadout(berFt));
+  ok('FOOTING folds burden via the SINGLE-SOURCE applyBurdenEvasion (same as the dungeon path)', typeof T.applyBurdenEvasion==='function' && T.applyBurdenEvasion(T.GEAR.ARMOR.light,'strained').encumbrance>T.GEAR.ARMOR.light.encumbrance);
+  // PROTECTION reads the existing bulkReadout; HARD CHECK: tactics words carry NO digit/sign
+  ok('PROTECTION: armour bulk readout word (Unhindered..Encased), no digit', /^(Unhindered|Cushioned|Shelled|Encased)$/.test(T.protectionReadout(T.fighter(st(),null,T.GEAR.ARMOR.heavy))));
+  ok('HARD CHECK: no stance/footing/protection word contains a number or +/-', T.STANCES.every(function(s){return !/[0-9+\-]/.test(s.name);}) && !/[0-9+\-]/.test(T.footingReadout(heavyF)) && !/[0-9+\-]/.test(T.protectionReadout(heavyF)));
+
   // ---- determinism ----
   function seq(seed){var rng=RNG.make(seed),out=[];for(var i=0;i<8;i++){out.push(T.hit(A,D,rng).hit?1:0);out.push(T.damage(A,heavy,rng).damage);}return out.join(",");}
   ok('determinism: same seed -> identical hit+damage sequence', seq(42)===seq(42) && seq(42)!==seq(43));

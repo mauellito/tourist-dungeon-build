@@ -220,7 +220,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "894f44f8";</script>
+<script>window.__BUILD = "bda6c476";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -740,6 +740,12 @@ window.__initPlayMap = function () {
       (vw.money ? statrow("Coin", '<span id="sb-money" style="color:#d9c89a">' + escapeHTML(vw.money.label) + "</span>" + (vw.money.vault && vw.money.vault !== "0c" ? ' <span style="color:#8a7c66">· vault ' + escapeHTML(vw.money.vault) + "</span>" : "")) : "") +
       // GATE 5 R2 — an active affliction (poison) reads as a feel-word in the HUD
       ((vw.metabolism && vw.metabolism.afflict) ? statrow("Afflicted", '<span id="sb-afflict" style="color:' + P.dangerHigh + '">' + escapeHTML(vw.metabolism.afflict) + "</span>") : "") +
+      // TACTICS (combat-gate directive) — three FEEL-WORDS, always visible: chosen Stance, net Footing
+      // (Dex+burden+stance, folded once), armour Protection (bulkReadout). HARD CHECK: no number/+/- here.
+      (vw.tactics ? section("Tactics") +
+        statrow("Stance", '<span id="sb-stance" title="' + escapeHTML(vw.tactics.readout || "") + '" style="color:' + P.signal + '">' + escapeHTML(vw.tactics.stance) + "</span>") +
+        statrow("Footing", '<span id="sb-footing" style="color:#cdbf9f">' + escapeHTML(vw.tactics.footing || "—") + "</span>") +
+        statrow("Protection", '<span id="sb-protection" style="color:#cdbf9f">' + escapeHTML(vw.tactics.protection || "—") + "</span>") : "") +
       // GATE 9 (C) — the equipment paperdoll (all 11 slots) replaces the single Armour/Weapon readout.
       paperdoll(vw.equipment, vw.gear) +
       // GATE 4.1/6 — the declared IDENTITY + the ten-stat CONSTITUTION sheet (feel-words, digit-safe).
@@ -1180,6 +1186,9 @@ window.__initPlayMap = function () {
       e.preventDefault(); return;   // modal
     }
     if (k === "Tab") { e.preventDefault(); labelsOn = !labelsOn; draw(); return; }
+    // TACTICS — ONE key cycles the combat stance. FREE (no turn; foes don't act); the switch telegraphs its
+    // honest-trade line on the EVENT channel and the HUD's Stance/Footing update immediately.
+    if (k === "f") { e.preventDefault(); if (sim.cycleStance) sim.cycleStance(1); draw(); return; }
 
     if (vw.look && vw.look.active) {
       if (k === "Escape" || k === "l") { e.preventDefault(); sim.lookToggle(); draw(); return; }
@@ -1248,7 +1257,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Premium ASCII P3 — colour grammar: creatures coloured by threat band; town hues from tenant act (muted).";
+  var VERSION = "Tactics stance (F cycles, free) + defensive HUD — Stance/Footing/Protection feel-words; biases HIT only.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

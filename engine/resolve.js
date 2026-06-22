@@ -227,15 +227,66 @@ var TD_RESOLVE = (function () {
   var ENC_EV_PENALTY = 2.5;   // GATE 4 R2: armour encumbrance -> evasion penalty multiplier. Heavy (enc6) => -15 EV, enough to cancel even a high-Dex dodge: you pick light-and-dodge OR heavy-and-absorb, never both.
   function fighter(stats, weapon, armor) { return { stats: stats, weapon: weapon || GEAR.WEAPONS.longsword, armor: armor || GEAR.ARMOR.none }; }
 
+  // ===== BURDEN -> EVASION (single source). The carried-load band dulls evasion; both the dungeon
+  // controller and the town view fold it through HERE so there is never a parallel burden effect. The
+  // penalty is added to armour ENCUMBRANCE (which hit() already turns into evasion loss via ENC_EV_PENALTY).
+  var ENC_EVASION = { unencumbered: 0, laden: 2, strained: 5, overloaded: 9 };   // band -> evasion-dulling (PLACEHOLDER; unchanged from the live values)
+  function applyBurdenEvasion(armor, bandKey) {
+    var pen = ENC_EVASION[bandKey] || 0; if (!pen || !armor) return armor;
+    return { name: armor.name, robustness: armor.robustness, encumbrance: (armor.encumbrance || 0) + pen,
+             heavy: armor.heavy, crushTell: armor.crushTell, bulkReadout: armor.bulkReadout };
+  }
+
+  // ===== TACTICS STANCE — biases the HIT FUNCTION ONLY (attacker accuracy + own evasion), NEVER damage.
+  // 5 ordered stances; the controller owns the (free-switch) state and attaches the chosen stance to the
+  // player fighter. Magnitudes are NAMED PLACEHOLDERS for QB calibration. Bureau readout + the honest-trade
+  // telegraph line live with the data. FLAG: exact readout/trade wording awaits operator ruling text.
+  var STANCE_ACC = { guard: 6, full: 12 };   // PLACEHOLDER accuracy bias — one step / two steps off Measured
+  var STANCE_EVA = { guard: 6, full: 12 };   // PLACEHOLDER evasion bias — opposite sign to accuracy (the honest trade)
+  var STANCES = [
+    { key: "coward",   name: "Coward",   acc: -STANCE_ACC.full,  eva: +STANCE_EVA.full,
+      readout: "Self-Preservation Posture", trade: "You give all ground — you are struck hardly at all, and you land hardly at all." },
+    { key: "guarded",  name: "Guarded",  acc: -STANCE_ACC.guard, eva: +STANCE_EVA.guard,
+      readout: "Defensive Footing", trade: "You keep your guard up — you are struck less, and you land less." },
+    { key: "measured", name: "Measured", acc: 0, eva: 0,
+      readout: "Measured Engagement", trade: "You trade on even terms — neither pressing nor yielding." },
+    { key: "pressing", name: "Pressing", acc: +STANCE_ACC.guard, eva: -STANCE_EVA.guard,
+      readout: "Forward Pressure", trade: "You press the attack — you land more, and you are struck more." },
+    { key: "berserk",  name: "Berserk",  acc: +STANCE_ACC.full,  eva: -STANCE_EVA.full,
+      readout: "Total Abandon", trade: "You abandon all guard — you hit a great deal, and are hit a great deal." }
+  ];
+  var STANCE_DEFAULT = "measured";
+  function stanceByKey(k) { for (var i = 0; i < STANCES.length; i++) if (STANCES[i].key === k) return STANCES[i]; return STANCES[2]; }
+  function stanceIndex(k) { for (var i = 0; i < STANCES.length; i++) if (STANCES[i].key === k) return i; return 2; }
+
+  // FOOTING — the player's NET hard-to-hit feel-word, from the SAME terms hit() uses for a defender
+  // (Dex evasion - armour/burden encumbrance + stance), folded ONCE. Single net value, no parallel maths.
+  var FOOTING_WORDS = ["Rooted", "Lumbering", "Even", "Nimble", "Slippery"];   // ascending evasiveness
+  function netEvasion(f) {
+    var S = _S(); if (!S || !f) return 0;
+    return S.DERIVED.evasion(f.stats) - ((f.armor && f.armor.encumbrance) || 0) * ENC_EV_PENALTY + ((f.stance && f.stance.eva) || 0);
+  }
+  function footingReadout(f) {
+    var net = netEvasion(f), B = [-999, -16, -6, 3, 11], t = 0;
+    for (var i = 0; i < B.length; i++) if (net >= B[i]) t = i;   // PLACEHOLDER bands
+    return FOOTING_WORDS[t];
+  }
+  // PROTECTION — the existing armour bulk readout (Unhindered/Cushioned/Shelled/Encased).
+  function protectionReadout(f) {
+    if (f && f.armor && f.armor.bulkReadout) return f.armor.bulkReadout;
+    var rob = (f && f.armor && f.armor.robustness) || 0;
+    return rob >= 10 ? "Encased" : rob >= 6 ? "Shelled" : rob >= 3 ? "Cushioned" : "Unhindered";
+  }
+
   // HIT: gap = attacker accuracy - defender evasion. The roll is GAP-SCALED — a clear gap is reliable
   // (sigmoid saturates), a close gap is swingy (~50/50). Lucky adds its bounded +/-10% thumb. PLACEHOLDER.
   // opts.opening (first exchange): a POLEARM's reach lands an opening strike (acc bonus). Full
   // positioning (reach controlling spacing across the fight) is a LIVE HOOK for the spatial wire-in.
   function hit(att, def, rng, opts) {
     var S = _S(); if (!S) return { hit: true, p: 1, gap: 0 };
-    var acc = S.DERIVED.accuracy(att.stats) + ((att.weapon && att.weapon.acc) || 0);
+    var acc = S.DERIVED.accuracy(att.stats) + ((att.weapon && att.weapon.acc) || 0) + ((att.stance && att.stance.acc) || 0);   // STANCE: attacker accuracy bias (Berserk up / Coward down)
     if (opts && opts.opening && att.weapon && att.weapon.reach) acc += (att.weapon.opening || 0);   // polearm opening strike
-    var eva = S.DERIVED.evasion(def.stats) - ((def.armor && def.armor.encumbrance) || 0) * ENC_EV_PENALTY;   // GATE 4 R2: bulky armour dulls evasion HARD — no EV+AC stacking (heavy negates the dodge)
+    var eva = S.DERIVED.evasion(def.stats) - ((def.armor && def.armor.encumbrance) || 0) * ENC_EV_PENALTY + ((def.stance && def.stance.eva) || 0);   // GATE 4 R2: bulky armour dulls evasion HARD; STANCE: own evasion bias (Coward up / Berserk down)
     var gap = acc - eva;
     var p = 1 / (1 + Math.exp(-gap * 0.15));                       // PLACEHOLDER slope: clear gap -> reliable, gap~0 -> swingy
     p = Math.max(0.02, Math.min(0.98, p + S.luckyThumb(att.stats)));   // Lucky's universal thumb (+/-10% human)
@@ -471,7 +522,10 @@ var TD_RESOLVE = (function () {
 
   return {
     COMBAT: COMBAT, strike: strike, applyDamage: applyDamage, ttk: ttk, SG: SG,
-    GEAR: GEAR, fighter: fighter, hit: hit, damage: damage, read: read
+    GEAR: GEAR, fighter: fighter, hit: hit, damage: damage, read: read,
+    STANCES: STANCES, STANCE_DEFAULT: STANCE_DEFAULT, stanceByKey: stanceByKey, stanceIndex: stanceIndex,
+    ENC_EVASION: ENC_EVASION, applyBurdenEvasion: applyBurdenEvasion,
+    footingReadout: footingReadout, protectionReadout: protectionReadout, netEvasion: netEvasion
   };
 })();
 
