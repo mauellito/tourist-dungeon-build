@@ -24,7 +24,10 @@
 
   #game { display:flex; gap:16px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }   /* FIX: wrap the sidebar below on narrow windows */
   .stage { position:relative; flex:0 1 auto; max-width:100%; }
-  canvas { background:#07060a; border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); max-width:100%; height:auto; }   /* FIX: never force horizontal overflow */
+  /* R2 — the canvas fits the VIEWPORT: max-width caps width, max-height caps height (calc leaves room for the
+     header + controls bar above), and a replaced element with both maxes keeps its aspect → letterboxes to fit.
+     The whole layout (header + map + sidebar) stays on screen; nothing scrolls off the top. */
+  canvas { background:#07060a; border:2px solid var(--ink); display:block; image-rendering:pixelated; box-shadow:0 2px 0 rgba(0,0,0,.15); max-width:100%; max-height:calc(100vh - 140px); object-fit:contain; }
 
   aside#sidebar { flex:0 0 264px; display:flex; flex-direction:column; gap:8px; }   /* TOWN R3 — widened (~264px) so the relocated log + cue read in the right column (FLAG: tunable width) */
   /* a compact controls footer (moved out of the prime sidebar — not immediately actionable) */
@@ -210,7 +213,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "1032aaf";</script>
+<script>window.__BUILD = "dd54954";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -512,8 +515,9 @@ window.__initPlayMap = function () {
           // landmark is unmistakable against the bone-coloured ordinary walls.
           var cr = town && vw.churchRect;
           var bt = (town && vw.buildingTint) ? vw.buildingTint[k] : null;   // TOWN — this wall cell's owning-building category
-          if (cr && x >= cr[0] && x <= cr[2] && y >= cr[1] && y <= cr[3]) { bg = P.sanctifiedBg; glyph = "▓"; col = bright ? P.sanctified : dim(P.sanctified); }
-          else if (bt) { var bcol = (window.TD_UI && TD_UI.categoryColor) ? TD_UI.categoryColor(bt.cat) : P.wall; bg = darkTint(bcol, bt.shade); glyph = "#"; col = bright ? bcol : dim(bcol); }   // tint the MASS by tenant category
+          var fcol = (window.TD_UI && TD_UI.townTone) ? TD_UI.townTone("faith") : P.wall;
+          if (cr && x >= cr[0] && x <= cr[2] && y >= cr[1] && y <= cr[3]) { bg = darkTint(fcol, 0); glyph = "▓"; col = bright ? fcol : dim(fcol); }   // R1: church muted to the coherent set (its † + footprint still mark the landmark)
+          else if (bt) { var bcol = (window.TD_UI && TD_UI.townTone) ? TD_UI.townTone(bt.cat) : P.wall; bg = darkTint(bcol, bt.shade); glyph = "#"; col = bright ? bcol : dim(bcol); }   // tint the MASS by tenant category (muted)
           else { glyph = "#"; col = bright ? P.wall : P.wallDim; }
         }
         if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
@@ -774,6 +778,7 @@ window.__initPlayMap = function () {
   }
 
   function renderLegend() {
+    var TT = function (c) { return (window.TD_UI && TD_UI.townTone) ? TD_UI.townTone(c) : "#8a8378"; };
     legendEl.innerHTML =
       legRow("Move", "← ↑ ↓ → / Y U B N") +
       legRow("Numpad", "7 8 9 · 4 5 6 · 1 2 3") +
@@ -790,8 +795,9 @@ window.__initPlayMap = function () {
       "</div>" +
       // TOWN A — the building CATEGORY legend (each hue means one category; redundant with glyph + sign).
       "<hr><div class='glyphkey' id='townlegend'>" +
-        gk("■", P.civic, "civic") + gk("■", P.storefront, "commerce") + gk("■", P.food, "food / lodging") +
-        gk("■", P.vice, "vice / red-light") + gk("■", P.maritime, "maritime") +
+        // R1 — legend swatches read the MUTED town tones (match the map; no bright confetti)
+        gk("■", TT("civic"), "civic") + gk("■", TT("commerce"), "commerce") + gk("■", TT("food"), "food / lodging") +
+        gk("■", TT("vice"), "vice / red-light") + gk("■", TT("maritime"), "maritime") + gk("■", TT("faith"), "faith") +
       "</div>";
   }
   function legRow(k, keys) { return '<div class="row"><span>' + k + '</span><span class="keys">' + keys + "</span></div>"; }
@@ -1228,7 +1234,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Cache-buster auto-stamped; NPC chat wired; canon NPCs added; church enterable";
+  var VERSION = "Town — muted municipal palette; canvas fits the viewport (no top cutoff)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

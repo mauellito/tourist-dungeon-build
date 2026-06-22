@@ -240,13 +240,26 @@ var TD_UI = (function () {
     // everything else (store/apothecary/bodega/bookstore/fence/tailor/cobbler/barber/bakery/grocer/tattoo/blacksmith/gift…) = COMMERCE (warm tan)
   };
   var CATEGORY_COLOR = { civic: "civic", food: "food", vice: "vice", maritime: "maritime", commerce: "storefront", faith: "sanctified", lodging: "food" };
+  // TOWN palette (R1) — a RESTRAINED, DESATURATED, CLOSE-VALUED municipal set: the town reads as one
+  // coherent faded paint job, not a colour wheel. The GLYPH + door identify a building; this tint is only a
+  // soft background cue, so categories differ SUBTLY (a hint of hue, same low value). FLAG: tones tunable.
+  var TOWN_TONE = {
+    civic:     "#868d96",   // faded slate (cool grey)
+    commerce:  "#979080",   // faded tan (warm grey)
+    food:      "#9b9484",   // faded ochre-grey
+    lodging:   "#9b9484",
+    vice:      "#94858f",   // greyed mauve (not crimson)
+    maritime:  "#828f8c",   // greyed sea-grey
+    faith:     "#8b86a0"    // greyed lavender (church still reads via its † + footprint)
+  };
   function buildingCategory(id) { return BUILDING_KIND[id] || "commerce"; }   // commerce is the default frontage
-  function buildingColor(id) { return PALETTE[CATEGORY_COLOR[buildingCategory(id)] || "storefront"]; }
-  function categoryColor(cat) { return PALETTE[CATEGORY_COLOR[cat] || "storefront"]; }   // TOWN — a category's hue (for tinting building MASS, not just the front)
+  function townTone(cat) { return TOWN_TONE[cat] || TOWN_TONE.commerce; }     // TOWN — the muted tone for a category (mass tint + front glyph)
+  function buildingColor(id) { return townTone(buildingCategory(id)); }       // R1: fronts now read the MUTED tone (no confetti of bright letters)
+  function categoryColor(cat) { return townTone(cat); }                       // R1: building MASS tint uses the muted tone too
 
   return {
     PALETTE: PALETTE, CATEGORY_KEYS: CATEGORY_KEYS,
-    buildingCategory: buildingCategory, buildingColor: buildingColor, categoryColor: categoryColor,
+    buildingCategory: buildingCategory, buildingColor: buildingColor, categoryColor: categoryColor, townTone: townTone, TOWN_TONE: TOWN_TONE,
     autoExplore: autoExplore, stepToFrontier: stepToFrontier,
     labels: labels, threats: threats, moreGate: moreGate,
     Barker: Barker, BARK_LINES: BARK_LINES,
