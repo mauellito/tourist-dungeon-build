@@ -1569,6 +1569,7 @@ var TD_MAP = (function () {
       if (ctrl.node !== fromNode) shared.cameFrom[ctrl.node] = fromNode;
       if (d.type === "oneway") delete shared.cameFrom[ctrl.node];                                     // a one-way stair clicks shut: no return
       if (curLevel() > fromLevel && typeof TD_STATS !== "undefined" && TD_STATS.XP) awardXP(TD_STATS.XP.descentXP(curLevel()), "descend");   // XP beat for reaching a new floor
+      shared.deepest = Math.max(shared.deepest || 0, curLevel());   // GATE F — track the deepest floor reached (run tally)
       shared.turn += 1;
       buildView();
       return { opened: true, traversed: d.edgeId, recenter: true, won: ctrl.won, to: ctrl.node };

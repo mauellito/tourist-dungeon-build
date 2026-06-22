@@ -213,7 +213,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "c601bd0";</script>
+<script>window.__BUILD = "f3663a7";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1021,10 +1021,12 @@ window.__initPlayMap = function () {
     var pm = sim.postmortem();
     var doors = (pm.attributions || []).map(function (a) { return "<li>" + escapeHTML(a) + "</li>"; }).join("");
     var spatial = (pm.spatial || []).map(function (s) { return '<p style="color:#7a5c3a;font-style:italic">' + escapeHTML(s) + "</p>"; }).join("");
+    var tly = pm.tally ? '<div class="packtotal" style="margin:8px 0;padding-top:6px;border-top:1px solid #3a3324">Run tally — depth <b>' + pm.tally.depth + '</b> · kills <b>' + pm.tally.kills + '</b> · level <b>' + pm.tally.level + '</b></div>' : "";   // GATE F (meta numbers)
     overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">' + escapeHTML(pm.heading) + '</div>' +
       '<div class="ttl">' + escapeHTML(pm.title) + '</div>' +
       '<p>' + escapeHTML(pm.cause) + '</p>' + spatial +
       (doors ? '<div><b>Doors your choices closed:</b><ul>' + doors + '</ul></div>' : "") +
+      tly +
       '<div class="foot">' + escapeHTML(pm.footer) + '</div>' +
       '<p><button class="ctl" id="again">Begin a new character (the world remembers)</button> ' +
       '<button class="ctl" id="newd">A new dungeon</button></p></div></div>';
@@ -1047,9 +1049,12 @@ window.__initPlayMap = function () {
     document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
   }
   function showWin() {
+    var t = (sim.view().tally) || null;   // GATE F — the run tally on the victory screen (meta)
+    var tly = t ? '<div class="packtotal" style="margin:8px 0;padding-top:6px;border-top:1px solid #3a3324">Run tally — depth <b>' + t.depth + '</b> · kills <b>' + t.kills + '</b> · level <b>' + t.level + '</b></div>' : "";
     overlay.innerHTML = '<div class="scrim"><div class="panel win"><div class="head">Bureau of Visitor Outcomes</div>' +
-      '<div class="ttl">The One True Run is complete</div>' +
-      '<p>You have visited every required sight in a single life. The Bureau records this with restrained, municipal surprise.</p>' +
+      '<div class="ttl">VICTORY — you surveyed the deep and returned</div>' +
+      '<p>You reached the goal sublevel, survived, and climbed back into daylight. The Bureau records this with restrained, municipal surprise.</p>' +
+      tly +
       '<p><button class="ctl" id="again">Begin a new character</button> ' +
       '<button class="ctl" id="newd">A new dungeon</button></p></div></div>';
     document.getElementById("again").addEventListener("click", nextCharacter);
@@ -1216,7 +1221,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Gate E — consumables heal; antidote cures";
+  var VERSION = "Gate F — win + end screens; loop closes";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || 7);

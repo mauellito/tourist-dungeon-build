@@ -1372,6 +1372,7 @@ var TD_GAME = (function () {
       // emits words only, never numbers). Rebuilt each view so growth-by-deeds (crossed() words) shows live.
       v.stats = (typeof TD_STATS !== "undefined" && character && character.stats) ? TD_STATS.surface(character.stats) : null;
       v.progress = (typeof TD_STATS !== "undefined" && TD_STATS.xpReadout) ? TD_STATS.xpReadout(character) : null;   // R3 — level + XP-to-next bar (meta-UI)
+      v.tally = { depth: (shared.deepest || 0), kills: (dungeon ? (dungeon.view().kills || 0) : 0), level: (character.level || 1) };   // GATE F — run tally for the end screens (meta)
       v.objective = sliceObjective();   // GATE 5 R3 — the slice goal, Bureau register, surfaced in the dossier
       v.background = character.background || null;                                  // GATE 6 — the declared identity (dossier)
       // CHARACTER E — the creation flow surface (staged). Feel-words only; the budget is a fraction (bar), never a number.
@@ -1422,7 +1423,8 @@ var TD_GAME = (function () {
       if (character.events.anchorRejected) attributions.push("Your comfort preceded you (the Gilded Kraken, the spa); the Rusty Anchor's doorman declined the acquaintance.");
       var spatial = [];
       if (character.events.clicks.length) { var lvl = character.events.clicks[character.events.clicks.length - 1]; spatial.push("You heard the stair click shut on Level " + lvl + " and kept descending."); }
-      return { heading: "BUREAU OF VISITOR OUTCOMES", title: "Certificate of Conclusion", cause: cause, attributions: attributions, spatial: spatial, footer: "The Bureau thanks the deceased for his custom, such as it was." };
+      var tally = { depth: (shared.deepest || 0), kills: (dungeon ? (dungeon.view().kills || 0) : 0), level: (character.level || 1) };   // GATE F — the run tally (meta)
+      return { heading: "BUREAU OF VISITOR OUTCOMES", title: "Certificate of Conclusion", cause: cause, attributions: attributions, spatial: spatial, tally: tally, footer: "The Bureau thanks the deceased for his custom, such as it was." };
     }
     // GATE FIX — a new life rolls a random fallback (freshCharacter), then OPENS the creation flow up front
     // so the stat pool is reachable without hunting for the Agency. 'Skip' in the flow keeps the random roll.
