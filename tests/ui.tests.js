@@ -191,6 +191,111 @@ function TD_UI_TESTS() {
     eq(uniq.length, 6, "the six town categories own six distinct hues (faith added: the church landmark)");
   });
 
+  // ====== PREMIUM-ASCII RENDERER P1 — the tile-cell DATA CONTRACT ======
+  // deriveCell is pure: given real fields (terrain char, entity, explored/visible
+  // Sets, REVEAL) it returns the render contract, or null for an undiscovered cell.
+  var PV = Object.keys(TD_UI.PALETTE).map(function (k) { return TD_UI.PALETTE[k]; });
+  function inPalette(hex) { return PV.indexOf(hex) >= 0; }
+  function cell(o) { return TD_UI.deriveCell(o); }
+  function exV(keys) { return { has: function (k) { return keys.indexOf(k) >= 0; } }; }
+
+  test("P1: an UNDISCOVERED cell is unrendered (returns null)", function () {
+    var c = cell({ x: 5, y: 5, terrain: ".", player: { x: 5, y: 5 }, explored: exV([]), visible: exV([]) });
+    eq(c, null, "undiscovered → null");
+  });
+
+  test("P1: a DISCOVERED-but-not-visible cell is remembered (visible:false, light:0)", function () {
+    var c = cell({ x: 2, y: 2, terrain: ".", player: { x: 5, y: 5 }, explored: exV(["2,2"]), visible: exV([]) });
+    assert(c, "discovered → a cell");
+    eq(c.discovered, true, "discovered");
+    eq(c.visible, false, "not visible");
+    eq(c.light, 0, "remembered cell is unlit (drawn dim by the renderer)");
+  });
+
+  test("P1: a VISIBLE floor cell resolves glyph + PALETTE fg/bg (never literal hex)", function () {
+    var c = cell({ x: 4, y: 5, terrain: ".", player: { x: 5, y: 5 }, reveal: 4, explored: exV(["4,5"]), visible: exV(["4,5"]) });
+    eq(c.category, "floor", "floor category");
+    eq(c.glyph, ".", "live floor char kept (not silently reglyphed)");
+    eq(c.fg, TD_UI.PALETTE.floor, "fg is the PALETTE floor hue");
+    eq(c.bg, TD_UI.PALETTE.floorBg, "bg is the PALETTE floor-bg");
+    assert(inPalette(c.fg), "fg comes from PALETTE (colour discipline)");
+    assert(c.light > 0 && c.light <= 1, "a visible cell has light in (0,1]");
+  });
+
+  test("P1: light falls off by chebyshev distance and hits 0 at REVEAL", function () {
+    var P = { x: 5, y: 5 };
+    var near = cell({ x: 5, y: 5, terrain: ".", player: P, reveal: 4, explored: exV(["5,5"]), visible: exV(["5,5"]) });
+    var mid = cell({ x: 7, y: 5, terrain: ".", player: P, reveal: 4, explored: exV(["7,5"]), visible: exV(["7,5"]) });
+    var edge = cell({ x: 9, y: 5, terrain: ".", player: P, reveal: 4, explored: exV(["9,5"]), visible: exV(["9,5"]) });
+    eq(near.light, 1, "player tile is fully lit");
+    assert(mid.light > edge.light, "closer is brighter");
+    eq(edge.light, 0, "at distance == REVEAL the light is 0");
+  });
+
+  test("P1: the PLAYER cell — glyph @, category player, breathing pulse, full light", function () {
+    var c = cell({ x: 5, y: 5, terrain: ".", isPlayer: true, entity: { kind: "player", glyph: "@" },
+                   player: { x: 5, y: 5 }, explored: exV(["5,5"]), visible: exV(["5,5"]) });
+    eq(c.category, "player", "player category");
+    eq(c.glyph, "@", "player glyph");
+    eq(c.fg, TD_UI.PALETTE.player, "player gold");
+    eq(c.animState, "pulse", "breathing pulse");
+    eq(c.light, 1, "the player is fully lit");
+  });
+
+  test("P1: a HOSTILE creature carries its REAL band, band-derived hue, threat pulse — using only live fields", function () {
+    var brute = cell({ x: 6, y: 5, terrain: ".", entity: { glyph: "O", band: 5, kind: "ogre" },
+                       player: { x: 5, y: 5 }, explored: exV(["6,5"]), visible: exV(["6,5"]) });
+    eq(brute.category, "hostile", "hostile category");
+    eq(brute.glyph, "O", "live bestiary glyph kept, not overwritten");
+    eq(brute.threatBand, 5, "the REAL creature.band is surfaced as threatBand");
+    eq(brute.fg, TD_UI.PALETTE.dangerHigh, "band 5 → high-danger hue");
+    eq(brute.animState, "threat", "threat pulse (gated on band)");
+    var weak = cell({ x: 6, y: 6, terrain: ".", entity: { glyph: "r", band: 1, kind: "rat" },
+                      player: { x: 5, y: 5 }, explored: exV(["6,6"]), visible: exV(["6,6"]) });
+    eq(weak.fg, TD_UI.PALETTE.creature, "band 1 → base creature hue (distinct from a brute)");
+  });
+
+  test("P1: a FRIENDLY npc is not a threat (npc hue, no threatBand)", function () {
+    var c = cell({ x: 6, y: 5, terrain: ".", entity: { glyph: "p", friendly: true, kind: "npc", name: "Jimmy" },
+                   player: { x: 5, y: 5 }, explored: exV(["6,5"]), visible: exV(["6,5"]) });
+    eq(c.category, "npc", "npc category");
+    eq(c.fg, TD_UI.PALETTE.npc, "friendly tan");
+    eq(c.threatBand, undefined, "a friendly carries no threat band");
+  });
+
+  test("P1: a creature is NOT remembered where it's no longer visible (falls back to terrain)", function () {
+    var c = cell({ x: 6, y: 5, terrain: ".", entity: { glyph: "O", band: 5, kind: "ogre" },
+                   player: { x: 5, y: 5 }, explored: exV(["6,5"]), visible: exV([]) });
+    eq(c.visible, false, "not visible");
+    eq(c.category, "floor", "remembered tile shows terrain, not a ghost monster");
+    eq(c.glyph, ".", "the floor, not the ogre");
+  });
+
+  test("P1: water resolves to its PALETTE fg/bg pair", function () {
+    var c = cell({ x: 5, y: 6, terrain: "~", player: { x: 5, y: 5 }, explored: exV(["5,6"]), visible: exV(["5,6"]) });
+    eq(c.category, "water", "water");
+    eq(c.fg, TD_UI.PALETTE.waterGlyph, "water glyph hue");
+    eq(c.bg, TD_UI.PALETTE.water, "water bg");
+  });
+
+  test("P1: deriveCell accepts a real Set (not just an array) for explored/visible", function () {
+    var ex = new Set(["3,3"]), vis = new Set(["3,3"]);
+    var c = cell({ x: 3, y: 3, terrain: "#", player: { x: 3, y: 3 }, explored: ex, visible: vis });
+    eq(c.category, "stone", "wall → stone");
+    eq(c.fg, TD_UI.PALETTE.wall, "wall hue");
+  });
+
+  test("P1: EVERY colour deriveCell emits comes from PALETTE (Brogue colour discipline)", function () {
+    var cats = ["floor", "stone", "door", "exit", "water", "item", "nature", "fence", "unknown", "void", "npc", "player"];
+    var bandsOk = [1, 3, 5].every(function (b) { return inPalette(TD_UI.cellColors("hostile", b).fg); });
+    assert(bandsOk, "all band hues are PALETTE values");
+    var ok = cats.every(function (cat) {
+      var c = TD_UI.cellColors(cat);
+      return inPalette(c.fg) && (c.bg === null || inPalette(c.bg));
+    });
+    assert(ok, "every category's fg/bg is a PALETTE value or null");
+  });
+
   var pass = results.filter(function (r) { return r.ok; }).length;
   return { pass: pass, fail: results.length - pass, results: results };
 }

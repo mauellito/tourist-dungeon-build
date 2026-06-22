@@ -257,7 +257,93 @@ var TD_UI = (function () {
   function buildingColor(id) { return townTone(buildingCategory(id)); }       // R1: fronts now read the MUTED tone (no confetti of bright letters)
   function categoryColor(cat) { return townTone(cat); }                       // R1: building MASS tint uses the muted tone too
 
+  // ===================================================================
+  // PREMIUM-ASCII RENDERER — P1: the TILE-CELL DATA CONTRACT (DOM-free, testable).
+  // play-map.html draw() will CONSUME these (P2+); no game logic lives in render.
+  // Binds to REAL fields ONLY: terrain char, entity.glyph/.band/.kind/.friendly,
+  // the explored/visible Sets, and REVEAL. It never invents an absent field.
+  // ===================================================================
+
+  // Glyph vocabulary ONLY for objects that currently have NO live glyph. Live glyphs
+  // (bestiary creature.glyph, tenant glyphs, gen2 terrain chars) are AUTHORITATIVE and are
+  // NEVER overwritten here. FLAG (collisions with live terrain chars — the LIVE char wins,
+  // these premium forms are offered for a future P2 opt-in only): live stairs are "<"/">"
+  // (not ▲/▼), live floor is "." (not ·), live water is "~" (draw already upglyphs it to ≈),
+  // live door is "+"/"'" (matches). So ▲/▼/· here are vocabulary, not a silent reassignment.
+  var RENDER_GLYPHS = {
+    player: "@", doomDoor: "Ω", bureau: "§", shrine: "†", corpse: "☠", artifact: "◊",
+    marker: "⚑", water: "≈", ancientWall: "▓", rubble: "▒", dust: "░",
+    up: "▲", down: "▼", door: "+", floor: "·", alarm: "!", unknown: "?"
+  };
+  // terrain char -> semantic category (keys are the LIVE gen2/town chars; authoritative).
+  var TERRAIN_CAT = {
+    ".": "floor", "#": "stone", "=": "stone", "+": "door", "'": "door",
+    "<": "exit", ">": "exit", "~": "water", "?": "unknown", "$": "item",
+    "X": "void", "t": "nature", ":": "fence"
+  };
+  // category -> { fg, bg } resolved from PALETTE (NEVER a literal hex). P3 EXTENDS this map
+  // with the colour grammar (Bureau/Ancient/Corruption/Organic/Artifact) + finer band hues.
+  function cellColors(cat, band) {
+    var P = PALETTE;
+    switch (cat) {
+      case "player":  return { fg: P.player, bg: null };
+      case "hostile": return { fg: band >= 5 ? P.dangerHigh : band >= 3 ? P.dangerMed : P.creature, bg: null };
+      case "npc":     return { fg: P.npc, bg: null };
+      case "floor":   return { fg: P.floor, bg: P.floorBg };
+      case "stone":   return { fg: P.wall, bg: null };
+      case "door":    return { fg: P.door, bg: P.doorBg };
+      case "exit":    return { fg: P.door, bg: null };
+      case "water":   return { fg: P.waterGlyph, bg: P.water };
+      case "item":    return { fg: P.item, bg: null };
+      case "nature":  return { fg: P.nature, bg: null };
+      case "fence":   return { fg: P.fence, bg: null };
+      case "unknown": return { fg: P.senses, bg: null };
+      case "void":    return { fg: P.voidc, bg: P.voidc };
+      default:        return { fg: P.muted, bg: null };
+    }
+  }
+  function chebyshev(ax, ay, bx, by) { var dx = Math.abs(ax - bx), dy = Math.abs(ay - by); return dx > dy ? dx : dy; }
+  function inSet(s, k) { return s ? (s.has ? s.has(k) : s.indexOf(k) >= 0) : false; }   // accept a Set OR an array of keys
+
+  // Derive ONE cell's render contract from real world state. Returns null for an
+  // UNDISCOVERED cell (undiscovered = unrendered). Pure: no DOM, no globals touched.
+  // o = { x, y, terrain, entity?, player:{x,y}, reveal?, explored, visible, isPlayer?, justRevealed?, lowHealth? }
+  function deriveCell(o) {
+    var k = key(o.x, o.y);
+    if (!inSet(o.explored, k)) return null;                 // undiscovered → unrendered
+    var visible = inSet(o.visible, k);
+    var reveal = o.reveal || 4;
+    var ent = o.entity || null, terrain = o.terrain || "";
+    var cat, glyph, band = null, animState = null, entityId = null, terrainId = terrain || null;
+
+    if (ent && visible) {                                   // an entity shows ONLY where visible (no remembered monsters)
+      glyph = ent.glyph || RENDER_GLYPHS.unknown;
+      if (ent.kind === "player" || o.isPlayer) { cat = "player"; animState = "pulse"; }
+      else if (ent.friendly) { cat = "npc"; }
+      else { cat = "hostile"; band = ent.band || 1; animState = "threat"; }
+      entityId = ent.id || ent.name || ent.kind || null;
+    } else {                                                // bare terrain (or a remembered, no-longer-visible cell)
+      cat = TERRAIN_CAT[terrain] || (terrain ? "floor" : "unknown");
+      glyph = terrain || RENDER_GLYPHS.unknown;
+      if (glyph === RENDER_GLYPHS.artifact) animState = "shimmer";
+      else if (glyph === RENDER_GLYPHS.doomDoor) animState = "oscillate";
+      else if (glyph === RENDER_GLYPHS.corpse || glyph === RENDER_GLYPHS.dust) animState = "drift";
+    }
+    if (o.justRevealed) animState = "reveal";               // a tile entering memory this turn flares once
+    if (cat === "player" && o.lowHealth) animState = "warn"; // the low-health warning pulse rides the player glyph
+
+    var col = cellColors(cat, band);
+    // light: 1 at the player, falling to 0 at REVEAL; a remembered (not-visible) cell is unlit (drawn dim).
+    var light = visible ? Math.max(0, Math.min(1, 1 - chebyshev(o.x, o.y, o.player.x, o.player.y) / reveal)) : 0;
+    var cell = { x: o.x, y: o.y, glyph: glyph, category: cat, fg: col.fg, bg: col.bg,
+                 light: light, discovered: true, visible: visible, terrainId: terrainId, animState: animState };
+    if (entityId != null) cell.entityId = entityId;
+    if (band != null) cell.threatBand = band;
+    return cell;
+  }
+
   return {
+    RENDER_GLYPHS: RENDER_GLYPHS, TERRAIN_CAT: TERRAIN_CAT, cellColors: cellColors, deriveCell: deriveCell,
     PALETTE: PALETTE, CATEGORY_KEYS: CATEGORY_KEYS,
     buildingCategory: buildingCategory, buildingColor: buildingColor, categoryColor: categoryColor, townTone: townTone, TOWN_TONE: TOWN_TONE,
     autoExplore: autoExplore, stepToFrontier: stepToFrontier,
