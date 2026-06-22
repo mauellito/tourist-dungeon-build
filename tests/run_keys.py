@@ -273,6 +273,22 @@ F.onload = function(){
     ok('equipping armour PASSES TURNS (the clock advanced)', turnAfter>turnBefore, 'turn '+turnBefore+' -> '+turnAfter);
     if(view().invOpen) pk('i');
 
+    // ============================ GATE E: CONSUMABLES (heal + antidote cure) ============
+    var SIMc=win.__TD_SIM(), Mc=DUN._meters();
+    Mc.hp = Math.max(1, Math.round(Mc.hpMax*0.3));   // wounded
+    SIMc._shared().inventory.length=0;
+    SIMc._shared().inventory.push({kind:'tincture',glyph:'!',name:'a green tincture',weight:0.2,use:'heal',heal:45});
+    var hpLow=Mc.hp; pk('i');
+    var ge=0; while((view().invSel||0)!==0 && ge++<40){ pk('ArrowUp'); }
+    pk('u');   // use the highlighted tincture
+    ok('drinking a tincture RESTORES HP (generic use:heal hook)', Mc.hp>hpLow, 'hp '+hpLow+' -> '+Mc.hp);
+    if(view().invOpen) pk('i');
+    // antidote clears the Gate-C poison status
+    if(typeof win.TD_STATUS!=='undefined'){ win.TD_STATUS.apply(Mc,'poison',5);
+      SIMc._shared().inventory.length=0; SIMc._shared().inventory.push({kind:'antidote',glyph:'!',name:'an antidote vial',weight:0.2,use:'antidote'});
+      pk('i'); var ga=0; while((view().invSel||0)!==0 && ga++<40){ pk('ArrowUp'); } pk('u'); if(view().invOpen) pk('i');
+      ok('antidote CURES poison (clears the curable status)', !win.TD_STATUS.has(Mc,'poison')); }
+
     // ============================ DOORS: open / close (plain) ============
     var pn=floorNeighbor(); var pkk=pn.x+','+pn.y; DUN._addPlain(pn.x,pn.y);
     pk('o'); var vo=view();
