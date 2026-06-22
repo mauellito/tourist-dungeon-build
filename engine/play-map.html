@@ -220,7 +220,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "f2431821";</script>
+<script>window.__BUILD = "2eae5438";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -306,6 +306,7 @@ window.__initPlayMap = function () {
   function catColor(cat) { return cat === "item" ? P.item : cat === "creature" ? P.creature : cat === "signal" ? P.signal : P.door; }
 
   function urlSeed() { var m = /[?&]seed=(\d+)/.exec(location.search); return m ? parseInt(m[1], 10) : null; }
+  function randSeed() { return Math.floor(Math.random() * 1e6) + 1; }   // a FRESH world (UI shell only — never the testable core); same as the reroll button
 
   function newGame(seed) {
     world = TD_GEN.generate(seed, { depth: 6 });   // GATE 5: the vertical slice is a 6-floor dive (uses the generator's existing depth opt; was the 3-4 default)
@@ -1057,7 +1058,7 @@ window.__initPlayMap = function () {
       '<p><button class="ctl" id="again">Begin a new character (the world remembers)</button> ' +
       '<button class="ctl" id="newd">A new dungeon</button></p></div></div>';
     document.getElementById("again").addEventListener("click", nextCharacter);
-    document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
+    document.getElementById("newd").addEventListener("click", function () { newGame(randSeed()); });   // a player gets a FRESH world (the seed box + regen stay for deliberate reproduction)
   }
   function showExitPrompt(vw) {
     overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">Bureau of Visitor Outcomes</div>' +
@@ -1072,7 +1073,7 @@ window.__initPlayMap = function () {
       '<p><button class="ctl" id="again">Arrive again (a new character)</button> ' +
       '<button class="ctl" id="newd">A new dungeon</button></p></div></div>';
     document.getElementById("again").addEventListener("click", nextCharacter);
-    document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
+    document.getElementById("newd").addEventListener("click", function () { newGame(randSeed()); });   // a player gets a FRESH world (the seed box + regen stay for deliberate reproduction)
   }
   function showWin() {
     var t = (sim.view().tally) || null;   // GATE F — the run tally on the victory screen (meta)
@@ -1084,7 +1085,7 @@ window.__initPlayMap = function () {
       '<p><button class="ctl" id="again">Begin a new character</button> ' +
       '<button class="ctl" id="newd">A new dungeon</button></p></div></div>';
     document.getElementById("again").addEventListener("click", nextCharacter);
-    document.getElementById("newd").addEventListener("click", function () { newGame((parseInt(seedInput.value, 10) || 1) + 1); });
+    document.getElementById("newd").addEventListener("click", function () { newGame(randSeed()); });   // a player gets a FRESH world (the seed box + regen stay for deliberate reproduction)
   }
 
   function renderDebug() {
@@ -1254,13 +1255,13 @@ window.__initPlayMap = function () {
   });
   window.addEventListener("resize", function () { if (sim) draw(); });   // re-fit the responsive map to the window
   document.getElementById("regen").addEventListener("click", function () { newGame(parseInt(seedInput.value, 10) || 1); });
-  document.getElementById("reroll").addEventListener("click", function () { newGame(Math.floor(Math.random() * 1e6) + 1); });
+  document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "Tactics stance (F cycles, free) + defensive HUD — Stance/Footing/Protection feel-words; biases HIT only.";
+  var VERSION = "Fresh-seed on new game (explicit ?seed= still reproduces) + shop pricing model (sell<buy, saturation).";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
-  newGame(urlSeed() || 7);
+  newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
   if (location.hash.indexOf("#sg") === 0 && typeof TD_SMASHGRAB !== "undefined") {   // dev hook: auto-enter the §24 fun-test for render checks
     sgEnter();
     if (location.hash === "#sgrun") {   // #sgrun: script a mid-chase (grab + a few flee steps) so the collapse renders

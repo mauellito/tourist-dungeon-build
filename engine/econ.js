@@ -65,10 +65,71 @@ var TD_ECON = (function () {
   }
   function servicePrice(id, reaction) { return applyReaction((typeof SERVICES[id] === "number") ? SERVICES[id] : 0, reaction); }
 
+  // ===================================================================
+  // SHOP-ECONOMY directive R1 — three ARCHETYPES + the offered-price model. ALL magnitudes below are
+  // NAMED PLACEHOLDERS for QB calibration. The SPREAD is STRUCTURAL: a sell offer is clamped strictly
+  // below the same item's buy price at the same shop, so no calibration can ever make sell >= buy.
+  //   offered = base × spread(buy|sell) × specialty-fit × saturation(category) × Appearance × Charm(sell)
+  // ===================================================================
+  var ARCH = {
+    // buyMul: what the player PAYS (>=1, at/above base). sellMul: what the player RECEIVES (a fraction).
+    // fitBonus/offFit: specialty-fit multiplier on a SELL. refusesOff: specialty turns away off-category.
+    specialty: { buyMul: 1.00, sellMul: 0.50, fitBonus: 1.15, offFit: 0.55, refusesOff: true,  haggle: true },
+    fence:     { buyMul: 1.20, sellMul: 0.30, fitBonus: 1.00, offFit: 1.00, refusesOff: false, haggle: true },   // universal, low, NEVER refuses
+    pawn:      { buyMul: 1.10, sellMul: 0.40, fitBonus: 1.00, offFit: 0.85, refusesOff: false, haggle: true, buyback: true }
+  };
+  // SATURATION — selling duplicates of a category floods it: each unit sold multiplies that category's
+  // per-unit price by SAT.decay (ratcheting to SAT.floor); it recovers by SAT.recover per turn-tick and
+  // SAT.perVisit when the player re-enters. State lives in the session (game.js); this is just the math.
+  var SAT = { decay: 0.85, floor: 0.30, recover: 0.02, perVisit: 0.5, start: 1.0 };
+  // APPEARANCE (baseline) + CHARM (sell/haggle) thumbs — a SMALL price nudge mapped from the 0..1000 stat.
+  function statThumb(v, lo, hi) { v = (v == null ? 500 : v); return lo + (hi - lo) * Math.max(0, Math.min(1, v / 1000)); }
+  function appearanceMul(stats) { return statThumb(stats && stats.appearance, 0.92, 1.08); }   // PLACEHOLDER band
+  function charmMul(stats) { return statThumb(stats && stats.charm, 0.92, 1.12); }              // PLACEHOLDER band (sell only)
+
+  // item -> coarse category (specialty shops trade ONE category; the fence trades all).
+  var ITEM_CAT = {
+    lantern: "outfitting", rope: "outfitting", torch: "outfitting", dagger: "outfitting", club: "outfitting", sling: "outfitting", buckler: "outfitting", sack: "outfitting", waterskin: "outfitting",
+    bandage: "apothecary", tincture: "apothecary", antidote: "apothecary", salve: "apothecary",
+    ration: "sundries", hotdog: "sundries", biscuit: "sundries", candle: "sundries", twine: "sundries",
+    book: "lore", map_scrap: "lore", ledger: "lore", pamphlet: "lore"
+  };
+  function itemCategory(item) { if (!item) return "misc"; if (item.cat) return item.cat; if (item.kind === "weapon" || item.kind === "armor") return "gear"; return ITEM_CAT[item.kind] || ITEM_CAT[item.id] || "misc"; }
+  function archOf(name) { return ARCH[name] || ARCH.specialty; }
+  function onCategory(shopCat, item) { return !shopCat || itemCategory(item) === shopCat; }
+  // a specialty shop REFUSES off-category; the fence (and pawn) NEVER refuse (no-sludge floor).
+  function shopRefuses(archName, shopCat, item) { var a = archOf(archName); return !!a.refusesOff && !onCategory(shopCat, item); }
+
+  // BUY: what the player pays (>= base; floored at 2 so the structural sell<buy holds even for trinkets).
+  function shopBuyOffer(item, archName, shopCat, stats) {
+    var a = archOf(archName);
+    return clampInt(Math.max(2, baseValue(item) * a.buyMul * appearanceMul(stats)));
+  }
+  // SELL: what the player receives. 0 if refused. Folds spread × fit × saturation × Appearance × Charm,
+  // then CLAMPED strictly below the buy price (the spread is structural, not tunable away).
+  function shopSellOffer(item, archName, shopCat, satLevel, stats) {
+    if (shopRefuses(archName, shopCat, item)) return 0;
+    var a = archOf(archName);
+    var fit = onCategory(shopCat, item) ? a.fitBonus : a.offFit;
+    var sat = (satLevel == null) ? 1 : Math.max(SAT.floor, satLevel);
+    var raw = baseValue(item) * a.sellMul * fit * sat * appearanceMul(stats) * charmMul(stats);
+    var offer = clampInt(Math.max(1, raw));
+    var buy = shopBuyOffer(item, archName, shopCat, stats);
+    return Math.max(1, Math.min(offer, buy - 1));   // STRUCTURAL spread: sell is ALWAYS at least 1 below buy
+  }
+  // saturation transitions: one sale floods the category; time/visits recover it toward SAT.start.
+  function satAfterSale(satLevel) { return Math.max(SAT.floor, ((satLevel == null) ? SAT.start : satLevel) * SAT.decay); }
+  function satRecover(satLevel, ticks) { return Math.min(SAT.start, ((satLevel == null) ? SAT.start : satLevel) + SAT.recover * (ticks || 1)); }
+  function satOnVisit(satLevel) { return Math.min(SAT.start, ((satLevel == null) ? SAT.start : satLevel) + SAT.perVisit); }
+
   return {
     COIN: COIN, PRICES: PRICES, BUYBACK: BUYBACK, SERVICES: SERVICES,
     value: value, mint: mint, setPurse: setPurse, coinCount: coinCount, canAfford: canAfford, spend: spend, credit: credit,
-    applyReaction: applyReaction, baseValue: baseValue, buyPrice: buyPrice, sellPrice: sellPrice, servicePrice: servicePrice
+    applyReaction: applyReaction, baseValue: baseValue, buyPrice: buyPrice, sellPrice: sellPrice, servicePrice: servicePrice,
+    // shop-economy R1 — archetypes + offered-price model + saturation math (state held by the session)
+    ARCH: ARCH, SAT: SAT, ITEM_CAT: ITEM_CAT, itemCategory: itemCategory, shopRefuses: shopRefuses,
+    shopBuyOffer: shopBuyOffer, shopSellOffer: shopSellOffer,
+    satAfterSale: satAfterSale, satRecover: satRecover, satOnVisit: satOnVisit, appearanceMul: appearanceMul, charmMul: charmMul
   };
 })();
 
