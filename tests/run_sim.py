@@ -52,13 +52,14 @@ try{
   // x loot|win (== lootPerLife). Both must be VIABLE (neither a trap nor trivial). If one route dominates on
   // value it is FLAGGED for a QB ruling — NOT auto-tuned — so this lock allows the current reality and only
   // catches degeneracy/catastrophic drift. (Measured: combat EV ~1.8x avoid; combat trades survival for loot.)
+  var vrep=TD_SIM.valueReport({N:Math.min(N,400), seeds:[1,2,3,4,5,6]}), vreport=TD_SIM.formatValue(vrep);   // PER-ROUTE VALUE report (printed below)
   var aRes=TD_SIM.runCombat({N:N,seed:SEED,route:'avoid'});
   var cG=cres.policies.greedy, aG=aRes.policies.greedy, evRatio=aG.ev?(cG.ev/aG.ev):0;
   ok('CLOSE-OUT: BOTH routes viable (neither a trap nor trivial)', cG.winRate>=0.30&&cG.winRate<=0.70 && aG.winRate>=0.65&&aG.winRate<=0.98 && cG.ev>0 && aG.ev>0, "combat surv "+(cG.winRate*100).toFixed(0)+"% / avoid surv "+(aG.winRate*100).toFixed(0)+"%");
   ok('CLOSE-OUT: value EV ratio combat:avoid in a sane range (FLAG: combat ~1.8x dominant -> QB ruling, not auto-tuned)', evRatio>=1.2&&evRatio<=2.6, "EV combat $"+cG.ev.toFixed(0)+" : avoid $"+aG.ev.toFixed(0)+" = "+evRatio.toFixed(2)+"x");
   ok('CLOSE-OUT: combat trades survival for loot (lower survival, higher loot|win than avoid)', cG.winRate<aG.winRate && cG.lootGivenWin>aG.lootGivenWin, "surv c<a "+(cG.winRate<aG.winRate)+", loot|win c>a "+(cG.lootGivenWin>aG.lootGivenWin));
 
-  o.textContent=report+"\n\n"+creport+"\n\n"+R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SIM fail="+fails;
+  o.textContent=report+"\n\n"+creport+"\n\n"+vreport+"\n\n"+R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SIM fail="+fails;
 }catch(e){o.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e);document.title="SIM harness_error";}})();</script>
 """.replace("__N__", N).replace("__SEED__", SEED)
 

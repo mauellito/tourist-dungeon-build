@@ -1,10 +1,12 @@
-// Tourist Dungeon — TD_SMASHGRAB [v5]: a THROWAWAY §24 fun-test (sibling of TD_CONTRAPTION, NOT
-// canon). As of GATE 1 this is a THIN STATEFUL WRAPPER: all the greed / weight / loot / collapse /
-// slab / escape RESOLUTION lives in the pure TD_RESOLVE.SG module (engine/resolve.js); this file
-// just holds the one live run's state for the browser host (play-map.html) and delegates every
-// rule to TD_RESOLVE. The headless balance sim drives TD_RESOLVE.SG directly with its own states.
+// Tourist Dungeon — TD_SMASHGRAB [v5]: the host wrapper for the §24 CHASM SET-PIECE (now CANON, not a
+// throwaway). A THIN STATEFUL WRAPPER: all the greed / weight / loot / collapse / slab / escape RESOLUTION
+// lives in the pure TD_RESOLVE.SG module (engine/resolve.js); this file holds the one live run's state for
+// the browser host (play-map.html) and delegates every rule to TD_RESOLVE. enter() flips the per-state
+// set-piece footrace rate (S.setpiece) — the dramatic chase. The headless balance sim drives TD_RESOLVE.SG
+// directly with its own (generic-rate) states.
 //
-// FIREWALL: placeholder pickups only — no monsters/traps/swimming/secret-doors/economy/real temple.
+// SCOPE: pedestals + loot + the collapse/slab footrace + the A/B pedestal CHOICE hook (the doom-door layer
+// reads sgChoice). Monsters/traps inside the floor stay firewalled until ruled.
 "use strict";
 
 var TD_SMASHGRAB = (function () {

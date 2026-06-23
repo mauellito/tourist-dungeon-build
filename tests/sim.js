@@ -288,8 +288,40 @@
     return L.join("\n");
   }
 
+  // PER-ROUTE VALUE REPORT (combat close-out): EXPECTED VALUE = survival x loot|win (== lootPerLife), per
+  // route (combat vs avoidance), across the gen2 +-20% size spread, per-seed. The bar is value-comparability:
+  // combat (lower survival / higher loot) and avoidance (higher survival / lower loot) should land COMPARABLE.
+  // If one route dominates on VALUE it is FLAGGED (a QB ruling) — never auto-tuned.
+  function valueReport(opts) {
+    opts = opts || {}; var N = opts.N || 600, seeds = opts.seeds || [1, 2, 3, 4, 5, 6, 7, 8];
+    var rows = [], cAgg = 0, aAgg = 0;
+    seeds.forEach(function (s) {
+      var C = runCombat({ N: N, seed: s, route: "combat" }).policies.greedy, A = runCombat({ N: N, seed: s, route: "avoid" }).policies.greedy;
+      cAgg += C.ev; aAgg += A.ev;
+      rows.push({ seed: s, combat: { surv: C.winRate, lootWin: C.lootGivenWin, ev: C.ev }, avoid: { surv: A.winRate, lootWin: A.lootGivenWin, ev: A.ev } });
+    });
+    var mc = cAgg / seeds.length, ma = aAgg / seeds.length, ratio = ma ? mc / ma : 0;
+    return { N: N, seeds: seeds, rows: rows, meanCombatEV: mc, meanAvoidEV: ma, ratio: ratio, dominant: ratio >= 1.5 ? "combat" : (ratio <= 0.67 ? "avoidance" : null) };
+  }
+  function formatValue(vr) {
+    var L = [];
+    L.push("PER-ROUTE EXPECTED VALUE = survival x loot|win, across the gen2 +-20% size spread (N=" + vr.N + "/seed, greedy)");
+    L.push(pad("seed", 6) + pad("COMBAT surv/loot|win/EV", 30) + pad("AVOID surv/loot|win/EV", 30) + "EV C:A");
+    L.push(new Array(74).join("-"));
+    vr.rows.forEach(function (r) {
+      L.push(pad(r.seed, 6) + pad(pct(r.combat.surv) + " / $" + r.combat.lootWin.toFixed(0) + " / $" + r.combat.ev.toFixed(0), 30)
+        + pad(pct(r.avoid.surv) + " / $" + r.avoid.lootWin.toFixed(0) + " / $" + r.avoid.ev.toFixed(0), 30)
+        + (r.avoid.ev ? (r.combat.ev / r.avoid.ev).toFixed(2) : "-"));
+    });
+    L.push(new Array(74).join("-"));
+    L.push("MEAN EV: combat $" + vr.meanCombatEV.toFixed(0) + "  vs  avoidance $" + vr.meanAvoidEV.toFixed(0) + "   ratio C:A = " + vr.ratio.toFixed(2) + "x");
+    L.push(vr.dominant ? ("VALUE FLAG: the " + vr.dominant.toUpperCase() + " route DOMINATES on value (~" + vr.ratio.toFixed(2) + "x) — QB ruling, NOT auto-tuned.")
+                       : "VALUE: routes are COMPARABLE (neither dominates).");
+    return L.join("\n");
+  }
+
   var API = { runAll: runAll, runPolicy: runPolicy, format: format, flagsFor: flagsFor, POLICIES: POLICIES, SIM: SIM,
-              runCombat: runCombat, formatCombat: formatCombat, SIM_C: SIM_C };
+              runCombat: runCombat, formatCombat: formatCombat, valueReport: valueReport, formatValue: formatValue, SIM_C: SIM_C };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   if (typeof window !== "undefined") window.TD_SIM = API;
 
