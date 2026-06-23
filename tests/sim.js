@@ -161,7 +161,8 @@
     CAUTIOUS_CAP: "laden",                                       // cautious stops short of this band (stays light)
     ENC_EVASION: { unencumbered: 0, laden: 2, strained: 5, overloaded: 9 },   // band -> extra evasion-dulling (placeholder)
     ENC_TEMPO:   { unencumbered: 0, laden: 0, strained: 1, overloaded: 2 },   // band -> extra foe blows (slower) (placeholder)
-    FLOOR_POOL: 120                                              // gen2 'worked' floors sampled for the walkable distribution
+    FLOOR_POOL: 120,                                             // gen2 'worked' floors sampled for the walkable distribution
+    AVOID_ENGAGE: 0.35                                          // AVOIDANCE route: fraction of encounters you can't slip past (sim overlay, NOT game data)
   };
   var B = (typeof TD_BURDEN !== "undefined") ? TD_BURDEN : (typeof require !== "undefined" ? require("../engine/burden.js") : null);
 
@@ -191,11 +192,10 @@
     var GEN2 = (typeof TD_GEN2 !== "undefined") ? TD_GEN2 : (typeof require !== "undefined" ? require("../engine/gen2.js") : null);
     if (!GEN2) throw new Error("balance sim needs TD_GEN2 — load engine/gen2.js");
     var pool = [];                                                // fixed seeds 1..POOL -> deterministic, captures per-floor variation
-    // RE-POINT (gen2 tune): the gen2 corridor-bias + size variation changed the floor. The forced-gauntlet
-    // DIFFICULTY FLOOR is the WORST case = the LARGEST floor = most foes, so the combat calibration samples
-    // the native 54x34 (fixedSize) — the hardest size. Live floors now vary DOWNWARD (43-54 wide) => fewer
-    // foes => EASIER => above the difficulty floor (the win-band thesis holds; flagged, no density change).
-    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked", fixedSize: true, maxSize: true }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
+    // COMBAT SIM FLOOR FIX (operator ruling): sample the NATIVE 54x34 (fixedSize, NO maxSize). The combat
+    // calibration is referenced to 54x34. (FLAG: the gen2 labyrinth pass rolls live size +-20% up to 65x41,
+    // so the absolute largest live floor is bigger than 54x34 — see the message; this is the agreed reference.)
+    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked", fixedSize: true }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
     _floorPool = pool; return pool;
   }
   function creatureFighter(kind) {
@@ -207,7 +207,7 @@
       armor: c.armor ? R.GEAR.ARMOR[c.armor] : R.GEAR.ARMOR.light
     };
   }
-  function oneCombatRun(rng, policy, dens, pool) {
+  function oneCombatRun(rng, policy, dens, pool, route) {
     var ps = SIM_C.PLAYER_STATS, pw = R.GEAR.WEAPONS.longsword, pa = R.GEAR.ARMOR.light;
     var php = (typeof TD_STATS !== "undefined") ? TD_STATS.DERIVED.hpMax(ps) : 100;
     var purse = { copper: 0, silver: 0, gold: 0 }, carried = [pw];   // armour's encumbrance is intrinsic (applied to evasion); loot weight is the burden
@@ -222,6 +222,10 @@
     function grab(h) { return policy === "greedy" ? true : policy === "cautious" ? (h.den === "gold") : rng.chance(0.5); }
     var rounds = 0, kills = 0, dead = false;
     for (var f = 0; f < nFoes && !dead; f++) {
+      // ROUTE: "combat" = the forced gauntlet (fight ALL foes, worst case). "avoid" = the avoidance-leaning
+      // route — in a corridor-dominant floor you slip PAST most encounters; only AVOID_ENGAGE of them corner
+      // you (sim overlay, NOT game data). Skipped foes cost no rounds/HP but their coin stretch is left behind.
+      if (route === "avoid" && !rng.chance(SIM_C.AVOID_ENGAGE)) continue;
       var cr = creatureFighter(rng.pick(kinds)), chp = cr.hp;
       var band = B ? B.compute(ps, carried, purse).band.key : "unencumbered";   // accrued purse weight bites THIS fight
       var enc = SIM_C.ENC_EVASION[band] || 0, tempo = SIM_C.ENC_TEMPO[band] || 0;
@@ -243,9 +247,9 @@
     var endBand = B ? B.compute(ps, carried, purse).band.key : "unencumbered";
     return { cause: dead ? "combat" : "survive", win: win, loot: loot, ttk: kills ? rounds / kills : null, kills: kills, walk: walk, nFoes: nFoes, band: endBand };
   }
-  function runCombatPolicy(policy, N, seed, dens, pool) {
+  function runCombatPolicy(policy, N, seed, dens, pool, route) {
     var rng = RNG.make(seed), runs = [];
-    for (var i = 0; i < N; i++) runs.push(oneCombatRun(rng, policy, dens, pool));
+    for (var i = 0; i < N; i++) runs.push(oneCombatRun(rng, policy, dens, pool, route));
     var wins = runs.filter(function (r) { return r.win; }).length;
     var ttks = runs.filter(function (r) { return r.ttk != null; }).map(function (r) { return r.ttk; });
     return { policy: policy, N: N, wins: wins, winRate: wins / N, ttkMean: mean(ttks), ttkMedian: median(ttks),
@@ -253,15 +257,15 @@
       avgWalk: mean(runs.map(function (r) { return r.walk; })), avgFoes: mean(runs.map(function (r) { return r.nFoes; })) };
   }
   function runCombat(opts) {
-    opts = opts || {}; var N = opts.N || 1000, seed = (opts.seed == null ? 1234 : opts.seed) >>> 0;
+    opts = opts || {}; var N = opts.N || 1000, seed = (opts.seed == null ? 1234 : opts.seed) >>> 0, route = opts.route || "combat";
     var dens = liveDensities(), pool = floorPool();
     var poolW = pool.map(function (p) { return p.w; }), poolArea = pool[0] ? pool[0].area : 0;
     var floorMeta = { W: pool[0] ? pool[0].W : 0, H: pool[0] ? pool[0].H : 0, area: poolArea, avgWalk: mean(poolW), walkPct: poolArea ? mean(poolW) / poolArea : 0, density: dens };
-    var bp = {}; POLICIES.forEach(function (p) { bp[p] = runCombatPolicy(p, N, seed, dens, pool); });
+    var bp = {}; POLICIES.forEach(function (p) { bp[p] = runCombatPolicy(p, N, seed, dens, pool, route); });
     var f = [];   // combat-model is combat-only by design (no collapse/slab) -> skip the single-death-cause flag; keep win-rate + greed-matters
     POLICIES.forEach(function (p) { var r = bp[p]; if (r.winRate > 0.95) f.push(p + ": win-rate " + pct(r.winRate) + " > 95% (trivial)"); if (r.winRate < 0.05) f.push(p + ": win-rate " + pct(r.winRate) + " < 5% (unwinnable)"); });
     if (Math.abs(bp.greedy.winRate - bp.cautious.winRate) < 0.05 && Math.abs(bp.greedy.lootPerLife - bp.cautious.lootPerLife) < 0.05 * (bp.cautious.lootPerLife || 1)) f.push("greed-doesn't-matter: greedy ≈ cautious");
-    return { N: N, seed: seed, sim: SIM_C, floor: floorMeta, policies: bp, flags: f };
+    return { N: N, seed: seed, route: route, sim: SIM_C, floor: floorMeta, policies: bp, flags: f };
   }
   function formatCombat(res) {
     var L = [];
