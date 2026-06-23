@@ -130,6 +130,14 @@ try{
   function seq(seed){var rng=RNG.make(seed),out=[];for(var i=0;i<8;i++){out.push(T.hit(A,D,rng).hit?1:0);out.push(T.damage(A,heavy,rng).damage);}return out.join(",");}
   ok('determinism: same seed -> identical hit+damage sequence', seq(42)===seq(42) && seq(42)!==seq(43));
 
+  // ====== SECTION G — Bureau-voice armour tiers (verbatim) + the effective-robustness accessor ======
+  var AR=T.GEAR.ARMOR;
+  ok('G: four tiers carry the Bureau tier NAME', AR.unarmored.bureauTier==='Attire As Presented' && AR.light.bureauTier==="Visitor's Padding (Issued)" && AR.medium.bureauTier==='Protective Equipment, Sanctioned' && AR.heavy.bureauTier==='Regulation Plate (Ceremonial)');
+  ok('G: verbatim WEAR lines', AR.unarmored.wear.indexOf('declines to endorse it')>=0 && AR.light.wear.indexOf('visitor specification')>=0 && AR.medium.wear.indexOf('discouraged from injury')>=0 && AR.heavy.wear.indexOf('furniture that walks')>=0);
+  ok('G: verbatim EXAMINE lines', AR.unarmored.examine.indexOf('strongly-worded letter')>=0 && AR.heavy.examine.indexOf('fears nothing but the hammer')>=0);
+  ok('G: verbatim STRUCK lines', AR.unarmored.struckFeel.indexOf('nothing between it and you')>=0 && AR.light.struckFeel.indexOf('eats the edge')>=0 && AR.medium.struckFeel.indexOf('skids off the shell')>=0 && AR.heavy.struckFeel.indexOf('rings the plate')>=0);
+  ok('G: armourVoice(robustness) maps the effective dial to the right tier', T.GEAR.armourVoice(0)===AR.unarmored && T.GEAR.armourVoice(3)===AR.light && T.GEAR.armourVoice(6)===AR.medium && T.GEAR.armourVoice(10)===AR.heavy);
+
   o.textContent=R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="COMBAT fail="+fails;
 }catch(e){o.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e);document.title="COMBAT harness_error";}})();</script>
 """

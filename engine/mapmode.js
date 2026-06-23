@@ -998,6 +998,9 @@ var TD_MAP = (function () {
                 ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: dmg2, kind: "taken" });
                 hurt(dmg2, cr);
                 crushTell(cr.fighter.weapon);                                  // R3 hook: impact vs tier-4 plate -> the shell gives inward
+                // SECTION G — the armour STRUCK-FEEL voice (verbatim per tier), as a SENSES tell on a landed
+                // blow. Throttled so it seasons rather than spams; the tier is the player's EFFECTIVE armour.
+                if (rng.chance(0.34) && pf2.armor && TD_RESOLVE.GEAR && TD_RESOLVE.GEAR.armourVoice) { var av = TD_RESOLVE.GEAR.armourVoice(pf2.armor.robustness || 0); if (av && av.struckFeel) senses(av.struckFeel, "seen", "OBJ"); }
                 envenom(cr);                                                   // GATE 5 R2: a poison-tagged foe leaves venom (antidote cures)
                 if (!ctrl.dead) logMsg(cap(cr.name) + " amends your itinerary.", lowHP());
               } else logMsg(cap(cr.name) + " lunges and misses.", false);

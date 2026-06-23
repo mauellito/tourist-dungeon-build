@@ -142,26 +142,28 @@ var TD_RESOLVE = (function () {
     // wear/examine/weightFeel/struckFeel strings are DRAFT in the municipal Bureau register, PENDING the
     // verbatim §2 text (data — swap in trivially when §2 lands). `name` kept for back-compat (combat/tests).
     ARMOR: {
-      unarmored: { tier: 1, name: "unarmoured", tierName: "your own clothes", bulkReadout: "Unhindered", robustness: 0, encumbrance: 0,
-        wear: "You go as you came — flattering no one, stopping nothing.",
-        examine: "Your own clothes. They stop nothing, but they are yours.",
+      // SECTION G — Bureau-voice armour tiers (VERBATIM operator ruling). The dial/mechanics are unchanged;
+      // bureauTier is the Bureau's name for the tier; wear/examine/struckFeel are the authored voice.
+      unarmored: { tier: 1, name: "unarmoured", tierName: "your own clothes", bureauTier: "Attire As Presented", bulkReadout: "Unhindered", robustness: 0, encumbrance: 0,
+        wear: "The Office notes your attire and declines to endorse it.",
+        examine: "Civilian dress. Bureau-permitted on sufferance. Offers the protection of a strongly-worded letter.",
         weightFeel: "nothing worth the mention",
-        struckFeel: "Nothing stands between you and the world; the world notices." },
-      light: { tier: 2, name: "padded leather", tierName: "padded leather", bulkReadout: "Cushioned", robustness: 3, encumbrance: 1,
-        wear: "You shrug into the padded leather, faintly damp and certain it has met worse than you.",
-        examine: "Quilted padding. It has stopped worse, and rather says so.",
+        struckFeel: "The blow finds you whole. There was nothing between it and you." },
+      light: { tier: 2, name: "padded leather", tierName: "padded leather", bureauTier: "Visitor's Padding (Issued)", bulkReadout: "Cushioned", robustness: 3, encumbrance: 1,
+        wear: "You are padded to visitor specification. Mind the smell; it is regulation.",
+        examine: "Issued liner. Will take the edge off a misfortune. Will not take the misfortune.",
         weightFeel: "a coat's worth, no more",
-        struckFeel: "The padding takes the blow and complains softly on your behalf." },
-      medium: { tier: 3, name: "mail", tierName: "mail", bulkReadout: "Shelled", robustness: 6, encumbrance: 3,
-        wear: "You buckle on the mail; the straps know their business better than you do.",
-        examine: "Mail — heavier promises, and it means to keep them.",
+        struckFeel: "The padding eats the edge. You feel it — only less." },
+      medium: { tier: 3, name: "mail", tierName: "mail", bureauTier: "Protective Equipment, Sanctioned", bulkReadout: "Shelled", robustness: 6, encumbrance: 3,
+        wear: "You are appropriately discouraged from injury. Move accordingly — slower.",
+        examine: "Sanctioned hardshell. The Office considers you protected and considerably less nimble. Both are correct.",
         weightFeel: "a steady, earned weight",
-        struckFeel: "The blow lands on steel and is told to wait its turn." },
-      heavy: { tier: 4, name: "plate", tierName: "plate", bulkReadout: "Encased", robustness: 10, encumbrance: 6,
-        wear: "You don the plate — heavy as an office you never applied for.",
-        examine: "Full plate. It encases you in someone's idea of safety.",
+        struckFeel: "Most of it skids off the shell. You keep your feet." },
+      heavy: { tier: 4, name: "plate", tierName: "plate", bureauTier: "Regulation Plate (Ceremonial)", bulkReadout: "Encased", robustness: 10, encumbrance: 6,
+        wear: "You are, for all paperwork purposes, furniture that walks. Blows will be referred to the plate.",
+        examine: "Full regalia. Turns the sword aside, and the corner also. Note: the plate fears nothing but the hammer.",
         weightFeel: "a serious, deliberate weight",
-        struckFeel: "The blow rings off the plate and the courtyard hears it.",
+        struckFeel: "The blow rings the plate and troubles you little — unless something heavy means to crush it.",
         crushTell: "you feel the shell give inward" }                                                               // VERBATIM (crush-tell)
     }
   };
@@ -222,6 +224,9 @@ var TD_RESOLVE = (function () {
   GEAR.armorPiece = armorPiece; GEAR.aggregate = aggregate; GEAR.startingSet = startingSet;
   // a single feel-word for total worn bulk (the dossier readout), matching the old four dial stops.
   GEAR.bulkWord = function (rob) { return rob <= 0 ? "Unhindered" : rob <= 4 ? "Cushioned" : rob <= 8 ? "Shelled" : "Encased"; };
+  // SECTION G — the Bureau-voice tier for an EFFECTIVE armour robustness (same dial thresholds as bulkWord),
+  // so the aggregated 11-slot loadout surfaces the right wear/examine/struckFeel/bureauTier.
+  GEAR.armourVoice = function (rob) { var A = GEAR.ARMOR; return rob <= 0 ? A.unarmored : rob <= 4 ? A.light : rob <= 8 ? A.medium : A.heavy; };
 
   function _S() { return (typeof TD_STATS !== "undefined") ? TD_STATS : null; }
   var ENC_EV_PENALTY = 2.5;   // GATE 4 R2: armour encumbrance -> evasion penalty multiplier. Heavy (enc6) => -15 EV, enough to cancel even a high-Dex dodge: you pick light-and-dodge OR heavy-and-absorb, never both.
