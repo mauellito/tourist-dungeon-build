@@ -483,6 +483,26 @@ var TD_MAP = (function () {
         }
       });
     }
+    // ARCHITECTURAL FEATURES R3 — the ONLY flavored lines per feature (seasoning, not theme). The hazard
+    // SENSES tell fires BEFORE the player commits (telegraph law: honest, seen/OBJ); the EXAMINE/entry line
+    // fires once on stepping into the feature room. Verbatim Bureau voice (operator ruling).
+    var FEATURE_VOICE = {
+      reward: { examine: "Stores the Office sealed and forgot. It would want these back — but the Office is not here, and you are." },
+      hazard: { examine: "Condemned. Bureau-permitted to no one.", senses: "The floor ahead reads wrong underfoot — the room holds its breath." },
+      bureau: { examine: "Lost Property. Unclaimed these many years; claimant presumed elsewhere. Finder: you." },
+      arena:  { examine: "An assembly hall, near as makes no difference. Room to swing — and room to be swung at." }
+    };
+    function rectDist(f, px, py) { var dx = Math.max(f.x - px, 0, px - (f.x + f.w - 1)), dy = Math.max(f.y - py, 0, py - (f.y + f.h - 1)); return Math.max(dx, dy); }
+    function emitFeatureTells() {
+      if (!inDungeon() || !ctrl.featureRooms) return;
+      var px = ctrl.player.x, py = ctrl.player.y;
+      ctrl.featureRooms.forEach(function (f) {
+        var v = FEATURE_VOICE[f.type]; if (!v) return;
+        var d = rectDist(f, px, py);
+        if (f.type === "hazard" && v.senses && !f._tele && d <= 1) { senses(v.senses, "seen", "OBJ"); f._tele = 1; }   // BEFORE commit (approaching)
+        if (!f._seen && d === 0) { logMsg(v.examine, false); f._seen = 1; }                                            // on entry (EVENT, Bureau register)
+      });
+    }
 
     // v2 (Jaquay) — sight is blocked by walls AND by CLOSED DOORS. A closed door is
     // inscrutable: you see its face but never what lies beyond it until it is opened.
@@ -1360,7 +1380,7 @@ var TD_MAP = (function () {
       if (onWater) logMsg("You wade in; it is slow going.", false);
       endTurn("step");
       if (onWater) endTurn("step");                      // WATER slows: the world gets an extra beat
-      emitSenses(); emitSecretTells();
+      emitSenses(); emitSecretTells(); emitFeatureTells();
       return { moved: true, dead: ctrl.dead, feature: f || undefined, item: it || undefined, water: onWater };
     }
 
@@ -1382,7 +1402,7 @@ var TD_MAP = (function () {
         if (f.id) ctrl.character.signalsSeen.add(f.id); if (f.kind) senses(f.text, f.kind, f.obj); else logMsg(f.text, false);
       }
       endTurn("sprint", true);   // high fatigue + hunger; the world does NOT act -> you gain a step on it
-      emitSenses(); emitSecretTells();
+      emitSenses(); emitSecretTells(); emitFeatureTells();
       return { moved: true, sprinted: true, dead: ctrl.dead };
     }
 
@@ -1750,6 +1770,8 @@ var TD_MAP = (function () {
       openDoorDir: openDoorDir, openDoorAuto: openDoorAuto, closeDoorDir: closeDoorDir, closeDoorAuto: closeDoorAuto,
       toggleAutoOpen: toggleAutoOpen, setAutoOpen: setAutoOpen, autoOpen: function () { return ctrl.autoOpenDoors; },
       cycleStance: cycleStance, setStance: setStance, _stance: function () { return ctrl.stance; },
+      _featureRooms: function () { return ctrl.featureRooms || []; }, _emitFeatureTells: function () { emitFeatureTells(); },   // R3 test hooks
+      _setPlayer: function (x, y) { ctrl.player.x = x; ctrl.player.y = y; },
       isDead: function () { return ctrl.dead; }, isComplete: function () { return ctrl.won; },
       // helpers for the town layer + tests
       _doors: function () { return ctrl.doors; },
