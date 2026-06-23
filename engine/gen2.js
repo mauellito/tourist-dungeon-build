@@ -92,6 +92,33 @@ function ensureConnected(G){
     if(!bp)return;carveX(G,bp.a[0],bp.b[0],bp.a[1]);carveY(G,bp.a[1],bp.b[1],bp.b[0]);
   }
 }
+// ARCHITECTURAL FEATURES (vaults-in-procedural): stamp ONE depth-selected, hand-authored feature into a
+// spare room. LAW-SAFE BY CONSTRUCTION (the live leak gate re-measures and reseeds anything that still
+// breaks): arena clears pillars; bureau/reward drop loot '$' (existing loot pipeline); hazard carves a
+// RECTANGULAR central chasm pit kept >=2 from every wall so a walkable ring survives (single region) and a
+// solid rect creates no floor-diagonal pinch. Records {type,rect,depth} flow out for telegraph/voice (R3).
+function roomHas(rm,p){return p && p.x>=rm.x && p.x<rm.x+rm.w && p.y>=rm.y && p.y<rm.y+rm.h;}
+function stampFeatureRoom(G,rm,r,type,depth){
+  function setFloor(x,y,ch){if(G[y]&&G[y][x]==='.')G[y][x]=ch;}
+  if(type==="arena"){ for(var y=rm.y+1;y<rm.y+rm.h-1;y++)for(var x=rm.x+1;x<rm.x+rm.w-1;x++)if(G[y][x]==='o')G[y][x]='.'; return; }
+  if(type==="bureau"){ var n=1+ri(r,0,1); for(var k=0;k<n;k++)setFloor(rm.x+1+ri(r,0,Math.max(0,rm.w-3)), rm.y+1+ri(r,0,Math.max(0,rm.h-3)), '$'); return; }
+  if(type==="hazard"){ for(var y=rm.y+2;y<=rm.y+rm.h-3;y++)for(var x=rm.x+2;x<=rm.x+rm.w-3;x++)setFloor(x,y,'X'); return; }   // central pit, walkable ring preserved
+  if(type==="reward"){ var pile=Math.min(4,1+Math.floor(depth/2)); for(var k=0;k<pile;k++)setFloor(rm.cx-1+(k%2), rm.cy-1+((k/2)|0), '$'); return; }   // FLAG: count is a depth proxy; real depth-scaled VALUES await the loot ruling
+}
+function stampFeatures(G,rooms,r,depth,stairs){
+  var feats=[]; depth=depth||1;
+  if(rooms.length<3) return feats;
+  if(r() > Math.min(0.9, 0.5+depth*0.06)) return feats;   // SPARSE: ~one per floor, depth-weighted; shallow floors often have none (contrast)
+  var cand=[]; for(var i=1;i<rooms.length;i++){var rm=rooms[i]; if(rm.w>=5&&rm.h>=4 && !roomHas(rm,stairs.up) && !roomHas(rm,stairs.down)) cand.push(rm);}
+  if(!cand.length) return feats;
+  var rm=cand[ri(r,0,cand.length-1)];
+  var pool=["bureau"];                                    // bureau (loot+flavor) fits any room; richer types need size + depth
+  if(rm.w>=6&&rm.h>=5){ pool.push("arena"); if(depth>=3)pool.push("hazard"); if(depth>=5)pool.push("reward"); }
+  var type=pool[ri(r,0,pool.length-1)];
+  stampFeatureRoom(G,rm,r,type,depth);
+  feats.push({type:type,x:rm.x,y:rm.y,w:rm.w,h:rm.h,cx:rm.cx,cy:rm.cy,depth:depth});
+  return feats;
+}
 function genWorked(W,H,r,roomCount,skin){
   var G=fill(W,H,'#'),rooms=[],tries=roomCount*60;
   function dim(){var t=r();if(t<0.12)return[ri(r,8,11),ri(r,6,8)];if(t<0.5)return[ri(r,5,7),ri(r,4,5)];return[ri(r,4,5),ri(r,3,4)];}   // R2: smaller rooms (corridors carry the floor)
@@ -127,7 +154,7 @@ function genWorked(W,H,r,roomCount,skin){
   ensureConnected(G);
   if(rooms.length){G[rooms[0].cy][rooms[0].cx]='@';var far=rooms[0],fd=-1;rooms.forEach(function(rr){var dd=Math.abs(rr.cx-rooms[0].cx)+Math.abs(rr.cy-rooms[0].cy);if(dd>fd){fd=dd;far=rr;}});G[far.cy][far.cx]='>';}
   addPillars(G,rooms,r);
-  return G;
+  return {grid:G, rooms:rooms};
 }
 function cleanDoors(G,r){
   var W=G[0].length,H=G.length,y,x;
@@ -312,7 +339,8 @@ function generateLevel(seed,opts){
     W=ri(r,Math.round(sz.W*0.8),Math.round(sz.W*1.2)); H=ri(r,Math.round(sz.H*0.8),Math.round(sz.H*1.2));   // TRUE +-20% around native (frame lifted: mapmode reads the real dims)
     rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H)));
   } else if(opts.maxSize){ W=Math.round(sz.W*1.2); H=Math.round(sz.H*1.2); rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H))); }   // sim worst case: the LARGEST floor (most foes)
-  if(grammar==='worked')G=genWorked(W,H,r,rooms,skin);
+  var rmList=null;
+  if(grammar==='worked'){var wk2=genWorked(W,H,r,rooms,skin); G=wk2.grid; rmList=wk2.rooms;}
   else if(grammar==='cave')G=genCave(W,H,r);
   else if(grammar==='spine')G=genSpine(W,H,r);
   else G=genWarren(W,H,r);
@@ -324,7 +352,10 @@ function generateLevel(seed,opts){
   for(y=0;y<H;y++)for(x=0;x<W;x++){if(G[y][x]==='@'){G[y][x]='<';up={x:x,y:y};}else if(G[y][x]==='>')down={x:x,y:y};}
   if(!up){for(y=0;y<H&&!up;y++)for(x=0;x<W;x++)if(G[y][x]==='.'){G[y][x]='<';up={x:x,y:y};break;}}
   if(!down&&up){var bd=-1;for(y=0;y<H;y++)for(x=0;x<W;x++)if(G[y][x]==='.'){var d=Math.abs(x-up.x)+Math.abs(y-up.y);if(d>bd){bd=d;down={x:x,y:y};}}if(down)G[down.y][down.x]='>';}
-  return {grid:G,w:W,h:H,up:up,down:down};
+  // FEATURES stamped AFTER stairs (so they avoid '<'/'>') — depth-selected, sparse, law-safe. The live leak
+  // gate (mapmode gen2Clean) re-measures the final grid and reseeds any feature that breaks leaks/regions/stairs.
+  var features=(rmList && grammar==='worked') ? stampFeatures(G,rmList,r,opts.depth||1,{up:up,down:down}) : [];
+  return {grid:G,w:W,h:H,up:up,down:down,features:features};
 }
 return { generateLevel: generateLevel, SIZES: SIZES, measure: measure };
 })();

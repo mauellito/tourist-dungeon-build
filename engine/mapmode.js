@@ -159,20 +159,21 @@ var TD_MAP = (function () {
   // (the "1 open corner = failure" law). We do NOT weaken the law; we gate the pipeline: reseed and
   // regenerate until TD_GEN2.measure says leaks===0 AND regions===1 AND both stairs exist, THEN render.
   // nextSeed() supplies fresh gen2 seeds (deterministic per node). Returns the level + _tries/_clean.
-  function gen2Clean(nextSeed) {
-    var last = null;
+  function gen2Clean(nextSeed, depth) {
+    var last = null, opts = depth ? { size: GEN2_OPTS.size, grammar: GEN2_OPTS.grammar, skin: GEN2_OPTS.skin, depth: depth } : GEN2_OPTS;
     for (var t = 0; t < GEN2_MAXTRY; t++) {
-      var cand = TD_GEN2.generateLevel(nextSeed() >>> 0, GEN2_OPTS);
+      var cand = TD_GEN2.generateLevel(nextSeed() >>> 0, opts);
       last = cand; cand._tries = t + 1;
-      var m = TD_GEN2.measure(cand.grid);
+      var m = TD_GEN2.measure(cand.grid);   // re-measures the FEATURE-stamped grid too: a feature that breaks a law is rejected + reseeded
       if (m.leaks === 0 && m.regions === 1 && cand.up && cand.down) { cand._clean = true; return cand; }
     }
     last._clean = false; return last;   // exhausted (should never happen live) — ship the last + caller logs
   }
-  function composeNodeGen2(seed, nodeKey, numDoors) {
+  function composeNodeGen2(seed, nodeKey, numDoors, depth) {
     if (typeof TD_GEN2 === "undefined") return null;
     var R = nodeRng(seed, nodeKey + ":g2");
-    var lvl = gen2Clean(function () { return R.int(1, 2000000000); });
+    depth = depth || 1;   // FEATURES are depth-selected (deeper bands unlock richer features). Passed from the call site (create() has the level; this fn is module-level, no `world` here).
+    var lvl = gen2Clean(function () { return R.int(1, 2000000000); }, depth);
     if (!lvl._clean) console.error("composeNodeGen2: NO clean floor in " + GEN2_MAXTRY + " tries (" + nodeKey + ") — the leak law could not be met; shipping last candidate");
     var src = lvl.grid, sw = lvl.w, sh = lvl.h;   // FRAME LIFTED: the floor is the gen2 grid's OWN size (~43..65 x 27..41), not a fixed 54x34
     var g = [], rawGrid = [], roomDoors = [], secrets = [], loot = [], nF = 0, ax = 0, ay = 0;
@@ -213,15 +214,16 @@ var TD_MAP = (function () {
       doorPts: (downStair ? [downStair] : []).concat(upStair ? [upStair] : []).concat(breadthCells),   // wired-exit list (compat)
       roomDoors: roomDoors, secrets: secrets, loot: loot, deadEnds: [],
       tag: "gen2", rooms: 0, roomList: [], corridorCells: 0,
-      corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: sw * sh ? nF / (sw * sh) : 0, source: "gen2", W: sw, H: sh
+      corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: sw * sh ? nF / (sw * sh) : 0, source: "gen2", W: sw, H: sh,
+      features: lvl.features || []   // ARCHITECTURAL FEATURES: depth-selected feature-room records {type,rect,depth} (geometry already in the grid via $/X)
     };
   }
-  function composeNode(seed, nodeKey, numDoors) {
+  function composeNode(seed, nodeKey, numDoors, depth) {
     // LIVE = TD_GEN2, rendered directly (no retrofit). gen2 is deterministic; composeNodeGen2 now GATES it
     // (reseed until the leak law + single-region + both-stairs hold), so the rendered floor is always clean.
     // If gen2 is absent: the test-only legacy carver (when a suite flips
     // TD_MAP.setLegacy(true)) else a LOUD console.error + an unmistakable debug floor (never a blob).
-    var a = composeNodeGen2(seed, nodeKey, numDoors);
+    var a = composeNodeGen2(seed, nodeKey, numDoors, depth);
     if (a) { asmTally.gen2++; asmTally.assembler++; return a; }
     asmTally.noGen2++;
     // TEST-ONLY: legacy-carver unit suites (run_architecture/run_map) flip TD_MAP.setLegacy(true) to
@@ -514,7 +516,7 @@ var TD_MAP = (function () {
       if (vd) { buildVaultView(vd); return; }
       var v = interp.view();
       var cl = curLevel();
-      var comp = composeNode(seed, ctrl.node, v.options.length);
+      var comp = composeNode(seed, ctrl.node, v.options.length, cl);   // pass depth so features are depth-selected
       var g = comp.grid, doors = {};
       // FRAME LIFTED: the controller adopts THIS floor's actual dimensions (gen2 now varies +/-20%, ~43..65 x
       // 27..41). All bounds/FOV/render/camera read W/H, so they track the live floor with no truncation.
@@ -580,6 +582,7 @@ var TD_MAP = (function () {
       (comp.secrets || []).forEach(function (s, i) { if (!doors[key(s.x, s.y)]) ctrl.secrets[key(s.x, s.y)] = { kind: SECK[i % SECK.length], found: false, tell: TELLV0[i % 3], gen: true }; });
       ctrl.player = { x: comp.spawn.x, y: comp.spawn.y };
       ctrl.composition = comp;
+      ctrl.featureRooms = comp.features || [];   // ARCHITECTURAL FEATURES — for the view (telegraph/voice wire in R3)
       // v2 (Jaquay) — MAP MEMORY: explored geometry persists per node across revisits
       // within a run (the node is deterministic, so the keys stay valid). Live LOS layers
       // on top at render; what you've seen stays remembered when you leave and return.
@@ -1661,7 +1664,7 @@ var TD_MAP = (function () {
       Object.keys(ctrl.features).forEach(function (k) { if (vis.has(k)) discoveries.push(ctrl.features[k].text); });
       var iv = interp.view();
       return {
-        w: W, h: H, phase: "dungeon",
+        w: W, h: H, phase: "dungeon", featureRooms: ctrl.featureRooms || [],
         // GATE 8 (B) — the metabolism state as FEEL-WORDS (hunger/fatigue/burden BAND, no numbers) PLUS the
         // INVENTORY-WEIGHT readout (object mass IS numeric-OK): the carried total in coin-mass + a stone label,
         // a second channel that sits BESIDE the burden feel-word. Derived from the same band weight.
@@ -1797,7 +1800,7 @@ var TD_MAP = (function () {
     setLegacy: function (b) { ALLOW_LEGACY = !!b; },
     // PART A sweep hook — run the SAME live leak-gate for one seed and return {grid,up,down,_tries,_clean}.
     // Used by tests/run_leakgate.py to prove 0 leaks / single region / both stairs across seeds 1..N.
-    _gen2Clean: function (seed) { var r = nodeRng((seed >>> 0) || 1, "leaksweep:g2"); return gen2Clean(function () { return r.int(1, 2000000000); }); },
+    _gen2Clean: function (seed, depth) { var r = nodeRng((seed >>> 0) || 1, "leaksweep:g2"); return gen2Clean(function () { return r.int(1, 2000000000); }, depth || 0); },
     _gen2Opts: GEN2_OPTS,
     // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
     CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_MIX: COIN_MIX

@@ -37,6 +37,16 @@ try{
   ok('PART A: GATED live floor — single region across seeds 1..'+N, gRegion===0, gRegion+' multi-region');
   ok('PART A: GATED live floor — both stairs across seeds 1..'+N, gStair===0, gStair+' missing-stair');
   ok('PART A: GATED gate is sound — no candidate exhausted the retry budget', maxTry>0, 'maxTries='+maxTry);
+  // FEATURES: re-run the gate at a DEEP depth (6) so the richest feature-rooms (hazard chasm pits, reward
+  // vaults) actually stamp, and confirm the FEATURE-STAMPED floor still obeys every law (the gate reseeds any
+  // feature that breaks one). Also confirm features actually appear (depth-weighted) across the sweep.
+  var fLeak=0,fRegion=0,fStair=0,withFeat=0,M=Math.min(N,600);
+  for(var s3=1;s3<=M;s3++){ var fl3=TD_MAP._gen2Clean(s3,6), m3=TD_GEN2.measure(fl3.grid);
+    if(m3.leaks>0)fLeak++; if(m3.regions!==1)fRegion++; if(!fl3.up||!fl3.down)fStair++; if((fl3.features||[]).length>0)withFeat++; }
+  ok('FEATURES: deep (depth 6) FEATURE-STAMPED floors hold leaks===0 across 1..'+M, fLeak===0, fLeak+' leaks');
+  ok('FEATURES: deep feature-stamped floors stay single region across 1..'+M, fRegion===0, fRegion+' multi-region');
+  ok('FEATURES: deep feature-stamped floors keep both stairs across 1..'+M, fStair===0, fStair+' missing-stair');
+  ok('FEATURES: features actually appear (sparse, depth-weighted) across 1..'+M, withFeat>0 && withFeat<M, withFeat+'/'+M+' floors carry a feature');
   R.push('');
   R.push('TABLE (seeds 1..'+N+', live params '+JSON.stringify(opts)+')');
   R.push('  BASELINE ungated : leaks='+bLeak+' ('+(100*bLeak/N).toFixed(2)+'%, first@seed '+firstLeak+') · regions!=1='+bRegion+' · stairless='+bStair);
