@@ -174,11 +174,11 @@ var TD_MAP = (function () {
     var R = nodeRng(seed, nodeKey + ":g2");
     var lvl = gen2Clean(function () { return R.int(1, 2000000000); });
     if (!lvl._clean) console.error("composeNodeGen2: NO clean floor in " + GEN2_MAXTRY + " tries (" + nodeKey + ") — the leak law could not be met; shipping last candidate");
-    var src = lvl.grid;
+    var src = lvl.grid, sw = lvl.w, sh = lvl.h;   // FRAME LIFTED: the floor is the gen2 grid's OWN size (~43..65 x 27..41), not a fixed 54x34
     var g = [], rawGrid = [], roomDoors = [], secrets = [], loot = [], nF = 0, ax = 0, ay = 0;
-    for (var y = 0; y < H; y++) {
+    for (var y = 0; y < sh; y++) {
       var row = [];
-      for (var x = 0; x < W; x++) {
+      for (var x = 0; x < sw; x++) {
         var c = (src[y] && src[y][x]) || "#";
         var out = GEN2_WALL[c] ? "#" : (c === "X") ? "X" : (c === "~") ? "~" : ".";   // walkable footprint preserved exactly
         row.push(out);
@@ -190,7 +190,7 @@ var TD_MAP = (function () {
       g.push(row); rawGrid.push(row.slice());
     }
     function isF(x, y) { return g[y] && g[y][x] === "."; }
-    var spawn = lvl.up ? { x: lvl.up.x, y: lvl.up.y } : { x: CX, y: CY };
+    var spawn = lvl.up ? { x: lvl.up.x, y: lvl.up.y } : { x: sw >> 1, y: sh >> 1 };
     // LEVEL TRANSITIONS use gen2's OWN stairs: descent = its down-stair, ascent = its up-stair.
     var downStair = lvl.down ? { x: lvl.down.x, y: lvl.down.y, kind: "down" } : null;
     var upStair = lvl.up ? { x: lvl.up.x, y: lvl.up.y, kind: "up" } : null;
@@ -198,12 +198,12 @@ var TD_MAP = (function () {
     // carved (operator ruling). gen2 invents no geometry for graph edges; the seam is flagged, not punched.
     var stairKeys = {}; if (downStair) stairKeys[downStair.x + "," + downStair.y] = 1; if (upStair) stairKeys[upStair.x + "," + upStair.y] = 1;
     var featDead = [];
-    for (var dy = 1; dy < H - 1; dy++) for (var dx = 1; dx < W - 1; dx++) { if (g[dy][dx] !== ".") continue; var fn = DIR4.filter(function (d) { return isF(dx + d[0], dy + d[1]); }); if (fn.length === 1) featDead.push({ x: dx, y: dy }); }
+    for (var dy = 1; dy < sh - 1; dy++) for (var dx = 1; dx < sw - 1; dx++) { if (g[dy][dx] !== ".") continue; var fn = DIR4.filter(function (d) { return isF(dx + d[0], dy + d[1]); }); if (fn.length === 1) featDead.push({ x: dx, y: dy }); }
     var seenB = {}, breadthCells = [];
     function addB(c) { var k = c.x + "," + c.y; if (!seenB[k] && !stairKeys[k] && !(c.x === spawn.x && c.y === spawn.y) && breadthCells.length < 16) { seenB[k] = 1; breadthCells.push({ x: c.x, y: c.y }); } }
     featDead.forEach(addB);
     if (breadthCells.length < 16) {
-      var fl = []; for (var y2 = 1; y2 < H - 1; y2++) for (var x2 = 1; x2 < W - 1; x2++) if (g[y2][x2] === "." && !seenB[x2 + "," + y2] && !stairKeys[x2 + "," + y2] && !(x2 === spawn.x && y2 === spawn.y)) fl.push([x2, y2]);
+      var fl = []; for (var y2 = 1; y2 < sh - 1; y2++) for (var x2 = 1; x2 < sw - 1; x2++) if (g[y2][x2] === "." && !seenB[x2 + "," + y2] && !stairKeys[x2 + "," + y2] && !(x2 === spawn.x && y2 === spawn.y)) fl.push([x2, y2]);
       fl.sort(function (a, b) { return (Math.abs(b[0] - spawn.x) + Math.abs(b[1] - spawn.y)) - (Math.abs(a[0] - spawn.x) + Math.abs(a[1] - spawn.y)); });
       for (var i = 0; i < fl.length && breadthCells.length < 16; i++) addB({ x: fl[i][0], y: fl[i][1] });
     }
@@ -213,7 +213,7 @@ var TD_MAP = (function () {
       doorPts: (downStair ? [downStair] : []).concat(upStair ? [upStair] : []).concat(breadthCells),   // wired-exit list (compat)
       roomDoors: roomDoors, secrets: secrets, loot: loot, deadEnds: [],
       tag: "gen2", rooms: 0, roomList: [], corridorCells: 0,
-      corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: nF / (W * H), source: "gen2"
+      corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: sw * sh ? nF / (sw * sh) : 0, source: "gen2", W: sw, H: sh
     };
   }
   function composeNode(seed, nodeKey, numDoors) {
@@ -516,6 +516,9 @@ var TD_MAP = (function () {
       var cl = curLevel();
       var comp = composeNode(seed, ctrl.node, v.options.length);
       var g = comp.grid, doors = {};
+      // FRAME LIFTED: the controller adopts THIS floor's actual dimensions (gen2 now varies +/-20%, ~43..65 x
+      // 27..41). All bounds/FOV/render/camera read W/H, so they track the live floor with no truncation.
+      W = (g[0] ? g[0].length : W); H = g.length || H; CX = W >> 1; CY = H >> 1;
       // Map each graph edge onto the GENERATOR'S OWN exits: level transitions take the down/up STAIR;
       // same-level breadth edges sit on existing floor cells (NEVER carved). No geometry is opened for
       // a graph edge. If a node has more exits than the floor offers, FLAG the seam — never punch.

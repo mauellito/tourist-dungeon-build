@@ -42,14 +42,36 @@ function carveConnect(G,a,b,r){
 // Each segment is an L (one bend); chained they read as a dog-legging corridor. fixLeaks() runs afterward
 // (in generateLevel) so the extra diagonal pinches a winding hall creates are still sealed (zero open corners).
 function windingConnect(G,a,b,r){
-  var W=G[0].length,H=G.length,pts=[{cx:a.cx,cy:a.cy}],segs=ri(r,1,2);
+  var W=G[0].length,H=G.length,pts=[{cx:a.cx,cy:a.cy}],segs=ri(r,2,3);   // R2: 2-3 jittered waypoints -> more bends, longer halls
   for(var i=1;i<=segs;i++){
     var t=i/(segs+1);
-    var mx=Math.round(a.cx+(b.cx-a.cx)*t)+ri(r,-6,6),my=Math.round(a.cy+(b.cy-a.cy)*t)+ri(r,-5,5);
+    var mx=Math.round(a.cx+(b.cx-a.cx)*t)+ri(r,-8,8),my=Math.round(a.cy+(b.cy-a.cy)*t)+ri(r,-7,7);
     pts.push({cx:Math.max(1,Math.min(W-2,mx)),cy:Math.max(1,Math.min(H-2,my))});
   }
   pts.push({cx:b.cx,cy:b.cy});
   for(var p=0;p<pts.length-1;p++)carveL(G,pts[p],pts[p+1],r);
+}
+// R2 — DEAD-END SPURS: winding corridor branches that start on existing floor and wander out to a dead end.
+// They add passage tiles (no rooms), deepening the maze. fixLeaks seals any pinches; ensureConnected keeps
+// one region (a spur is attached to the floor it springs from). Count scales with floor area.
+function carveSpurs(G,r){
+  var W=G[0].length,H=G.length,floor=[];
+  // would carving (x,y) to floor COMPLETE an all-floor 2x2? If so it reads as 'room', not corridor — skip,
+  // so spurs stay strictly 1-wide tendrils (counted as passage, raising the hallway:room ratio).
+  function makes2x2(x,y){for(var c=0;c<4;c++){var ox=(c&1)?-1:1,oy=(c&2)?-1:1;if(wk(G,x+ox,y)&&wk(G,x,y+oy)&&wk(G,x+ox,y+oy))return true;}return false;}
+  for(var y=2;y<H-2;y++)for(var x=2;x<W-2;x++)if(G[y][x]==='.')floor.push([x,y]);
+  if(!floor.length)return;
+  var n=Math.round(W*H/68);   // moderate dead-end tendrils — maze depth without a 1-tile grind
+  for(var s=0;s<n;s++){
+    var st=floor[ri(r,0,floor.length-1)],cx=st[0],cy=st[1],len=ri(r,6,14),dir=ri(r,0,3);
+    for(var k=0;k<len;k++){
+      if(r()<0.45)dir=ri(r,0,3);                                  // wander
+      var dx=(dir===2)?-1:(dir===3)?1:0, dy=(dir===0)?-1:(dir===1)?1:0;
+      var nx=cx+dx,ny=cy+dy; if(nx<1||nx>W-2||ny<1||ny>H-2)break;
+      if(G[ny][nx]==='#'){ if(makes2x2(nx,ny))break; G[ny][nx]='.'; }   // carve a 1-wide tendril; stop before it widens into a 2x2
+      cx=nx; cy=ny;
+    }
+  }
 }
 function addPillars(G,rooms,r){
   rooms.forEach(function(rm){
@@ -72,7 +94,7 @@ function ensureConnected(G){
 }
 function genWorked(W,H,r,roomCount,skin){
   var G=fill(W,H,'#'),rooms=[],tries=roomCount*60;
-  function dim(){var t=r();if(t<0.22)return[ri(r,9,14),ri(r,7,10)];if(t<0.65)return[ri(r,6,9),ri(r,5,7)];return[ri(r,4,5),ri(r,4,5)];}
+  function dim(){var t=r();if(t<0.12)return[ri(r,8,11),ri(r,6,8)];if(t<0.5)return[ri(r,5,7),ri(r,4,5)];return[ri(r,4,5),ri(r,3,4)];}   // R2: smaller rooms (corridors carry the floor)
   (function(){var lw=Math.min(13,Math.max(9,(W*0.24)|0)),lh=Math.min(8,Math.max(6,(H*0.24)|0));
     var lx=((W-lw)>>1)+ri(r,-3,3),ly=((H-lh)>>1)+ri(r,-2,2);lx=Math.max(1,Math.min(W-lw-2,lx));ly=Math.max(1,Math.min(H-lh-2,ly));
     for(var yy=ly;yy<ly+lh;yy++)for(var xx=lx;xx<lx+lw;xx++)G[yy][xx]='.';
@@ -100,6 +122,7 @@ function genWorked(W,H,r,roomCount,skin){
   }
   var patch=(skin==='flooded')?'~':(skin==='ruin')?'o':'X';
   rooms.forEach(function(rm){if(rm.w>=6&&rm.h>=5&&r()<0.15){var px=rm.x+1+ri(r,0,Math.max(0,rm.w-4)),py=rm.y+1+ri(r,0,Math.max(0,rm.h-3));for(var yy=py;yy<py+2&&yy<rm.y+rm.h-1;yy++)for(var xx=px;xx<px+2&&xx<rm.x+rm.w-1;xx++)if(G[yy]&&G[yy][xx]==='.')G[yy][xx]=patch;}});
+  carveSpurs(G,r);   // R2: dead-end corridor branches (maze depth) — attached to existing floor, sealed by fixLeaks, kept single-region by ensureConnected
   placeDoors(G,rooms);
   ensureConnected(G);
   if(rooms.length){G[rooms[0].cy][rooms[0].cx]='@';var far=rooms[0],fd=-1;rooms.forEach(function(rr){var dd=Math.abs(rr.cx-rooms[0].cx)+Math.abs(rr.cy-rooms[0].cy);if(dd>fd){fd=dd;far=rr;}});G[far.cy][far.cx]='>';}
@@ -273,7 +296,9 @@ function measure(G){
 
 // R1 (corridor bias): FEWER rooms per floor than before (28->18 at regular) so rooms are linked by real
 // halls, not shared walls — raising the passage:room ratio toward a labyrinth.
-var SIZES={suite:{W:28,H:18,rooms:8},regular:{W:54,H:34,rooms:22},large:{W:68,H:42,rooms:33}};
+// R2 (labyrinth): FEW rooms — most of the floor is corridor. Rooms are joined and threaded by long winding
+// halls + dead-end spurs (carveSpurs), pushing the hallway:room tile ratio past ~0.4:1.
+var SIZES={suite:{W:28,H:18,rooms:5},regular:{W:54,H:34,rooms:14},large:{W:68,H:42,rooms:20}};
 function generateLevel(seed,opts){
   opts=opts||{};var size=opts.size||'regular',grammar=opts.grammar||'worked',skin=opts.skin||'stone';
   var sz=SIZES[size]||SIZES.regular,r=mulberry32((seed>>>0)||1),G;
@@ -284,9 +309,9 @@ function generateLevel(seed,opts){
   // variation is DOWNWARD from 54x34; true +20% upward needs an (out-of-scope) mapmode frame read.
   var W=sz.W,H=sz.H,rooms=sz.rooms;
   if(!opts.fixedSize){
-    W=ri(r,Math.round(sz.W*0.8),sz.W); H=ri(r,Math.round(sz.H*0.8),sz.H);
+    W=ri(r,Math.round(sz.W*0.8),Math.round(sz.W*1.2)); H=ri(r,Math.round(sz.H*0.8),Math.round(sz.H*1.2));   // TRUE +-20% around native (frame lifted: mapmode reads the real dims)
     rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H)));
-  }
+  } else if(opts.maxSize){ W=Math.round(sz.W*1.2); H=Math.round(sz.H*1.2); rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H))); }   // sim worst case: the LARGEST floor (most foes)
   if(grammar==='worked')G=genWorked(W,H,r,rooms,skin);
   else if(grammar==='cave')G=genCave(W,H,r);
   else if(grammar==='spine')G=genSpine(W,H,r);

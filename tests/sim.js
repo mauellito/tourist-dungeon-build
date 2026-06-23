@@ -195,7 +195,7 @@
     // DIFFICULTY FLOOR is the WORST case = the LARGEST floor = most foes, so the combat calibration samples
     // the native 54x34 (fixedSize) — the hardest size. Live floors now vary DOWNWARD (43-54 wide) => fewer
     // foes => EASIER => above the difficulty floor (the win-band thesis holds; flagged, no density change).
-    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked", fixedSize: true }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
+    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked", fixedSize: true, maxSize: true }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
     _floorPool = pool; return pool;
   }
   function creatureFighter(kind) {
