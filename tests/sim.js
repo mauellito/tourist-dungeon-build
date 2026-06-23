@@ -191,7 +191,11 @@
     var GEN2 = (typeof TD_GEN2 !== "undefined") ? TD_GEN2 : (typeof require !== "undefined" ? require("../engine/gen2.js") : null);
     if (!GEN2) throw new Error("balance sim needs TD_GEN2 — load engine/gen2.js");
     var pool = [];                                                // fixed seeds 1..POOL -> deterministic, captures per-floor variation
-    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked" }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
+    // RE-POINT (gen2 tune): the gen2 corridor-bias + size variation changed the floor. The forced-gauntlet
+    // DIFFICULTY FLOOR is the WORST case = the LARGEST floor = most foes, so the combat calibration samples
+    // the native 54x34 (fixedSize) — the hardest size. Live floors now vary DOWNWARD (43-54 wide) => fewer
+    // foes => EASIER => above the difficulty floor (the win-band thesis holds; flagged, no density change).
+    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked", fixedSize: true }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
     _floorPool = pool; return pool;
   }
   function creatureFighter(kind) {

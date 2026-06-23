@@ -9,15 +9,19 @@ function ri(r,a,b){return a+Math.floor(r()*(b-a+1));}
 // ---------- grid helpers ----------
 function fill(W,H,ch){var g=[];for(var y=0;y<H;y++){var r=[];for(var x=0;x<W;x++)r.push(ch);g.push(r);}return g;}
 function inb(G,x,y){return y>=0&&y<G.length&&x>=0&&x<G[0].length;}
-var WALK={".":1,"+":1,"?":1,"$":1,"@":1,">":1,"~":1};
+var WALK={".":1,"+":1,"?":1,"$":1,"@":1,">":1,"<":1,"~":1};   // '<' (up-stair) IS walkable like '>' — without it measure() counted PHANTOM open corners at the up-stair (the live render walks it), making the leak gate reseed clean floors
 function wk(G,x,y){return inb(G,x,y)&&!!WALK[G[y][x]];}
 
 // ---------- WORKED ----------
 function carveX(G,x0,x1,y){var s=x1>x0?1:-1;for(var x=x0;x!==x1+s;x+=s)if(inb(G,x,y)&&G[y][x]==='#')G[y][x]='.';}
 function carveY(G,y0,y1,x){var s=y1>y0?1:-1;for(var y=y0;y!==y1+s;y+=s)if(inb(G,x,y)&&G[y][x]==='#')G[y][x]='.';}
+// Seal every diagonal pinch (open corner): two floor cells touching only at a corner, with both shared
+// orthogonal neighbours wall. Carving one of those neighbours to floor fills the pinch. A carve can birth a
+// new pinch, so iterate to a FIXED POINT (raised cap — the winding-corridor logic creates more pinches than
+// the old straight halls). ZERO open corners is a HARD guardrail, so this must converge to none.
 function fixLeaks(G){
   var W=G[0].length,H=G.length;
-  for(var iter=0;iter<8;iter++){var changed=false;
+  for(var iter=0;iter<40;iter++){var changed=false;
     for(var y=0;y<H-1;y++)for(var x=0;x<W;x++){
       if(x+1<W&&wk(G,x,y)&&wk(G,x+1,y+1)&&!wk(G,x+1,y)&&!wk(G,x,y+1)){G[y][x+1]='.';changed=true;}
       if(x-1>=0&&wk(G,x,y)&&wk(G,x-1,y+1)&&!wk(G,x-1,y)&&!wk(G,x,y+1)){G[y][x-1]='.';changed=true;}
@@ -32,6 +36,20 @@ function carveConnect(G,a,b,r){
   if(ox1>=ox0){var cx=ox1>ox0?ri(r,ox0,ox1):ox0;carveY(G,a.cy,b.cy,cx);if(wide&&cx+1<=ox1)carveY(G,a.cy,b.cy,cx+1);}
   else if(oy1>=oy0){var cy=oy1>oy0?ri(r,oy0,oy1):oy0;carveX(G,a.cx,b.cx,cy);if(wide&&cy+1<=oy1)carveX(G,a.cx,b.cx,cy+1);}
   else carveL(G,a,b,r);
+}
+// R1 — a WINDING corridor between two rooms: instead of one straight run or a single elbow, carve through
+// 1-2 jittered waypoints so the hall bends and wanders (longer passages, more turns -> labyrinth feel).
+// Each segment is an L (one bend); chained they read as a dog-legging corridor. fixLeaks() runs afterward
+// (in generateLevel) so the extra diagonal pinches a winding hall creates are still sealed (zero open corners).
+function windingConnect(G,a,b,r){
+  var W=G[0].length,H=G.length,pts=[{cx:a.cx,cy:a.cy}],segs=ri(r,1,2);
+  for(var i=1;i<=segs;i++){
+    var t=i/(segs+1);
+    var mx=Math.round(a.cx+(b.cx-a.cx)*t)+ri(r,-6,6),my=Math.round(a.cy+(b.cy-a.cy)*t)+ri(r,-5,5);
+    pts.push({cx:Math.max(1,Math.min(W-2,mx)),cy:Math.max(1,Math.min(H-2,my))});
+  }
+  pts.push({cx:b.cx,cy:b.cy});
+  for(var p=0;p<pts.length-1;p++)carveL(G,pts[p],pts[p+1],r);
 }
 function addPillars(G,rooms,r){
   rooms.forEach(function(rm){
@@ -76,7 +94,7 @@ function genWorked(W,H,r,roomCount,skin){
   rooms.forEach(function(rm){if(rm.landmark)return;if(rm.w>=6&&rm.h>=6&&r()<0.18){var cw=ri(r,2,(rm.w/2)|0),ch=ri(r,2,(rm.h/2)|0),corner=ri(r,0,3);var nx=(corner%2===0)?rm.x:rm.x+rm.w-cw,ny=(corner<2)?rm.y:rm.y+rm.h-ch;for(var yy=ny;yy<ny+ch;yy++)for(var xx=nx;xx<nx+cw;xx++)G[yy][xx]='#';}});
   if(rooms.length){
     var conn=[0],rest=[];for(var i=1;i<rooms.length;i++)rest.push(i);
-    while(rest.length){var best=null;conn.forEach(function(ci){rest.forEach(function(ti){var a=rooms[ci],b=rooms[ti],dd=Math.abs(a.cx-b.cx)+Math.abs(a.cy-b.cy);if(!best||dd<best.d)best={d:dd,from:ci,to:ti};});});carveConnect(G,rooms[best.from],rooms[best.to],r);conn.push(best.to);rest.splice(rest.indexOf(best.to),1);}
+    while(rest.length){var best=null;conn.forEach(function(ci){rest.forEach(function(ti){var a=rooms[ci],b=rooms[ti],dd=Math.abs(a.cx-b.cx)+Math.abs(a.cy-b.cy);if(!best||dd<best.d)best={d:dd,from:ci,to:ti};});});windingConnect(G,rooms[best.from],rooms[best.to],r);conn.push(best.to);rest.splice(rest.indexOf(best.to),1);}
     var loops=Math.max(1,Math.round(rooms.length*0.18)),made=0,lt=rooms.length*8;
     while(made<loops&&lt-->0){var a=ri(r,0,rooms.length-1),b=ri(r,0,rooms.length-1);if(a===b)continue;var A=rooms[a],B=rooms[b];var ox=Math.min(A.x+A.w-1,B.x+B.w-1)-Math.max(A.x,B.x),oy=Math.min(A.y+A.h-1,B.y+B.h-1)-Math.max(A.y,B.y),dd=Math.abs(A.cx-B.cx)+Math.abs(A.cy-B.cy);if((ox>=0||oy>=0)&&dd<Math.max(W,H)*0.5){carveConnect(G,A,B,r);made++;}}
   }
@@ -253,17 +271,30 @@ function measure(G){
     doors:cnt('+'),secrets:cnt('?'),loot:cnt('$'),pockets:pockets,pocketLoot:pocketLoot};
 }
 
-var SIZES={suite:{W:28,H:18,rooms:9},regular:{W:54,H:34,rooms:28},large:{W:68,H:42,rooms:42}};
+// R1 (corridor bias): FEWER rooms per floor than before (28->18 at regular) so rooms are linked by real
+// halls, not shared walls — raising the passage:room ratio toward a labyrinth.
+var SIZES={suite:{W:28,H:18,rooms:8},regular:{W:54,H:34,rooms:22},large:{W:68,H:42,rooms:33}};
 function generateLevel(seed,opts){
   opts=opts||{};var size=opts.size||'regular',grammar=opts.grammar||'worked',skin=opts.skin||'stone';
-  var sz=SIZES[size]||SIZES.regular,W=sz.W,H=sz.H,r=mulberry32((seed>>>0)||1),G;
-  if(grammar==='worked')G=genWorked(W,H,r,sz.rooms,skin);
+  var sz=SIZES[size]||SIZES.regular,r=mulberry32((seed>>>0)||1),G;
+  // R2 SIZE VARIATION: roll the floor dims within [-20%, native] (clamped to native; rooms scale with area)
+  // so footprints visibly vary run to run. FLAG: clamped to <= native because the live viewport
+  // (mapmode composeNodeGen2) reads a FIXED 54x34 frame — a larger grid would be truncated and break the
+  // single-region guardrail, and "touch gen2.js only" is a HARD guardrail (no mapmode frame change). So the
+  // variation is DOWNWARD from 54x34; true +20% upward needs an (out-of-scope) mapmode frame read.
+  var W=sz.W,H=sz.H,rooms=sz.rooms;
+  if(!opts.fixedSize){
+    W=ri(r,Math.round(sz.W*0.8),sz.W); H=ri(r,Math.round(sz.H*0.8),sz.H);
+    rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H)));
+  }
+  if(grammar==='worked')G=genWorked(W,H,r,rooms,skin);
   else if(grammar==='cave')G=genCave(W,H,r);
   else if(grammar==='spine')G=genSpine(W,H,r);
   else G=genWarren(W,H,r);
   if(skin==='ruin')applyRuin(G,r);if(skin==='flooded')applyFlood(G,r);
-  ensureConnected(G);if(typeof cleanDoors==='function')cleanDoors(G,r);fixLeaks(G);
+  ensureConnected(G);if(typeof cleanDoors==='function')cleanDoors(G,r);
   var got=plantSecretsFromDeadEnds(G,r,2);if(got<1)carveAlcoveAnywhere(G,r);
+  fixLeaks(G);   // AFTER the corridor logic AND the secret/alcove carving (both add floor) -> seals every pinch; stairs below add no new walkable, so they can't reopen one (and fixLeaks must precede them: it would overwrite a '<' which is non-WALK)
   var up=null,down=null,y,x;
   for(y=0;y<H;y++)for(x=0;x<W;x++){if(G[y][x]==='@'){G[y][x]='<';up={x:x,y:y};}else if(G[y][x]==='>')down={x:x,y:y};}
   if(!up){for(y=0;y<H&&!up;y++)for(x=0;x<W;x++)if(G[y][x]==='.'){G[y][x]='<';up={x:x,y:y};break;}}
