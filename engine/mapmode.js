@@ -52,7 +52,7 @@ var TD_MAP = (function () {
   var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
-  var CREATURE_DENSITY = 0.0041, COIN_DENSITY = 0.05;   // COMBAT CALIBRATION (Part B): 0.006->0.0041 (~5.1->~3.6 foes/floor) lands the FORCED-GAUNTLET worst case (greedy) in the signed-off 25-35% win-band on the live 54x34 floor. No enemy scaling. (Was 0.012 originally; GATE 3 halved to 0.006.)
+  var CREATURE_DENSITY = 0.0041, COIN_DENSITY = 0.05;   // COMBAT: FINAL at 0.0041 (no win-band — that was RETIRED). Combat is governed by both-routes-viable: forced-combat (lower survival/higher loot) vs avoidance (higher survival/lower loot) measured by per-route VALUE in the sim; density is not re-tuned to a survival %. No enemy scaling. (0.012 -> 0.006 GATE 3 -> 0.0041.)
   var GEAR_DENSITY = 0.004;   // GATE 2: weapon/armour drops per walkable cell (rare; a few per floor)
   // GATE 1.1 — coin heaps come in DENOMINATIONS so hoarding has weight. Canon: 25 coins/lb (denomination-
   // blind), 1g=10s=100c by VALUE — so all-gold is the lightest way to hold a value. The floor offers mostly
