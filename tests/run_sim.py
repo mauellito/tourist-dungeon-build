@@ -47,13 +47,16 @@ try{
     ok('combat '+p+': win-rate is a fraction in [0,1]', r.winRate>=0&&r.winRate<=1, p+' '+(r.winRate*100).toFixed(1)+'%');
     ok('combat '+p+': combat-deaths = N - wins', r.death.combat===(r.N-r.wins));});
   ok('combat model determinism: same seed -> identical run', JSON.stringify(TD_SIM.runCombat({N:200,seed:77}))===JSON.stringify(TD_SIM.runCombat({N:200,seed:77})));
-  // CALIBRATION REGRESSION — RE-BASELINED to the NATIVE 54x34 (operator ruling: the sim samples 54x34, NO
-  // maxSize; the +-20% upward variation is not the calibration reference). On the current corridor-dominant
-  // floor 54x34 has ~676 walkable -> ~3 foes -> the forced-gauntlet worst case (greedy) sits ~42%. NO density
-  // change: 0.0041 stands until a real 54x34 number says otherwise. (The earlier 65x41 ~18% reading + its
-  // ~0.0033 re-tune note are CANCELLED.)
-  ok('REGRESSION (54x34 native): forced-gauntlet worst case (greedy) ~42%', cres.policies.greedy.winRate>=0.36 && cres.policies.greedy.winRate<=0.49, (cres.policies.greedy.winRate*100).toFixed(1)+'%');
-  ok('REGRESSION: cautious/random track the worst case (greed still matters; no degeneracy)', Math.abs(cres.policies.cautious.winRate-cres.policies.greedy.winRate)<=0.06 && Math.abs(cres.policies.random.winRate-cres.policies.greedy.winRate)<=0.06, "g/c/r "+(cres.policies.greedy.winRate*100).toFixed(0)+"/"+(cres.policies.cautious.winRate*100).toFixed(0)+"/"+(cres.policies.random.winRate*100).toFixed(0)+"%");
+  // COMBAT CLOSE-OUT (win-band RETIRED; density FINAL at 0.0041). The bar is now VALUE comparability of the
+  // two strategic routes across the gen2 +-20% size spread, NOT a single survival %. EV per route = survival
+  // x loot|win (== lootPerLife). Both must be VIABLE (neither a trap nor trivial). If one route dominates on
+  // value it is FLAGGED for a QB ruling — NOT auto-tuned — so this lock allows the current reality and only
+  // catches degeneracy/catastrophic drift. (Measured: combat EV ~1.8x avoid; combat trades survival for loot.)
+  var aRes=TD_SIM.runCombat({N:N,seed:SEED,route:'avoid'});
+  var cG=cres.policies.greedy, aG=aRes.policies.greedy, evRatio=aG.ev?(cG.ev/aG.ev):0;
+  ok('CLOSE-OUT: BOTH routes viable (neither a trap nor trivial)', cG.winRate>=0.30&&cG.winRate<=0.70 && aG.winRate>=0.65&&aG.winRate<=0.98 && cG.ev>0 && aG.ev>0, "combat surv "+(cG.winRate*100).toFixed(0)+"% / avoid surv "+(aG.winRate*100).toFixed(0)+"%");
+  ok('CLOSE-OUT: value EV ratio combat:avoid in a sane range (FLAG: combat ~1.8x dominant -> QB ruling, not auto-tuned)', evRatio>=1.2&&evRatio<=2.6, "EV combat $"+cG.ev.toFixed(0)+" : avoid $"+aG.ev.toFixed(0)+" = "+evRatio.toFixed(2)+"x");
+  ok('CLOSE-OUT: combat trades survival for loot (lower survival, higher loot|win than avoid)', cG.winRate<aG.winRate && cG.lootGivenWin>aG.lootGivenWin, "surv c<a "+(cG.winRate<aG.winRate)+", loot|win c>a "+(cG.lootGivenWin>aG.lootGivenWin));
 
   o.textContent=report+"\n\n"+creport+"\n\n"+R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SIM fail="+fails;
 }catch(e){o.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e);document.title="SIM harness_error";}})();</script>

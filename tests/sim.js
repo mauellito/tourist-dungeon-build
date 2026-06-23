@@ -192,10 +192,10 @@
     var GEN2 = (typeof TD_GEN2 !== "undefined") ? TD_GEN2 : (typeof require !== "undefined" ? require("../engine/gen2.js") : null);
     if (!GEN2) throw new Error("balance sim needs TD_GEN2 — load engine/gen2.js");
     var pool = [];                                                // fixed seeds 1..POOL -> deterministic, captures per-floor variation
-    // COMBAT SIM FLOOR FIX (operator ruling): sample the NATIVE 54x34 (fixedSize, NO maxSize). The combat
-    // calibration is referenced to 54x34. (FLAG: the gen2 labyrinth pass rolls live size +-20% up to 65x41,
-    // so the absolute largest live floor is bigger than 54x34 — see the message; this is the agreed reference.)
-    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked", fixedSize: true }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
+    // COMBAT CLOSE-OUT: the win-band is RETIRED; the sim samples the ACTUAL live distribution — the gen2
+    // +-20% size spread (43..65 x 27..41, frame lifted). Density is FINAL at 0.0041. The bar is value-
+    // comparability of the two routes across this spread, not a single survival %.
+    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked" }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
     _floorPool = pool; return pool;
   }
   function creatureFighter(kind) {
@@ -252,8 +252,10 @@
     for (var i = 0; i < N; i++) runs.push(oneCombatRun(rng, policy, dens, pool, route));
     var wins = runs.filter(function (r) { return r.win; }).length;
     var ttks = runs.filter(function (r) { return r.ttk != null; }).map(function (r) { return r.ttk; });
+    var lpl = mean(runs.map(function (r) { return r.loot; }));   // EXPECTED VALUE per life = survival-weighted loot (0 on death)
+    var lgw = wins ? mean(runs.filter(function (r) { return r.win; }).map(function (r) { return r.loot; })) : 0;
     return { policy: policy, N: N, wins: wins, winRate: wins / N, ttkMean: mean(ttks), ttkMedian: median(ttks),
-      death: { combat: N - wins }, lootPerLife: mean(runs.map(function (r) { return r.loot; })),
+      death: { combat: N - wins }, lootPerLife: lpl, lootGivenWin: lgw, ev: lpl,   // ev == lootPerLife == survival x loot|win
       avgWalk: mean(runs.map(function (r) { return r.walk; })), avgFoes: mean(runs.map(function (r) { return r.nFoes; })) };
   }
   function runCombat(opts) {

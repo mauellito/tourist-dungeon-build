@@ -329,11 +329,10 @@ var SIZES={suite:{W:28,H:18,rooms:5},regular:{W:54,H:34,rooms:14},large:{W:68,H:
 function generateLevel(seed,opts){
   opts=opts||{};var size=opts.size||'regular',grammar=opts.grammar||'worked',skin=opts.skin||'stone';
   var sz=SIZES[size]||SIZES.regular,r=mulberry32((seed>>>0)||1),G;
-  // R2 SIZE VARIATION: roll the floor dims within [-20%, native] (clamped to native; rooms scale with area)
-  // so footprints visibly vary run to run. FLAG: clamped to <= native because the live viewport
-  // (mapmode composeNodeGen2) reads a FIXED 54x34 frame — a larger grid would be truncated and break the
-  // single-region guardrail, and "touch gen2.js only" is a HARD guardrail (no mapmode frame change). So the
-  // variation is DOWNWARD from 54x34; true +20% upward needs an (out-of-scope) mapmode frame read.
+  // SIZE VARIATION: roll the floor dims TRUE +-20% around native BOTH ways (regular -> ~43..65 x 27..41),
+  // rooms scale with area, so footprints visibly vary run to run. The frame is LIFTED: mapmode's
+  // composeNodeGen2 adopts the grid's actual dims (no fixed 54x34 read-frame), so larger floors render in
+  // full. fixedSize pins native 54x34 (sim reference); maxSize forces the +20% extreme.
   var W=sz.W,H=sz.H,rooms=sz.rooms;
   if(!opts.fixedSize){
     W=ri(r,Math.round(sz.W*0.8),Math.round(sz.W*1.2)); H=ri(r,Math.round(sz.H*0.8),Math.round(sz.H*1.2));   // TRUE +-20% around native (frame lifted: mapmode reads the real dims)
