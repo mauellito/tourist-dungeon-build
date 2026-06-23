@@ -47,6 +47,11 @@ try{
     ok('combat '+p+': win-rate is a fraction in [0,1]', r.winRate>=0&&r.winRate<=1, p+' '+(r.winRate*100).toFixed(1)+'%');
     ok('combat '+p+': combat-deaths = N - wins', r.death.combat===(r.N-r.wins));});
   ok('combat model determinism: same seed -> identical run', JSON.stringify(TD_SIM.runCombat({N:200,seed:77}))===JSON.stringify(TD_SIM.runCombat({N:200,seed:77})));
+  // CALIBRATION REGRESSION (Part B) — the FORCED-GAUNTLET worst case (greedy: heaviest carry -> worst
+  // evasion) must hold the signed-off WIN-BAND. Tightish bounds catch drift (the 11% regression or a runaway
+  // buff) without flaking. Density (TD_MAP.CREATURE_DENSITY) is the lever; do not loosen this bar.
+  ok('REGRESSION: forced-gauntlet WORST case (greedy) in the 25-35% win-band', cres.policies.greedy.winRate>=0.24 && cres.policies.greedy.winRate<=0.36, (cres.policies.greedy.winRate*100).toFixed(1)+'%');
+  ok('REGRESSION: better-played forced runs (cautious/random) also in-band, >= the worst case', cres.policies.cautious.winRate>=0.24 && cres.policies.cautious.winRate<=0.37 && cres.policies.random.winRate>=0.24 && cres.policies.random.winRate<=0.37 && cres.policies.cautious.winRate>=cres.policies.greedy.winRate-0.02, "g/c/r "+(cres.policies.greedy.winRate*100).toFixed(0)+"/"+(cres.policies.cautious.winRate*100).toFixed(0)+"/"+(cres.policies.random.winRate*100).toFixed(0)+"%");
 
   o.textContent=report+"\n\n"+creport+"\n\n"+R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SIM fail="+fails;
 }catch(e){o.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e);document.title="SIM harness_error";}})();</script>
