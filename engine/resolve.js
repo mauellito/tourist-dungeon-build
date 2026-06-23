@@ -338,7 +338,7 @@ var TD_RESOLVE = (function () {
       WEIGHT_PER_TREASURE: 2,  // each grabbed treasure adds this much LOAD
       SPRINT_THRESHOLD: 2,     // LOAD strictly above this => SPRINT disabled. Cautious can keep ONE treasure light.
       HEAVY_PACE: 1.165,       // ticks/move when over-loaded (vs 1 sprinting) — the weight-as-pressure term
-      COLLAPSE_SETPIECE: false,    // the chasm set-piece flips this true to use the strong footrace rate below
+      COLLAPSE_SETPIECE: false,    // GLOBAL default (the sim's calibrated runAll model). The LIVE §24 set-piece flips it PER-STATE (newState/enter set S.setpiece=true) so the canon floor uses the strong footrace rate WITHOUT disturbing the calibrated harness
       COLLAPSE_DELAY: 5.9,         // head-start before the edge advances — long enough that a clean run outpaces it
       COLLAPSE_RATE: 0.88,         // generic edge speed — catches runs that LOST TIME (a fight), not clean sprinters
       COLLAPSE_RATE_SETPIECE: 1.0, // strong footrace speed, reserved for the chasm/collapse set-piece only
@@ -394,12 +394,12 @@ var TD_RESOLVE = (function () {
         treas: TREAS.map(function (t, i) { return { x: t.x, y: t.y, taken: false, value: (TUNE.LOOT && TUNE.LOOT[i] != null) ? TUNE.LOOT[i] : (TREASVAL[t.x + "," + t.y] || 5) }; }),
         load: 0, score: 0, tripped: false, doorClosed: 0, carried: null, treasCarried: 0,
         passedSlab: false, dead: false, escaped: false, swallowed: false, fallenPending: null, runs: 0,
-        origin: null, dist: null
+        origin: null, dist: null, sgTook: null, sgChoice: null, setpiece: false
       };
     }
 
     function sealed(S) { return S.tripped && S.doorClosed >= TUNE.ESCAPE_TURNS; }
-    function frontier(S) { var rate = TUNE.COLLAPSE_SETPIECE ? TUNE.COLLAPSE_RATE_SETPIECE : TUNE.COLLAPSE_RATE; return S.tripped ? Math.max(0, (S.doorClosed - TUNE.COLLAPSE_DELAY)) * rate : -1; }
+    function frontier(S) { var rate = (S.setpiece || TUNE.COLLAPSE_SETPIECE) ? TUNE.COLLAPSE_RATE_SETPIECE : TUNE.COLLAPSE_RATE; return S.tripped ? Math.max(0, (S.doorClosed - TUNE.COLLAPSE_DELAY)) * rate : -1; }
     function distAt(S, x, y) { return S.dist ? S.dist[x + "," + y] : undefined; }
     function rubble(S, x, y) { if (!S.tripped || !S.dist) return false; var d = S.dist[x + "," + y]; return (d !== undefined) && d <= frontier(S); }
     function playerLead(S) { var d = distAt(S, S.player.x, S.player.y); return (d === undefined) ? 99 : (d - frontier(S)); }
@@ -460,7 +460,13 @@ var TD_RESOLVE = (function () {
       if (!a) return { got: false };
       if (S.carried) return { got: false, reason: "You can carry only one artifact through a collapse." };
       a.taken = true; S.carried = { id: a.id, name: a.name };
-      return { got: true, artifact: true, carried: S.carried, ev: trip(S) };
+      // R3 CHOICE HOOK (flagged placeholder for the doom-door layer): record which pedestal (A/B) was taken
+      // into the run state, with a stub { grabbed -> opensDoor, shutsDoor } the lattice reads later. The exact
+      // treasure->door PAIRS are an OPEN operator ruling (do not invent them). FLAG-DON'T-ASK: you can carry
+      // only ONE artifact, so "grab both" can't happen — the choice is structurally the single carried pedestal.
+      S.sgTook = a.id;
+      S.sgChoice = { grabbed: a.id, opensDoor: "SG_DOOR_" + a.id, shutsDoor: "SG_DOOR_" + (a.id === "A" ? "B" : "A"), pairsRuled: false };
+      return { got: true, artifact: true, carried: S.carried, took: a.id, choice: S.sgChoice, ev: trip(S) };
     }
 
     function move(S, dir) {
@@ -506,6 +512,7 @@ var TD_RESOLVE = (function () {
         collapse: { active: S.tripped, frontier: Math.round(frontier(S) * 100) / 100, origin: S.origin, lead: S.tripped ? playerLead(S) : null, proximity: S.tripped ? Math.max(0, Math.min(1, 1 - playerLead(S) / 8)) : 0 },
         rubble: function (x, y) { return rubble(S, x, y); }, dist: function (x, y) { return distAt(S, x, y); },
         load: S.load, score: S.score, treasCarried: S.treasCarried, sprintable: sprintable(S), passedSlab: S.passedSlab, carried: S.carried,
+        sgTook: S.sgTook, sgChoice: S.sgChoice,   // R3 — the recorded pedestal choice (A/B) + the flagged door stub the doom-door layer reads
         dead: S.dead, escaped: S.escaped, swallowed: S.swallowed, fallenPending: S.fallenPending, runs: S.runs
       };
     }

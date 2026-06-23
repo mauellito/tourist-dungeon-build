@@ -12,7 +12,7 @@ var TD_SMASHGRAB = (function () {
   var S = R.newState();
   var runs = 0;
 
-  function enter(n) { runs += 1; S = R.newState(); S.active = true; S.runs = runs; return { tell: R.tell(n) }; }
+  function enter(n) { runs += 1; S = R.newState(); S.active = true; S.runs = runs; S.setpiece = true; return { tell: R.tell(n) }; }   // CANON SET-PIECE: the live §24 uses the strong footrace rate (the calibrated sim harness keeps the generic rate)
   function leave() { if (S) S.active = false; }
   function active() { return !!(S && S.active); }
   function over() { return R.over(S); }

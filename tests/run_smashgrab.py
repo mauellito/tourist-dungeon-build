@@ -54,12 +54,25 @@ try{
   // ===== R1 SWALLOWED: the collapse catches a run that LOST TIME (post-calibration it does NOT chase a
   // clean sprinter — that is the demotion). Simulate a fight's time-cost (bump the tick clock, exactly
   // as the sim does) then flee: the death-edge overtakes -> SWALLOWED (crash), distinct from the slab. =====
-  SG.enter(2); v=SG.view();
+  SG.enter(2); SG._state().setpiece=false; v=SG.view();                    // the swallow MECHANIC is calibrated at the generic rate; test it there (the canon set-piece rate is asserted separately below)
   goTo(SG.view().arts[0].x, SG.view().arts[0].y); SG.get();                 // grab -> trip the collapse
   SG._state().doorClosed += 7;                                            // a fight ate your head-start (the edge is now at your heels)
   var caught=null; for(var z=0;z<60 && !SG.over();z++){ var r=flee(); if(r&&r.dead)caught=r; if(SG.over())break; }
   var vs=SG.view();
   ok('R1 SWALLOWED: a time-lost run is caught from behind by the collapse (crash cue)', vs.dead===true && vs.swallowed===true && !vs.escaped && caught && caught.sfx==='crash', "dead="+vs.dead+" swallowed="+vs.swallowed);
+
+  // ===== SET-PIECE PROMOTION (R1): the LIVE §24 (TD_SMASHGRAB.enter) flips the per-state set-piece flag, so
+  // its collapse advances FASTER than the demoted generic edge (the dramatic chase). =====
+  SG.enter(3); goTo(SG.view().arts[0].x, SG.view().arts[0].y); SG.get(); SG._state().doorClosed=10; var fSet=SG.view().collapse.frontier;
+  SG.enter(3); SG._state().setpiece=false; goTo(SG.view().arts[0].x, SG.view().arts[0].y); SG.get(); SG._state().doorClosed=10; var fGen=SG.view().collapse.frontier;
+  ok('R1 PROMOTION: the live set-piece collapse is the STRONG footrace (faster than the generic edge)', SG._state()&&fSet>fGen, "setpiece frontier "+fSet+" > generic "+fGen);
+
+  // ===== R3 CHOICE HOOK: grabbing a pedestal records which (A/B) into run state + a flagged door stub =====
+  SG.enter(4); var ped=SG.view().arts[0], gr=SG.get(); goTo(ped.x,ped.y); gr=SG.get();
+  var vc=SG.view();
+  ok('R3 CHOICE: the grabbed pedestal (A/B) is recorded in run state', (vc.sgTook==='A'||vc.sgTook==='B') && vc.sgTook===ped.id, "sgTook="+vc.sgTook+" pedestal="+ped.id);
+  ok('R3 CHOICE: a flagged door stub is wired (opens grabbed, shuts the other) for the doom-door layer', !!vc.sgChoice && vc.sgChoice.grabbed===vc.sgTook && vc.sgChoice.opensDoor.indexOf(vc.sgTook)>=0 && vc.sgChoice.shutsDoor.indexOf(vc.sgTook==='A'?'B':'A')>=0 && vc.sgChoice.pairsRuled===false, JSON.stringify(vc.sgChoice));
+  ok('R3 CHOICE: you carry only ONE pedestal — "grab both" cannot happen (choice is the single carried)', SG.get().got===false, "second grab refused");
 
   // ===== R2 LOOT THAT BITES: each $ scores; calibrated to FLAT values (greed-by-QUANTITY) =====
   SG.enter(3); v=SG.view();
