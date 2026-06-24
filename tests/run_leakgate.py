@@ -59,6 +59,9 @@ try{
     return (c.stairs||[]).length>0 && (c.stairs||[]).every(function(s){return seen[s.x+','+s.y];}); }
   types.forEach(function(t){ typeBad[t]={leak:0,region:0,stair:0,reach:0}; for(var s4=1;s4<=K;s4++){ var c=TD_MAP._composeType(t,s4), mm=TD_GEN2.measure(c.grid); if(mm.leaks>0)typeBad[t].leak++; if(mm.regions!==1)typeBad[t].region++; if(!c.upStair||!c.downStair)typeBad[t].stair++; if(!allStairsReachable(c))typeBad[t].reach++; } });
   types.forEach(function(t){ var b=typeBad[t]; ok('SECTION D: floor type '+t+' passes the leak-gate across 1..'+K+' (leaks=0/1 region/ALL stairs reachable)', b.leak===0&&b.region===0&&b.stair===0&&b.reach===0, JSON.stringify(b)); });
+  // R4 — deep STANDARD floors carry a flagged-stub CRMC (one-way OUT) connector at a dead-end (composeType uses depth 6).
+  var withConn=0; for(var s5=1;s5<=K;s5++){ var cc=TD_MAP._composeType('STANDARD',s5); if((cc.connectors||[]).some(function(c){return c.kind==='CRMC';}))withConn++; }
+  ok('SECTION D R4: deep STANDARD floors carry a CRMC dead-end connector (flagged stub)', withConn>0, withConn+'/'+K+' deep floors have a CRMC connector');
   R.push('');
   R.push('TABLE (seeds 1..'+N+', live params '+JSON.stringify(opts)+')');
   R.push('  BASELINE ungated : leaks='+bLeak+' ('+(100*bLeak/N).toFixed(2)+'%, first@seed '+firstLeak+') · regions!=1='+bRegion+' · stairless='+bStair);

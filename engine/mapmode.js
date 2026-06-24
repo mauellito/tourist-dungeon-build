@@ -208,6 +208,14 @@ var TD_MAP = (function () {
       fl.sort(function (a, b) { return (Math.abs(b[0] - spawn.x) + Math.abs(b[1] - spawn.y)) - (Math.abs(a[0] - spawn.x) + Math.abs(a[1] - spawn.y)); });
       for (var i = 0; i < fl.length && breadthCells.length < 16; i++) addB({ x: fl[i][0], y: fl[i][1] });
     }
+    // SECTION D R4 — DEAD-END CONNECTOR (flagged STUB; WHICH dead-end gets WHICH connector is OPERATOR CANON).
+    // Demonstrates the mechanism: a deep dead-end gets a CRMC (one-way OUT, reuses the town exit); a shallow
+    // dead-end gets a CSRR (one-way IN, dest stubbed). The operator repositions/assigns (CSRR/CRMC/OTIS/GHOST).
+    var connectors = [], dlast = featDead.length ? featDead[featDead.length - 1] : null;
+    if (dlast && !stairKeys[dlast.x + "," + dlast.y] && !(dlast.x === spawn.x && dlast.y === spawn.y)) {
+      if ((depth || 1) >= 4) connectors.push({ x: dlast.x, y: dlast.y, kind: "CRMC", oneway: true, dir: "out", dest: "TOWN", _stub: true });
+      else if ((depth || 1) <= 2) connectors.push({ x: dlast.x, y: dlast.y, kind: "CSRR", oneway: true, dir: "in", dest: null, _stub: true });
+    }
     return {
       grid: g, rawGrid: rawGrid, spawn: spawn,
       downStair: downStair, upStair: upStair, breadthCells: breadthCells,
@@ -216,7 +224,8 @@ var TD_MAP = (function () {
       tag: "gen2", rooms: 0, roomList: [], corridorCells: 0,
       corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: sw * sh ? nF / (sw * sh) : 0, source: "gen2", W: sw, H: sh,
       features: lvl.features || [],   // ARCHITECTURAL FEATURES: depth-selected feature-room records {type,rect,depth} (geometry already in the grid via $/X)
-      stairs: stairsArray(upStair, downStair)   // SECTION D R2 — multi-stair model (additive; up/down still drive the live dive)
+      stairs: stairsArray(upStair, downStair),   // SECTION D R2 — multi-stair model (additive; up/down still drive the live dive)
+      connectors: connectors   // SECTION D R4 — dead-end connector tiles (flagged stub; placement = operator canon)
     };
   }
   // SECTION D R2 — MULTI-STAIR model: stairs:[{x,y,dir,symbol,dest,opens,shuts}]. N up + M down per floor.
@@ -633,6 +642,14 @@ var TD_MAP = (function () {
         if (townCell && !doors[key(townCell.x, townCell.y)]) doors[key(townCell.x, townCell.y)] = { type: "stair_up", toTown: true, takeable: true, to: "TOWN", label: "the way up — back to the surface (Town)", tells: [] };
         else if (!townCell) console.warn("GATE 5: entrance node had no free cell for the town exit (FLAGGED).");
       }
+      // SECTION D R4 — wire dead-end CONNECTORS into the door layer (reuse the transition tech). A CRMC
+      // (one-way OUT) becomes a town-exit door (the existing toTown transition); a CSRR (one-way IN) / OTIS /
+      // GHOST become flagged stub markers (their dest is operator canon — no transition until the graph is wired).
+      (comp.connectors || []).forEach(function (cn) {
+        var k = key(cn.x, cn.y); if (doors[k]) return;   // never clobber a stair/edge door
+        if (cn.dir === "out") doors[k] = { type: "stair_up", toTown: true, takeable: true, to: "TOWN", connector: cn.kind, label: "a mop closet — the one-way OUT to the surface (Town)", tells: [] };
+        else doors[k] = { type: "connector", connector: cn.kind, oneway: true, dest: cn.dest, takeable: false, label: "a " + cn.kind + " connector (one-way " + (cn.dir || "?") + ") — destination unassigned (operator canon)", tells: [] };
+      });
       ctrl.grid = g; ctrl.doors = doors; ctrl.features = {};
       ctrl.items = {}; ctrl.plain = {}; ctrl.secrets = {};
       // v21 — room doorways carry a rendered state (closed / ajar / open) — the GENERATOR'S own door tags.
@@ -645,6 +662,7 @@ var TD_MAP = (function () {
       ctrl.composition = comp;
       ctrl.featureRooms = comp.features || [];   // ARCHITECTURAL FEATURES — for the view (telegraph/voice wire in R3)
       ctrl.stairs = comp.stairs || [];           // SECTION D R2 — the floor's multi-stair model (additive; the live up/down doors still drive descent/ascent)
+      ctrl.connectors = comp.connectors || [];   // SECTION D R4 — dead-end connector tiles (CRMC wired as a town-exit door; others flagged stubs)
       // v2 (Jaquay) — MAP MEMORY: explored geometry persists per node across revisits
       // within a run (the node is deterministic, so the keys stay valid). Live LOS layers
       // on top at render; what you've seen stays remembered when you leave and return.
@@ -1730,6 +1748,8 @@ var TD_MAP = (function () {
       var iv = interp.view();
       return {
         w: W, h: H, phase: "dungeon", featureRooms: ctrl.featureRooms || [], stairs: ctrl.stairs || [],
+        floorSource: (ctrl.composition && ctrl.composition.source) || "gen2",   // SECTION D R3 — which generator made this floor (gen2 STANDARD / authored HAND-AUTHORED) — the registry swap, legible
+        connectors: ctrl.connectors || [],   // SECTION D R4 — dead-end connector tiles (CSRR/CRMC/OTIS/GHOST), placement flagged-stub
         // GATE 8 (B) — the metabolism state as FEEL-WORDS (hunger/fatigue/burden BAND, no numbers) PLUS the
         // INVENTORY-WEIGHT readout (object mass IS numeric-OK): the carried total in coin-mass + a stone label,
         // a second channel that sits BESIDE the burden feel-word. Derived from the same band weight.
