@@ -218,12 +218,38 @@ var TD_MAP = (function () {
       features: lvl.features || []   // ARCHITECTURAL FEATURES: depth-selected feature-room records {type,rect,depth} (geometry already in the grid via $/X)
     };
   }
-  function composeNode(seed, nodeKey, numDoors, depth) {
-    // LIVE = TD_GEN2, rendered directly (no retrofit). gen2 is deterministic; composeNodeGen2 now GATES it
-    // (reseed until the leak law + single-region + both-stairs hold), so the rendered floor is always clean.
-    // If gen2 is absent: the test-only legacy carver (when a suite flips
-    // TD_MAP.setLegacy(true)) else a LOUD console.error + an unmistakable debug floor (never a blob).
-    var a = composeNodeGen2(seed, nodeKey, numDoors, depth);
+  // SECTION D R1 — HAND-AUTHORED floor stub: a clean rectangular Bureau chamber the operator fills later.
+  // Law-safe BY CONSTRUCTION (a solid rectangle => zero open corners, single region) with an up + down stair.
+  // Returns the SAME comp contract composeNodeGen2 does, so the controller node-load consumes it identically.
+  function composeHandAuthored(seed, nodeKey, numDoors, depth) {
+    var W2 = 40, H2 = 24, g = [];
+    for (var y = 0; y < H2; y++) { var row = []; for (var x = 0; x < W2; x++) row.push((x === 0 || y === 0 || x === W2 - 1 || y === H2 - 1) ? "#" : "."); g.push(row); }
+    var up = { x: 2, y: 2 }, down = { x: W2 - 3, y: H2 - 3 };
+    var breadth = [{ x: 2, y: H2 - 3 }, { x: W2 - 3, y: 2 }];
+    return {
+      grid: g, rawGrid: g.map(function (r) { return r.slice(); }), spawn: { x: up.x, y: up.y },
+      downStair: { x: down.x, y: down.y, kind: "down" }, upStair: { x: up.x, y: up.y, kind: "up" }, breadthCells: breadth,
+      doorPts: [{ x: down.x, y: down.y }, { x: up.x, y: up.y }].concat(breadth),
+      roomDoors: [], secrets: [], loot: [], deadEnds: [], tag: "authored-stub", rooms: 1, roomList: [],
+      corridorCells: 0, corrLens: [], corrWidths: [], comX: W2 >> 1, comY: H2 >> 1, floorDensity: 1, source: "authored",
+      W: W2, H: H2, features: [{ type: "bureau", x: 5, y: 5, w: 6, h: 5, cx: 8, cy: 7, depth: depth || 1, _stub: true }]
+    };
+  }
+  // SECTION D R1 — FLOOR-TYPE REGISTRY: nodeType -> generator. STANDARD is the default (gen2). JUNCTION and
+  // SET-PIECE are REGISTERED but stubbed to STANDARD for now (the JUNCTION puzzle-hub + wiring the SG node-
+  // graph SET-PIECE are later rounds / the doom-door layer — FLAG). Every type's output runs the SAME leak-gate.
+  var FLOOR_TYPES = {
+    STANDARD:        function (s, k, n, d) { return composeNodeGen2(s, k, n, d); },
+    "HAND-AUTHORED": function (s, k, n, d) { return composeHandAuthored(s, k, n, d); },
+    JUNCTION:        function (s, k, n, d) { return composeNodeGen2(s, k, n, d); },   // STUB -> STANDARD (junction puzzle-hub is a later round)
+    "SET-PIECE":     function (s, k, n, d) { return composeNodeGen2(s, k, n, d); }    // STUB -> STANDARD (SG node-graph wiring = doom-door layer)
+  };
+  function composeNode(seed, nodeKey, numDoors, depth, nodeType) {
+    // Route by nodeType through the registry (substitution = lookup). STANDARD = gen2, rendered directly + GATED
+    // (reseed until leaks=0/single-region/both-stairs). nodeType threaded from the CALL SITE (this fn is
+    // module-level — no `world` here). If the generator is absent: test-only legacy carver, else a debug floor.
+    var gen = FLOOR_TYPES[nodeType] || FLOOR_TYPES.STANDARD;
+    var a = gen(seed, nodeKey, numDoors, depth);
     if (a) { asmTally.gen2++; asmTally.assembler++; return a; }
     asmTally.noGen2++;
     // TEST-ONLY: legacy-carver unit suites (run_architecture/run_map) flip TD_MAP.setLegacy(true) to
@@ -536,7 +562,8 @@ var TD_MAP = (function () {
       if (vd) { buildVaultView(vd); return; }
       var v = interp.view();
       var cl = curLevel();
-      var comp = composeNode(seed, ctrl.node, v.options.length, cl);   // pass depth so features are depth-selected
+      var nodeType = (world.nodes[ctrl.node] || {}).nodeType || "STANDARD";   // SECTION D — floor-type from the graph (operator canon; defaults STANDARD so the live dive is unchanged)
+      var comp = composeNode(seed, ctrl.node, v.options.length, cl, nodeType);   // depth -> features; nodeType -> registry
       var g = comp.grid, doors = {};
       // FRAME LIFTED: the controller adopts THIS floor's actual dimensions (gen2 now varies +/-20%, ~43..65 x
       // 27..41). All bounds/FOV/render/camera read W/H, so they track the live floor with no truncation.
@@ -1826,6 +1853,8 @@ var TD_MAP = (function () {
     // PART A sweep hook — run the SAME live leak-gate for one seed and return {grid,up,down,_tries,_clean}.
     // Used by tests/run_leakgate.py to prove 0 leaks / single region / both stairs across seeds 1..N.
     _gen2Clean: function (seed, depth) { var r = nodeRng((seed >>> 0) || 1, "leaksweep:g2"); return gen2Clean(function () { return r.int(1, 2000000000); }, depth || 0); },
+    _composeType: function (nodeType, seed) { return composeNode((seed >>> 0) || 1, "ltest" + (seed || 0), 2, 6, nodeType); },   // SECTION D — compose one floor of a given type (leak-gate test hook)
+    _floorTypes: function () { return Object.keys(FLOOR_TYPES); },
     _gen2Opts: GEN2_OPTS,
     // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
     CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_MIX: COIN_MIX
