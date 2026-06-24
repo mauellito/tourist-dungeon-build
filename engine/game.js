@@ -803,20 +803,94 @@ var TD_GAME = (function () {
       if (spec.act === "food") return "diner";
       return "townsfolk";
     }
+    // Section B — distinct per-type interior layout + bump-to-read fixtures (act:"look" + text, never `to`, so
+    // a fixture can never misfire as a transition). The counter keeps act:spec.act (the transaction point).
     function buildInterior(id) {
       var spec = INTERIORS[id];
       var g = blank();
-      carve(g, 8, 3, 32, 13);
-      var doors = {}, features = {};
-      if (spec.counter) features[key(20, 5)] = { type: "counter", glyph: "$", label: spec.counter, act: spec.act };   // empty stubs have no counter
-      doors[key(20, 14)] = { to: "TOWN", glyph: "<", label: "the way out, back to the harbour" };
-      // every enterable establishment has 2-4 occupants (stationary patrons)
-      var occupants = [];
-      if (spec.counter) {
-        var n = 2 + (id.length % 3), oxs = [11, 15, 25, 29], onm = occupantName(spec), oty = occupantType(spec);
-        for (var i = 0; i < n; i++) occupants.push({ x: oxs[i % oxs.length], y: 8 + (i % 3), glyph: "o", name: onm, type: oty, voiceId: oty, friendly: true, hp: 1, maxHp: 1, dmg: 0 });
+      var doors = {}, features = {}, occupants = [];
+      var act = spec.act;
+      function look(x, y, glyph, label, text) { features[key(x, y)] = { act: "look", glyph: glyph, label: label, text: text }; }
+      function counter(x, y) { features[key(x, y)] = { type: "counter", glyph: "$", label: spec.counter, act: act }; }
+      var spawn, ox, oy, i;
+
+      if (act === "hotel") {                         // a LARGER lobby + front desk + stairs to the guest floors
+        carve(g, 6, 3, 41, 16);
+        counter(23, 4);
+        look(39, 5, "<", "the stairs up", "The stairs up to the guest floors, carpeted within an inch of their life. (The rooms above open in the next pass.)");
+        look(9, 8, "≈", "a lobby couch", "A low velvet couch, the kind that holds you slightly too long.");
+        look(12, 8, "≈", "a lobby couch", "A second couch, facing the first, for conversations nobody is having.");
+        look(10, 12, "♣", "a potted fern", "A potted fern, dignified and slowly dying, like the clientele.");
+        ox = 23; oy = 17; spawn = { x: 23, y: 15 };
+      } else if (act === "vault") {                  // bank: teller window + the vault + deposit boxes
+        carve(g, 9, 3, 38, 15);
+        counter(23, 4);
+        look(34, 4, "▣", "the vault", "The vault door, municipally safe — which is to say, safe in the way a notice is true.");
+        look(13, 4, "▣", "deposit boxes", "A wall of brass deposit boxes, each with a number and a secret.");
+        ox = 23; oy = 16; spawn = { x: 23, y: 14 };
+      } else if (act === "shop") {                   // counter + SHELVES of wares + side racks
+        carve(g, 8, 3, 38, 15);
+        counter(23, 4);
+        for (var sx = 10; sx <= 36; sx += 3) if (sx !== 23) look(sx, 3, "▤", "the shelves", "Goods on the shelf — priced, the figure plain, the worth less so.");
+        look(9, 9, "▤", "a side rack", "A side rack of sundries you did not come in for and may yet leave with.");
+        look(37, 9, "▤", "a side rack", "More wares, racked to the wall, watching you the way wares do.");
+        ox = 23; oy = 16; spawn = { x: 23, y: 14 };
+      } else if (act === "food") {                   // eatery: a counter/bar + TABLES + a door to the back room
+        carve(g, 8, 3, 38, 16);
+        counter(23, 4);
+        var T = [[12, 8], [17, 11], [21, 8], [29, 11], [33, 8]];
+        for (i = 0; i < T.length; i++) look(T[i][0], T[i][1], "╥", "a table", "A table, ringed by chairs, marked by the rings of glasses before yours.");
+        look(36, 4, "+", "the back room", "The back room door — staff only. It does not invite you, and you believe it.");
+        ox = 23; oy = 17; spawn = { x: 23, y: 15 };
+      } else if (act === "rest") {                   // motel: front desk + a row of rentable rooms
+        carve(g, 8, 3, 38, 14);
+        counter(20, 5);
+        for (var rx = 12; rx <= 34; rx += 4) look(rx, 3, "+", "a room", "A rentable room, its door ajar on a narrow bed and an honest night's rest.");
+        ox = 23; oy = 15; spawn = { x: 23, y: 13 };
+      } else if (act === "blessing") {               // church: an altar, the rail, pews
+        carve(g, 10, 3, 36, 16);
+        look(23, 3, "†", "the altar", "The altar, open to the living and — by appointment — the lately-living.");
+        counter(23, 5);
+        var PY = [9, 11, 13];
+        for (i = 0; i < PY.length; i++) { look(15, PY[i], "≡", "a pew", "A pew, worn smooth by the patience of the desperate."); look(31, PY[i], "≡", "a pew", "A pew, its hymnal swollen shut with damp."); }
+        ox = 23; oy = 17; spawn = { x: 23, y: 15 };
+      } else if (act === "kiosk" || act === "agency" || act === "tim" || act === "spa" || act === "boat") {
+        carve(g, 12, 4, 34, 13);                     // compact service rooms, themed fittings
+        counter(23, 5);
+        var dg = ({ kiosk: "▦", agency: "▤", tim: "?", spa: "≈", boat: "≈" })[act] || "·";
+        look(15, 5, dg, "the fittings", "The fittings of the place, arranged to look more official than they are.");
+        look(31, 5, dg, "the fittings", "More of the same, on the other side, for symmetry's sake.");
+        ox = 23; oy = 14; spawn = { x: 23, y: 12 };
+      } else if (act === "flavor") {                 // craft shops: a signature fixture by trade
+        carve(g, 10, 4, 34, 14);
+        counter(22, 5);
+        var sg = ({ blacksmith: "♨", barber: "≀", tattoo: "✶" })[id] || "◦";
+        look(26, 5, sg, "the tools of the trade", "The tools of the trade, well-kept and faintly judgmental.");
+        look(18, 5, sg, "the tools of the trade", "Implements you would rather not have explained to you.");
+        ox = 22; oy = 15; spawn = { x: 22, y: 13 };
+      } else {                                        // empty / fallback: a bare room
+        carve(g, 12, 5, 30, 12);
+        ox = 21; oy = 13; spawn = { x: 21, y: 11 };
       }
-      return { id: id, title: spec.title, sign: spec.sign, grid: g, doors: doors, features: features, occupants: occupants, spawn: { x: 20, y: 12 } };
+
+      if (!spec.counter) features = {};               // empty stubs stay bare (no counter, no fixtures)
+      doors[key(ox, oy)] = { to: "TOWN", glyph: "<", label: "the way out, back to the harbour" };
+
+      if (spec.counter) {                             // 2-4 patrons, SPREAD across the open floor, never on a fixture/door/spawn
+        // FLAG: the drop-in's fixed x-cols [11,16,30,35] fall outside the compact service rooms (carve x>=12),
+        // which dropped some types to 1 patron and broke the "2-4 occupants" invariant — so patrons are placed
+        // on the room's ACTUAL open cells (evenly spaced), guaranteeing the count for every interior shape.
+        var onm = occupantName(spec), oty = occupantType(spec), open = [];
+        for (var sy = 1; sy < H - 1; sy++) for (var sxx = 1; sxx < W - 1; sxx++) {
+          // a patron stands on a FULLY floor-surrounded interior cell (all 4 orthogonals '.') so the friendly-
+          // displacement swap works from any side (a corner/edge patron leaves a wall as the swap target).
+          if (g[sy][sxx] !== "." || features[key(sxx, sy)] || doors[key(sxx, sy)] || (sxx === spawn.x && sy === spawn.y)) continue;
+          if (g[sy][sxx - 1] === "." && g[sy][sxx + 1] === "." && g[sy - 1][sxx] === "." && g[sy + 1][sxx] === ".") open.push({ x: sxx, y: sy });
+        }
+        var n = Math.min(2 + (id.length % 3), open.length);
+        for (i = 0; i < n; i++) { var c = open[Math.floor(i * open.length / n)]; occupants.push({ x: c.x, y: c.y, glyph: "o", name: onm, type: oty, voiceId: oty, friendly: true, hp: 1, maxHp: 1, dmg: 0 }); }
+      }
+      return { id: id, title: spec.title, sign: spec.sign, grid: g, doors: doors, features: features, occupants: occupants, spawn: spawn };
     }
 
     function cur() { return places[placeId]; }
