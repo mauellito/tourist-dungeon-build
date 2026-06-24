@@ -51,8 +51,14 @@ try{
   // stairs present), across a seed range. STANDARD = gen2; HAND-AUTHORED = the authored stub; JUNCTION /
   // SET-PIECE stub to STANDARD for now.
   var types=TD_MAP._floorTypes(), K=Math.min(N,200), typeBad={};
-  types.forEach(function(t){ typeBad[t]={leak:0,region:0,stair:0}; for(var s4=1;s4<=K;s4++){ var c=TD_MAP._composeType(t,s4), mm=TD_GEN2.measure(c.grid); if(mm.leaks>0)typeBad[t].leak++; if(mm.regions!==1)typeBad[t].region++; if(!c.upStair||!c.downStair)typeBad[t].stair++; } });
-  types.forEach(function(t){ var b=typeBad[t]; ok('SECTION D: floor type '+t+' passes the leak-gate across 1..'+K+' (leaks=0/1 region/both stairs)', b.leak===0&&b.region===0&&b.stair===0, JSON.stringify(b)); });
+  // R2 leak-gate: "both stairs exist" -> "ALL STAIRS REACHABLE, single region". BFS from spawn over walkable
+  // ('.' or '~'); every entry in comp.stairs[] must be reached.
+  function allStairsReachable(c){ var G=c.grid,Wd=G[0].length,Hd=G.length,seen={},q=[[c.spawn.x,c.spawn.y]]; seen[c.spawn.x+','+c.spawn.y]=1;
+    function w(x,y){return y>=0&&y<Hd&&x>=0&&x<Wd&&(G[y][x]==='.'||G[y][x]==='~');}
+    while(q.length){var p=q.shift();[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var nx=p[0]+d[0],ny=p[1]+d[1],k=nx+','+ny; if(w(nx,ny)&&!seen[k]){seen[k]=1;q.push([nx,ny]);}});}
+    return (c.stairs||[]).length>0 && (c.stairs||[]).every(function(s){return seen[s.x+','+s.y];}); }
+  types.forEach(function(t){ typeBad[t]={leak:0,region:0,stair:0,reach:0}; for(var s4=1;s4<=K;s4++){ var c=TD_MAP._composeType(t,s4), mm=TD_GEN2.measure(c.grid); if(mm.leaks>0)typeBad[t].leak++; if(mm.regions!==1)typeBad[t].region++; if(!c.upStair||!c.downStair)typeBad[t].stair++; if(!allStairsReachable(c))typeBad[t].reach++; } });
+  types.forEach(function(t){ var b=typeBad[t]; ok('SECTION D: floor type '+t+' passes the leak-gate across 1..'+K+' (leaks=0/1 region/ALL stairs reachable)', b.leak===0&&b.region===0&&b.stair===0&&b.reach===0, JSON.stringify(b)); });
   R.push('');
   R.push('TABLE (seeds 1..'+N+', live params '+JSON.stringify(opts)+')');
   R.push('  BASELINE ungated : leaks='+bLeak+' ('+(100*bLeak/N).toFixed(2)+'%, first@seed '+firstLeak+') · regions!=1='+bRegion+' · stairless='+bStair);

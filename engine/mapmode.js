@@ -215,8 +215,21 @@ var TD_MAP = (function () {
       roomDoors: roomDoors, secrets: secrets, loot: loot, deadEnds: [],
       tag: "gen2", rooms: 0, roomList: [], corridorCells: 0,
       corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: sw * sh ? nF / (sw * sh) : 0, source: "gen2", W: sw, H: sh,
-      features: lvl.features || []   // ARCHITECTURAL FEATURES: depth-selected feature-room records {type,rect,depth} (geometry already in the grid via $/X)
+      features: lvl.features || [],   // ARCHITECTURAL FEATURES: depth-selected feature-room records {type,rect,depth} (geometry already in the grid via $/X)
+      stairs: stairsArray(upStair, downStair)   // SECTION D R2 — multi-stair model (additive; up/down still drive the live dive)
     };
+  }
+  // SECTION D R2 — MULTI-STAIR model: stairs:[{x,y,dir,symbol,dest,opens,shuts}]. N up + M down per floor.
+  // ADDITIVE: built alongside the existing single up/down (which keeps the dive green) — the array is the
+  // canonical model the leak-gate ("all stairs reachable, single region") + future selection read. symbol =
+  // honest dir preview (the CIPHER glyph mapping is operator canon — STUB); dest = node-ref (the maze GRAPH
+  // is operator canon — STUB); opens/shuts = the SG lattice selection primitive (STUB, wired with the graph).
+  function stairsArray(upStair, downStair, extra) {
+    var s = [];
+    if (upStair) s.push({ x: upStair.x, y: upStair.y, dir: "up", symbol: "▲", dest: null, opens: null, shuts: null });
+    if (downStair) s.push({ x: downStair.x, y: downStair.y, dir: "down", symbol: "▼", dest: null, opens: null, shuts: null });
+    (extra || []).forEach(function (e) { s.push({ x: e.x, y: e.y, dir: e.dir || "down", symbol: e.symbol || "▼", dest: null, opens: null, shuts: null }); });
+    return s;
   }
   // SECTION D R1 — HAND-AUTHORED floor stub: a clean rectangular Bureau chamber the operator fills later.
   // Law-safe BY CONSTRUCTION (a solid rectangle => zero open corners, single region) with an up + down stair.
@@ -232,7 +245,8 @@ var TD_MAP = (function () {
       doorPts: [{ x: down.x, y: down.y }, { x: up.x, y: up.y }].concat(breadth),
       roomDoors: [], secrets: [], loot: [], deadEnds: [], tag: "authored-stub", rooms: 1, roomList: [],
       corridorCells: 0, corrLens: [], corrWidths: [], comX: W2 >> 1, comY: H2 >> 1, floorDensity: 1, source: "authored",
-      W: W2, H: H2, features: [{ type: "bureau", x: 5, y: 5, w: 6, h: 5, cx: 8, cy: 7, depth: depth || 1, _stub: true }]
+      W: W2, H: H2, features: [{ type: "bureau", x: 5, y: 5, w: 6, h: 5, cx: 8, cy: 7, depth: depth || 1, _stub: true }],
+      stairs: stairsArray({ x: up.x, y: up.y }, { x: down.x, y: down.y })
     };
   }
   // SECTION D R1 — FLOOR-TYPE REGISTRY: nodeType -> generator. STANDARD is the default (gen2). JUNCTION and
@@ -630,6 +644,7 @@ var TD_MAP = (function () {
       ctrl.player = { x: comp.spawn.x, y: comp.spawn.y };
       ctrl.composition = comp;
       ctrl.featureRooms = comp.features || [];   // ARCHITECTURAL FEATURES — for the view (telegraph/voice wire in R3)
+      ctrl.stairs = comp.stairs || [];           // SECTION D R2 — the floor's multi-stair model (additive; the live up/down doors still drive descent/ascent)
       // v2 (Jaquay) — MAP MEMORY: explored geometry persists per node across revisits
       // within a run (the node is deterministic, so the keys stay valid). Live LOS layers
       // on top at render; what you've seen stays remembered when you leave and return.
@@ -1714,7 +1729,7 @@ var TD_MAP = (function () {
       Object.keys(ctrl.features).forEach(function (k) { if (vis.has(k)) discoveries.push(ctrl.features[k].text); });
       var iv = interp.view();
       return {
-        w: W, h: H, phase: "dungeon", featureRooms: ctrl.featureRooms || [],
+        w: W, h: H, phase: "dungeon", featureRooms: ctrl.featureRooms || [], stairs: ctrl.stairs || [],
         // GATE 8 (B) — the metabolism state as FEEL-WORDS (hunger/fatigue/burden BAND, no numbers) PLUS the
         // INVENTORY-WEIGHT readout (object mass IS numeric-OK): the carried total in coin-mass + a stone label,
         // a second channel that sits BESIDE the burden feel-word. Derived from the same band weight.
