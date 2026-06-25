@@ -138,7 +138,7 @@ function TD_GAME_TESTS() {
     var pm = g.postmortem();
     inc(pm.attributions.join(" || "), "Brass Door", "ticket fork attributed");
     inc(pm.attributions.join(" || "), "Rusty Anchor", "comfort fork attributed");
-    inc(pm.spatial.join(" "), "Level 2", "cites the spatial fact (the click on Level 2)");
+    inc(pm.spatial.join(" "), "Sublevel 2", "cites the spatial fact (the click on Sublevel 2)");   // R5: floor = "Sublevel"
     inc(pm.spatial.join(" "), "click", "the stair click is the spatial breadcrumb");
   });
 

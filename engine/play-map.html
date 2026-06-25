@@ -220,7 +220,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "689adb7b";</script>
+<script>window.__BUILD = "5bcde6a4";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -726,9 +726,10 @@ window.__initPlayMap = function () {
     var pg = vw.progress || null;
     dossierEl.innerHTML =
       section("Vitals") +
-      // XP + LEVELS (R3) — level as a plain number + an XP-to-next bar (meta-UI; FLAG: number over a rank
-      // feel-word ladder, recommended for legibility). Stat growth still surfaces as a feel-word in the log.
-      (pg ? statrow("Level", '<span id="sb-level" style="color:#cfe3b0">' + pg.level + "</span>") + bar("XP", pg.xp, pg.next, P.signal, false) : "") +
+      // XP + LEVELS (R3) — the character's progression as a plain number + an XP-to-next bar (meta-UI). R5:
+      // labelled "Rank", NOT "Level", so it can never be misread as dungeon depth (the floor is "Sublevel N",
+      // below). Stat growth still surfaces as a feel-word in the log.
+      (pg ? statrow("Rank", '<span id="sb-level" style="color:#cfe3b0">' + pg.level + "</span>") + bar("XP", pg.xp, pg.next, P.signal, false) : "") +
       vital("Body", "sb-hp", hpFrac, hpCol, hpWord) +
       vital("Vigour", "sb-fatigue", ftFrac, ftCol, ftWord) +
       statrow("Hunger", '<span id="sb-hunger" class="' + (hg.critical ? "hunger-starving" : "") + '">' + escapeHTML(hg.stage) + "</span>") +
@@ -1048,7 +1049,7 @@ window.__initPlayMap = function () {
     var pm = sim.postmortem();
     var doors = (pm.attributions || []).map(function (a) { return "<li>" + escapeHTML(a) + "</li>"; }).join("");
     var spatial = (pm.spatial || []).map(function (s) { return '<p style="color:#7a5c3a;font-style:italic">' + escapeHTML(s) + "</p>"; }).join("");
-    var tly = pm.tally ? '<div class="packtotal" style="margin:8px 0;padding-top:6px;border-top:1px solid #3a3324">Run tally — depth <b>' + pm.tally.depth + '</b> · kills <b>' + pm.tally.kills + '</b> · level <b>' + pm.tally.level + '</b></div>' : "";   // GATE F (meta numbers)
+    var tly = pm.tally ? '<div class="packtotal" style="margin:8px 0;padding-top:6px;border-top:1px solid #3a3324">Run tally — deepest reached <b>Sublevel ' + pm.tally.depth + '</b> · kills <b>' + pm.tally.kills + '</b> · Rank <b>' + pm.tally.level + '</b></div>' : "";   // GATE F (meta numbers); R5 — "deepest reached" (not live depth), "Rank" (not "level")
     overlay.innerHTML = '<div class="scrim"><div class="panel"><div class="head">' + escapeHTML(pm.heading) + '</div>' +
       '<div class="ttl">' + escapeHTML(pm.title) + '</div>' +
       '<p>' + escapeHTML(pm.cause) + '</p>' + spatial +
@@ -1077,7 +1078,7 @@ window.__initPlayMap = function () {
   }
   function showWin() {
     var t = (sim.view().tally) || null;   // GATE F — the run tally on the victory screen (meta)
-    var tly = t ? '<div class="packtotal" style="margin:8px 0;padding-top:6px;border-top:1px solid #3a3324">Run tally — depth <b>' + t.depth + '</b> · kills <b>' + t.kills + '</b> · level <b>' + t.level + '</b></div>' : "";
+    var tly = t ? '<div class="packtotal" style="margin:8px 0;padding-top:6px;border-top:1px solid #3a3324">Run tally — deepest reached <b>Sublevel ' + t.depth + '</b> · kills <b>' + t.kills + '</b> · Rank <b>' + t.level + '</b></div>' : "";   // R5 — "deepest reached" + "Rank"
     overlay.innerHTML = '<div class="scrim"><div class="panel win"><div class="head">Bureau of Visitor Outcomes</div>' +
       '<div class="ttl">VICTORY — you surveyed the deep and returned</div>' +
       '<p>You reached the goal sublevel, survived, and climbed back into daylight. The Bureau records this with restrained, municipal surprise.</p>' +
@@ -1258,7 +1259,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "R4 — the Gilded Kraken opens upstairs: stairs AND an Otis elevator rise from the lobby to a guest-floor corridor of numbered rooms (the Otis DOWN shaft is a stubbed future hook).";
+  var VERSION = "R5 — depth display reconciled: the dungeon floor reads \"Sublevel N\" in both the descend banner and the dossier; the character's XP progression is now \"Rank\" (never \"Level\"); the run tally reads \"deepest reached\".";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

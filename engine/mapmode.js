@@ -1249,7 +1249,7 @@ var TD_MAP = (function () {
       var r = TD_STATS.gainXP(ch, amount);
       if (r.levels > 0) {
         ctrl.meters.hpMax += r.hpGain; ctrl.meters.hp = Math.min(ctrl.meters.hpMax, ctrl.meters.hp + r.hpGain);
-        logMsg("You reach Level " + ch.level + "." + (r.words.length ? " " + r.words.join(" ") : ""), false);   // level = number (meta); stat gain = feel-word
+        logMsg("You advance to Rank " + ch.level + "." + (r.words.length ? " " + r.words.join(" ") : ""), false);   // R5 — RANK (XP), not depth: "Level" is no longer used for the character, only the dungeon floor (Sublevel)
       }
     }
     function killXP(cr) { var ch = ctrl.character; return (typeof TD_STATS !== "undefined" && TD_STATS.XP) ? TD_STATS.XP.killXP(cr.band || 1, (ch && ch.level) || 1) : 0; }

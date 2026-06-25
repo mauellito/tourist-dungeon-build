@@ -215,6 +215,19 @@ F.onload = function(){
        (function(){var m=(view().messages||[]); var x=m[m.length-1]; return x&&typeof x.text==='string'&&typeof x.urgent==='boolean';})());
     clearMore();   // a one-way descent may raise a --more-- halt; acknowledge it before continuing
 
+    // ============================ R5 DEPTH DISPLAY RECONCILED =============
+    // The dossier 'Place' reads the CURRENT floor as "Sublevel N"; the descend banner names the SAME floor
+    // number; the character progression row is "Rank", NEVER "Level" — so depth can't be misread as the rank.
+    var lvlNow = view().level;
+    var placeTxt = ((doc.getElementById('sb-place')||{}).textContent)||'';
+    ok('the dossier Place reads the current floor as "Sublevel N"', placeTxt==='Sublevel '+lvlNow, 'place="'+placeTxt+'" level='+lvlNow);
+    var dossTxt = ((doc.getElementById('dossier')||{}).textContent)||'';
+    ok('the character progression is labelled "Rank", never "Level" (depth-safe)', /Rank/.test(dossTxt) && !/\bLevel\b/.test(dossTxt), dossTxt.slice(0,160));
+    var banners = (view().messages||[]).filter(function(m){return m.banner && /SUBLEVEL/i.test(m.text||'');});
+    ok('the descend banner names the floor "Sublevel N", matching the dossier number',
+       banners.length>0 && new RegExp('SUBLEVEL '+lvlNow+'\\b','i').test(banners[banners.length-1].text||''),
+       banners.length?banners[banners.length-1].text:'(no sublevel banner)');
+
     // ============================ AUTO-EXPLORE (x) =======================
     win.__TD_SIM()._dungeon()._setCreatures([]);
     var ax0=view().turn; pk('x'); clearMore();

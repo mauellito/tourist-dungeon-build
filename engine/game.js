@@ -1499,8 +1499,11 @@ var TD_GAME = (function () {
       if (dungeon.isDead() && !dead) { dead = true; bankKnowledge(); }
       if (dungeon.isComplete()) won = true;
       lastEvent = dungeon.view().lastEvent;
-      var lvl = dungeon.view().level;                                     // E1: announce on entering a new dungeon level
-      if (lvl >= 1 && lvl !== lastDungeonLevel) { lastDungeonLevel = lvl; announce("the Dungeon — Level " + lvl); }
+      var lvl = dungeon.view().level;                                     // E1: announce on entering a new dungeon SUBLEVEL
+      // R5 — the descend banner reads the CURRENT floor and uses the SAME word the HUD's Place row uses
+      // ("Sublevel N"), so the announce number and the dossier number are identical on every transition. The
+      // word "Level" is reserved for the character's XP RANK (relabelled "Rank") so depth is never ambiguous.
+      if (lvl >= 1 && lvl !== lastDungeonLevel) { lastDungeonLevel = lvl; announce("the Dungeon — Sublevel " + lvl); }
     }
 
     // ---- views -----------------------------------------------------------
@@ -1619,7 +1622,7 @@ var TD_GAME = (function () {
       if (character.events.brassRejected) attributions.push("Your Guided Package, purchased with enthusiasm at the Agency, was valid only in Guided Zones; the Brass Door was not pervious to it.");
       if (character.events.anchorRejected) attributions.push("Your comfort preceded you (the Gilded Kraken, the spa); the Rusty Anchor's doorman declined the acquaintance.");
       var spatial = [];
-      if (character.events.clicks.length) { var lvl = character.events.clicks[character.events.clicks.length - 1]; spatial.push("You heard the stair click shut on Level " + lvl + " and kept descending."); }
+      if (character.events.clicks.length) { var lvl = character.events.clicks[character.events.clicks.length - 1]; spatial.push("You heard the stair click shut on Sublevel " + lvl + " and kept descending."); }   // R5 — floor = "Sublevel"
       var tally = { depth: (shared.deepest || 0), kills: (dungeon ? (dungeon.view().kills || 0) : 0), level: (character.level || 1) };   // GATE F — the run tally (meta)
       return { heading: "BUREAU OF VISITOR OUTCOMES", title: "Certificate of Conclusion", cause: cause, attributions: attributions, spatial: spatial, tally: tally, footer: "The Bureau thanks the deceased for his custom, such as it was." };
     }
