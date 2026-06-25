@@ -117,20 +117,20 @@ var TD_RESOLVE = (function () {
     // `opening` strike (now-resolvable on the first exchange) — full positioning is a LIVE HOOK.
     // GATE 7 (A): each weapon declares `hands` (1 = one-handed, 2 = two-handed, takes both hands).
     WEAPONS: {
-      // BLADES — fast, light, accuracy-leaning -> HIT
-      dagger:     { name: "a dagger",      type: "blade",   base: 6,  acc: 5,  weight: 1, bulk: 1, hands: 1, verb: "cut",    firstStrike: true },  // lightest, highest acc, lowest base; first-strike (initiative HOOK)
-      shortsword: { name: "a shortsword",  type: "blade",   base: 9,  acc: 3,  weight: 2, bulk: 2, hands: 1, verb: "cut" },
-      longsword:  { name: "a longsword",   type: "blade",   base: 12, acc: 2,  weight: 4, bulk: 3, hands: 1, verb: "cut" },
-      sabre:      { name: "a sabre",       type: "blade",   base: 10, acc: 4,  weight: 3, bulk: 2, hands: 1, verb: "cut" },
+      // BLADES — fast, light, accuracy-leaning -> HIT. `value` = authoritative BUY price (copper; econ reads it).
+      dagger:     { name: "a dagger",      type: "blade",   base: 6,  acc: 5,  weight: 1, bulk: 1, hands: 1, verb: "cut",    firstStrike: true, value: 35 },  // lightest, highest acc, lowest base; first-strike (initiative HOOK)
+      shortsword: { name: "a shortsword",  type: "blade",   base: 9,  acc: 3,  weight: 2, bulk: 2, hands: 1, verb: "cut",    value: 70 },
+      longsword:  { name: "a longsword",   type: "blade",   base: 12, acc: 2,  weight: 4, bulk: 3, hands: 1, verb: "cut",    value: 150 },
+      sabre:      { name: "a sabre",       type: "blade",   base: 10, acc: 4,  weight: 3, bulk: 2, hands: 1, verb: "cut",    value: 110 },
       // HEAVY / IMPACT — slow, heavy, Might-leaning -> DAMAGE (crush: armour robustness counts for less)
-      mace:       { name: "a mace",        type: "impact",  base: 14, acc: -1, weight: 6, bulk: 4, hands: 1, verb: "crush",  crush: 0.6 },   // GATE 2 R3: impact base nudged so DAMAGE/burst wins the tanky foe (lurker) without dominating
-      warhammer:  { name: "a warhammer",   type: "impact",  base: 17, acc: -3, weight: 9, bulk: 6, hands: 2, verb: "crush",  crush: 0.4 },  // heaviest: biggest crush + encumbrance; TWO-HANDED
-      axe:        { name: "an axe",        type: "impact",  base: 15, acc: -1, weight: 6, bulk: 4, hands: 1, verb: "crush",  crush: 0.55 },
-      flail:      { name: "a flail",       type: "impact",  base: 14, acc: -2, weight: 7, bulk: 5, hands: 1, verb: "crush",  crush: 0.5 },
+      mace:       { name: "a mace",        type: "impact",  base: 14, acc: -1, weight: 6, bulk: 4, hands: 1, verb: "crush",  crush: 0.6, value: 120 },   // GATE 2 R3: impact base nudged so DAMAGE/burst wins the tanky foe (lurker) without dominating
+      warhammer:  { name: "a warhammer",   type: "impact",  base: 17, acc: -3, weight: 9, bulk: 6, hands: 2, verb: "crush",  crush: 0.4, value: 220 },  // heaviest: biggest crush + encumbrance; TWO-HANDED
+      axe:        { name: "an axe",        type: "impact",  base: 15, acc: -1, weight: 6, bulk: 4, hands: 1, verb: "crush",  crush: 0.55, value: 120 },
+      flail:      { name: "a flail",       type: "impact",  base: 14, acc: -2, weight: 7, bulk: 5, hands: 1, verb: "crush",  crush: 0.5, value: 130 },
       // POLEARMS — reach -> POSITIONING (opening strike now-resolvable; full positioning a HOOK); all TWO-HANDED
-      spear:      { name: "a spear",       type: "polearm", base: 15, acc: 1,  weight: 4, bulk: 5, hands: 2, verb: "skewer", reach: true, opening: 3 },  // GATE 4 R2: +1 base so the reach GENERALIST wins the NORMAL foe (its niche); full positioning edge still a deferred spatial HOOK
-      halberd:    { name: "a halberd",     type: "polearm", base: 16, acc: 0,  weight: 7, bulk: 6, hands: 2, verb: "skewer", reach: true, opening: 2 },
-      pike:       { name: "a pike",        type: "polearm", base: 14, acc: 0,  weight: 8, bulk: 8, hands: 2, verb: "skewer", reach: true, opening: 4 }   // longest reach -> biggest opening
+      spear:      { name: "a spear",       type: "polearm", base: 15, acc: 1,  weight: 4, bulk: 5, hands: 2, verb: "skewer", reach: true, opening: 3, value: 90 },  // GATE 4 R2: +1 base so the reach GENERALIST wins the NORMAL foe (its niche); full positioning edge still a deferred spatial HOOK
+      halberd:    { name: "a halberd",     type: "polearm", base: 16, acc: 0,  weight: 7, bulk: 6, hands: 2, verb: "skewer", reach: true, opening: 2, value: 180 },
+      pike:       { name: "a pike",        type: "polearm", base: 14, acc: 0,  weight: 8, bulk: 8, hands: 2, verb: "skewer", reach: true, opening: 4, value: 120 }   // longest reach -> biggest opening
     },
     // ARMOR — ONE MASTER DIAL, light <-> bulky (4 named tiers). The single dial position drives BOTH
     // together: bulkier = more robustness (damage-reduction) AND more encumbrance (worse evasion ->
@@ -144,22 +144,22 @@ var TD_RESOLVE = (function () {
     ARMOR: {
       // SECTION G — Bureau-voice armour tiers (VERBATIM operator ruling). The dial/mechanics are unchanged;
       // bureauTier is the Bureau's name for the tier; wear/examine/struckFeel are the authored voice.
-      unarmored: { tier: 1, name: "unarmoured", tierName: "your own clothes", bureauTier: "Attire As Presented", bulkReadout: "Unhindered", robustness: 0, encumbrance: 0,
+      unarmored: { tier: 1, name: "unarmoured", tierName: "your own clothes", bureauTier: "Attire As Presented", bulkReadout: "Unhindered", robustness: 0, encumbrance: 0, value: 0,
         wear: "The Office notes your attire and declines to endorse it.",
         examine: "Civilian dress. Bureau-permitted on sufferance. Offers the protection of a strongly-worded letter.",
         weightFeel: "nothing worth the mention",
         struckFeel: "The blow finds you whole. There was nothing between it and you." },
-      light: { tier: 2, name: "padded leather", tierName: "padded leather", bureauTier: "Visitor's Padding (Issued)", bulkReadout: "Cushioned", robustness: 3, encumbrance: 1,
+      light: { tier: 2, name: "padded leather", tierName: "padded leather", bureauTier: "Visitor's Padding (Issued)", bulkReadout: "Cushioned", robustness: 3, encumbrance: 1, value: 80,
         wear: "You are padded to visitor specification. Mind the smell; it is regulation.",
         examine: "Issued liner. Will take the edge off a misfortune. Will not take the misfortune.",
         weightFeel: "a coat's worth, no more",
         struckFeel: "The padding eats the edge. You feel it — only less." },
-      medium: { tier: 3, name: "mail", tierName: "mail", bureauTier: "Protective Equipment, Sanctioned", bulkReadout: "Shelled", robustness: 6, encumbrance: 3,
+      medium: { tier: 3, name: "mail", tierName: "mail", bureauTier: "Protective Equipment, Sanctioned", bulkReadout: "Shelled", robustness: 6, encumbrance: 3, value: 320,
         wear: "You are appropriately discouraged from injury. Move accordingly — slower.",
         examine: "Sanctioned hardshell. The Office considers you protected and considerably less nimble. Both are correct.",
         weightFeel: "a steady, earned weight",
         struckFeel: "Most of it skids off the shell. You keep your feet." },
-      heavy: { tier: 4, name: "plate", tierName: "plate", bureauTier: "Regulation Plate (Ceremonial)", bulkReadout: "Encased", robustness: 10, encumbrance: 6,
+      heavy: { tier: 4, name: "plate", tierName: "plate", bureauTier: "Regulation Plate (Ceremonial)", bulkReadout: "Encased", robustness: 10, encumbrance: 6, value: 900,
         wear: "You are, for all paperwork purposes, furniture that walks. Blows will be referred to the plate.",
         examine: "Full regalia. Turns the sword aside, and the corner also. Note: the plate fears nothing but the hammer.",
         weightFeel: "a serious, deliberate weight",
@@ -191,6 +191,7 @@ var TD_RESOLVE = (function () {
     var T = GEAR.ARMOR[tier] || GEAR.ARMOR.light, sh = def.share;
     return { kind: "armor", slot: slot, tier: tier, name: def.noun[tier] || (tier + " " + slot),
       robustness: T.robustness * sh, encumbrance: T.encumbrance * sh, weight: Math.max(1, Math.round(T.encumbrance * sh * 3 + 1)),
+      value: Math.round((T.value || 0) * sh),   // R1: per-slot BUY value = tier value x slot share (econ.baseValue reads item.value)
       bulkReadout: T.bulkReadout, struckFeel: T.struckFeel, crushTell: T.crushTell };
   }
   // aggregate a player's equipment into the {weapon, armor} the combat reads. Worn pieces sum their

@@ -856,9 +856,9 @@ var TD_MAP = (function () {
     // feel-words (NEVER a number): a weapon's weight in the hand, an armour tier's heft.
     function weightWord(w) { return w <= 2 ? "light in the hand" : w <= 4 ? "a fair heft" : w <= 7 ? "heavy" : "a burden to swing"; }
     function heftWord(spec) { var e = spec.encumbrance || 0; return e <= 1 ? "barely there" : e <= 3 ? "a steady weight" : "ponderous on the shoulders"; }
-    function weaponItem(spec) { var v = (GEAR && GEAR.WEAPON_TYPES[spec.type]) ? GEAR.WEAPON_TYPES[spec.type].verb : spec.verb; return { kind: "weapon", slot: "rightHand", glyph: ")", name: spec.name, weight: spec.weight, bulk: spec.bulk, type: spec.type, hands: spec.hands || 1, verb: spec.verb || v, spec: spec, desc: "A " + (((spec.hands || 1) === 2) ? "two-handed " : "") + spec.type + " weapon — you " + (spec.verb || v) + " with it. It is " + weightWord(spec.weight) + "." }; }
+    function weaponItem(spec) { var v = (GEAR && GEAR.WEAPON_TYPES[spec.type]) ? GEAR.WEAPON_TYPES[spec.type].verb : spec.verb; return { kind: "weapon", slot: "rightHand", glyph: ")", name: spec.name, weight: spec.weight, bulk: spec.bulk, type: spec.type, hands: spec.hands || 1, verb: spec.verb || v, value: spec.value, spec: spec, desc: "A " + (((spec.hands || 1) === 2) ? "two-handed " : "") + spec.type + " weapon — you " + (spec.verb || v) + " with it. It is " + weightWord(spec.weight) + "." }; }
     // GATE 7 (A): an armour piece is slot-bound (it equips to its own slot, e.g. a helm -> head).
-    function armorItem(spec) { return { kind: "armor", slot: spec.slot || "body", glyph: "[", name: spec.name, weight: spec.weight || armorCarryWeight(spec), bulk: 4, spec: spec, desc: spec.name + " (" + (spec.slot || "armour") + ") — it sits " + heftWord(spec) + "." }; }
+    function armorItem(spec) { return { kind: "armor", slot: spec.slot || "body", glyph: "[", name: spec.name, weight: spec.weight || armorCarryWeight(spec), bulk: 4, value: spec.value, spec: spec, desc: spec.name + " (" + (spec.slot || "armour") + ") — it sits " + heftWord(spec) + "." }; }
     function spawnGear() {
       if (!GEAR || !inDungeon() || (world.nodes[ctrl.node] || {}).dmz) return;
       var wkeys = Object.keys(GEAR.WEAPONS), akeys = ["light", "medium", "heavy"], aslots = ["head", "body", "hands", "feet", "waist", "back"];   // GATE 7 (A): armour drops as SLOT PIECES

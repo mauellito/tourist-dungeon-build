@@ -138,6 +138,14 @@ try{
   ok('G: verbatim STRUCK lines', AR.unarmored.struckFeel.indexOf('nothing between it and you')>=0 && AR.light.struckFeel.indexOf('eats the edge')>=0 && AR.medium.struckFeel.indexOf('skids off the shell')>=0 && AR.heavy.struckFeel.indexOf('rings the plate')>=0);
   ok('G: armourVoice(robustness) maps the effective dial to the right tier', T.GEAR.armourVoice(0)===AR.unarmored && T.GEAR.armourVoice(3)===AR.light && T.GEAR.armourVoice(6)===AR.medium && T.GEAR.armourVoice(10)===AR.heavy);
 
+  // ====== R1 — ITEM VALUES (kills the 1-copper bug): every weapon + armour tier carries an authoritative buy value ======
+  var WV=T.GEAR.WEAPONS, exp={dagger:35,shortsword:70,sabre:110,longsword:150,spear:90,mace:120,axe:120,flail:130,halberd:180,pike:120,warhammer:220};
+  ok('R1: every weapon carries its authoritative buy value (copper)', Object.keys(exp).every(function(k){return WV[k]&&WV[k].value===exp[k];}), Object.keys(exp).map(function(k){return k+'='+(WV[k]?WV[k].value:'?');}).join(','));
+  ok('R1: armour tiers carry value (unarmored 0 / light 80 / medium 320 / heavy 900)', T.GEAR.ARMOR.unarmored.value===0 && T.GEAR.ARMOR.light.value===80 && T.GEAR.ARMOR.medium.value===320 && T.GEAR.ARMOR.heavy.value===900);
+  var bp=T.GEAR.armorPiece('body','medium');
+  ok('R1: armorPiece value = tier value x slot share (>1, not the value-1 floor)', bp && bp.value===Math.round(320*0.5) && bp.value>1, bp?('body/medium value='+bp.value):'none');
+  ok('R1: NO weapon falls to the value-1 floor', Object.keys(WV).every(function(k){return (WV[k].value||0)>1;}));
+
   o.textContent=R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="COMBAT fail="+fails;
 }catch(e){o.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e);document.title="COMBAT harness_error";}})();</script>
 """
