@@ -1078,24 +1078,42 @@ var TD_TOWNMAP = (function () {
       for (var i = 0; i < slots.length; i++) { if (assigned[i]) continue; var s = slots[i]; if (t.where.indexOf(s.role) < 0) continue; if (s.area > bestA) { bestA = s.area; bestI = i; } }
       if (bestI >= 0) { assigned[bestI] = t; usedUnique[t.id] = 1; }
     });
-    // 2) deal the remaining slots from the weighted general pool (shuffled for fair spread)
+    // 2) deal the remaining slots from the weighted general pool (shuffled for fair spread). R2 — NO free
+    //    replacement: prefer FRESH ids (not yet used in this district role) until the role's pool is
+    //    exhausted, then allow a repeat. A GLOBAL instance index (dupIdx) drives a distinct proper name in
+    //    step 3 so two same-trade fronts never read identically.
     var rest = []; for (var i = 0; i < slots.length; i++) if (!assigned[i]) rest.push(i);
+    var roleUsed = {}, globalCount = {}, dupIdx = new Array(slots.length);
     shuffle(rest, rnd).forEach(function (si) {
-      var slot = slots[si];
-      var pool = TENANTS.filter(function (t) { return !t.unique && t.where.indexOf(slot.role) >= 0 && SIZE_RANK[slot.cls] >= SIZE_RANK[t.size]; });
-      if (!pool.length) pool = TENANTS.filter(function (t) { return !t.unique && t.where.indexOf(slot.role) >= 0; });
+      var slot = slots[si], role = slot.role;
+      roleUsed[role] = roleUsed[role] || {};
+      var pool = TENANTS.filter(function (t) { return !t.unique && t.where.indexOf(role) >= 0 && SIZE_RANK[slot.cls] >= SIZE_RANK[t.size]; });
+      if (!pool.length) pool = TENANTS.filter(function (t) { return !t.unique && t.where.indexOf(role) >= 0; });
       if (!pool.length) return;
-      var tot = 0; pool.forEach(function (t) { tot += t.weight || 1; });
-      var r = rnd() * tot, pick = pool[0];
-      for (var k = 0; k < pool.length; k++) { r -= pool[k].weight || 1; if (r <= 0) { pick = pool[k]; break; } }
+      var fresh = pool.filter(function (t) { return !roleUsed[role][t.id]; });
+      var src = fresh.length ? fresh : pool;                              // fresh-first; repeat only when the role pool is dry
+      var tot = 0; src.forEach(function (t) { tot += t.weight || 1; });
+      var r = rnd() * tot, pick = src[0];
+      for (var k = 0; k < src.length; k++) { r -= src[k].weight || 1; if (r <= 0) { pick = src[k]; break; } }
+      dupIdx[si] = globalCount[pick.id] || 0;                             // 0 = first instance anywhere; 1+ = a repeat -> distinct name
+      globalCount[pick.id] = (globalCount[pick.id] || 0) + 1;
+      roleUsed[role][pick.id] = 1;
       assigned[si] = pick;
     });
-    // 3) emit fronts in stable slot order
-    var fronts = [];
+    // 3) emit fronts in stable slot order. R2 — a repeated (non-unique, non-canon) trade gets a distinct
+    //    proper sign so two grocers never read identically (gift1/gift2 are separate ids -> the rival gag stays).
+    var SIGNS = ["Pell's", "The Second Best", "Olcott's", "No. 2", "The Other One", "Driscoll's", "The Annex", "Mott's", "The Lesser", "Quint's", "No. 3", "The New"];
+    var fronts = [], seenLabel = {};
     for (var i = 0; i < slots.length; i++) {
       var pick = assigned[i]; if (!pick) continue; var slot = slots[i];
       var canon = CANON[pick.id] || null;
-      fronts.push({ x: slot.front.x, y: slot.front.y, business: pick.id, label: canon ? canon.name : pick.label, cat: pick.cat,
+      var baseLabel = canon ? canon.name : pick.label;
+      // count EMITTED instances of this base label (in stable order): the 2nd+ gets a distinct proper sign, so
+      // two same-trade fronts never read identically. A unique street number breaks any sign-bank wrap.
+      var n = (seenLabel[baseLabel] || 0); seenLabel[baseLabel] = n + 1;
+      var label = baseLabel;
+      if (n > 0) { label = SIGNS[(n - 1) % SIGNS.length] + " — " + baseLabel; if (n > SIGNS.length) label += " (No. " + (n + 1) + ")"; }
+      fronts.push({ x: slot.front.x, y: slot.front.y, business: pick.id, label: label, cat: pick.cat,
         col: CAT_COL[pick.cat] || "storefront", glyph: pick.glyph, role: slot.role, cells: slot.cells, slotId: i,   // TOWN — the building MASS cells (for category tinting) + a stable slot id (shade variance)
         text: canon ? canon.sign : ("The front of " + pick.label + ". (Going inside arrives with the interiors pass.)"),
         bark: canon ? canon.bark : null, accent: canon ? canon.accent : null });

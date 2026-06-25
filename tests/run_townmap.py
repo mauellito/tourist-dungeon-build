@@ -121,6 +121,20 @@ REPORTER = r"""
     ok('the admission kiosk is reachable from the gate (findable beside the mouth)',
        gate&&kiosk&&reach(gate[0],gate[1],kiosk[0],kiosk[1]), 'kiosk='+kiosk);
 
+    // R2 — no two fronts read identically (a repeated trade gets a distinct proper sign), and fresh-first
+    //  dealing spreads trades (distinct businesses per town, not a monoculture). Repeats ARE allowed once a
+    //  role's eligible pool is exhausted (per the ruling) — the naming is what keeps them legible.
+    var dupSeeds=0, minDistinct=999, dupEx='';
+    [1,2,3,7,11,42,1234,99999,500,777].forEach(function(s){
+      var fr=TM.generate(s).fronts, set={}, biz={};
+      fr.forEach(function(f){ set[f.label]=(set[f.label]||[]); set[f.label].push(f.business); biz[f.business]=1; });
+      var dup=Object.keys(set).filter(function(l){return set[l].length>1;});
+      if(dup.length){ dupSeeds++; if(!dupEx)dupEx='seed '+s+': '+dup.map(function(l){return '"'+l+'"=['+set[l].join(',')+']';}).join(' '); }
+      var d=Object.keys(biz).length; if(d<minDistinct)minDistinct=d;
+    });
+    ok('R2: no two fronts read identically across seeds (repeats get a distinct sign)', dupSeeds===0, dupSeeds+' seeds with a dup. '+dupEx);
+    ok('R2: fresh-first deal spreads trades (>=10 distinct businesses per town)', minDistinct>=10, 'min distinct businesses across seeds = '+minDistinct);
+
     out.textContent = R.join('\n') + '\nSUMMARY ' + (R.length-fails) + '/' + R.length;
     document.title = 'TOWNMAP fail=' + fails;
   } catch (e) { out.textContent = 'HARNESS_ERROR ' + (e&&e.stack?e.stack:e); document.title = 'TOWNMAP harness_error'; }
