@@ -44,6 +44,8 @@ var TD_GAME = (function () {
       sign: ["THE TOUR AGENCY", "Guided. Safe. Premium. Our guides are famously ruthful."] },
     hotel: { title: "The Gilded Kraken", glyph: "H", act: "hotel", counter: "the front desk",
       sign: ["THE GILDED KRAKEN — a hotel of consequence", "Nothing down there worth roughing it for, dear."] },
+    guestfloor: { title: "The Gilded Kraken — Guest Floors", glyph: "H", act: "guestfloor", counter: "the floor attendant's desk",   // R4: the rooms above the lobby
+      sign: ["GUEST FLOORS", "Mind the carpet; it has seen things, and remembers most of them."] },
     spa: { title: "The Spa", glyph: "P", act: "spa", counter: "the treatment table",
       sign: ["THE SPA", "Emerge improved. Emerge, regrettably, announced."] },
     tavern: { title: "The Rusty Anchor", glyph: "T", act: "food", counter: "the bar",
@@ -793,7 +795,7 @@ var TD_GAME = (function () {
     }
 
     function occupantName(spec) {
-      if (spec.act === "hotel" || spec.act === "rest") return "a hotel guest";
+      if (spec.act === "hotel" || spec.act === "guestfloor" || spec.act === "rest") return "a hotel guest";
       if (spec.act === "food") return /Rusty Anchor|Saloon/.test(spec.title) ? "a regular" : "a diner";
       if (spec.act === "spa") return "a spa client";
       return "a browsing customer";
@@ -815,14 +817,36 @@ var TD_GAME = (function () {
       function counter(x, y) { features[key(x, y)] = { type: "counter", glyph: "$", label: spec.counter, act: act }; }
       var spawn, ox, oy, i;
 
-      if (act === "hotel") {                         // a LARGER lobby + front desk + stairs to the guest floors
+      if (act === "hotel") {                         // a LARGER lobby + front desk + stairs/elevator UP to the guest floors
         carve(g, 6, 3, 41, 16);
         counter(23, 4);
-        look(39, 5, "<", "the stairs up", "The stairs up to the guest floors, carpeted within an inch of their life. (The rooms above open in the next pass.)");
-        look(9, 8, "≈", "a lobby couch", "A low velvet couch, the kind that holds you slightly too long.");
-        look(12, 8, "≈", "a lobby couch", "A second couch, facing the first, for conversations nobody is having.");
-        look(10, 12, "♣", "a potted fern", "A potted fern, dignified and slowly dying, like the clientele.");
+        // R4 — the stairs up are now a REAL door into the guest-floor interior (was a flavour stub).
+        features[key(39, 5)] = { act: "look", glyph: "<", label: "the stairs up to the guest floors", to: "guestfloor",
+          text: "The stairs up to the guest floors, carpeted within an inch of their life." };
+        // R4 — the OTIS elevator: an enterable car that travels UP between the lobby and the guest floors.
+        // FLAG (Otis stub): only the UP side is built. The DOWN side is a deliberate FUTURE HOOK — the shaft is
+        // meant to descend to the dungeon checkpoint-spine, but that is NOT built here (no `to` downward).
+        features[key(8, 5)] = { act: "look", glyph: "8", label: "the Otis elevator", to: "guestfloor",
+          text: "An Otis elevator, brass gate and a velvet bench. It rises to the guest floors. A second, lower button is taped over — \"OUT OF SERVICE\" — the shaft below bricked, for now." };
+        look(11, 8, "≈", "a lobby couch", "A low velvet couch, the kind that holds you slightly too long.");
+        look(14, 8, "≈", "a lobby couch", "A second couch, facing the first, for conversations nobody is having.");
+        look(11, 12, "♣", "a potted fern", "A potted fern, dignified and slowly dying, like the clientele.");
         ox = 23; oy = 17; spawn = { x: 23, y: 15 };
+      } else if (act === "guestfloor") {             // R4 — the guest floors: a carpeted corridor of numbered rooms
+        carve(g, 6, 6, 41, 9);                       // the long corridor
+        counter(23, 7);                              // the floor attendant's desk (keeps the fixtures from the bare-stub wipe)
+        var rno = 201;                               // numbered room doors down both sides (the rooms themselves are a later pass)
+        for (var gdx = 9; gdx <= 38; gdx += 5) {
+          look(gdx, 5, "+", "Room " + rno, "Room " + (rno++) + " — the do-not-disturb card has done its duty for some days now.");
+          look(gdx, 10, "+", "Room " + rno, "Room " + (rno++) + " — a breakfast tray outside the door, the egg long past comment.");
+        }
+        // the stairs back DOWN to the lobby
+        features[key(39, 8)] = { act: "look", glyph: ">", label: "the stairs down to the lobby", to: "hotel",
+          text: "The stairs back down to the Gilded Kraken's lobby." };
+        // the Otis car, returned to the guest floor — rides back DOWN to the lobby (UP-side only; see the lobby stub)
+        features[key(8, 8)] = { act: "look", glyph: "8", label: "the Otis elevator", to: "hotel",
+          text: "The Otis car, waiting at the guest floor. It runs down to the lobby; the shaft below the lobby stays bricked, for now." };
+        ox = 23; oy = 11; spawn = { x: 23, y: 8 };
       } else if (act === "vault") {                  // bank: teller window + the vault + deposit boxes
         carve(g, 9, 3, 38, 15);
         counter(23, 4);
@@ -898,7 +922,10 @@ var TD_GAME = (function () {
       }
 
       if (!spec.counter) features = {};               // empty stubs stay bare (no counter, no fixtures)
-      doors[key(ox, oy)] = { to: "TOWN", glyph: "<", label: "the way out, back to the harbour" };
+      // R4 — the guest floor's way out leads DOWN to the lobby, not out to the harbour (you cannot step from an
+      // upstairs corridor straight onto the street); every other interior exits to TOWN.
+      if (act === "guestfloor") doors[key(ox, oy)] = { to: "hotel", glyph: "<", label: "back down to the lobby" };
+      else doors[key(ox, oy)] = { to: "TOWN", glyph: "<", label: "the way out, back to the harbour" };
 
       if (spec.counter) {                             // 2-4 patrons, SPREAD across the open floor, never on a fixture/door/spawn
         // FLAG: the drop-in's fixed x-cols [11,16,30,35] fall outside the compact service rooms (carve x>=12),
@@ -1458,7 +1485,10 @@ var TD_GAME = (function () {
       if (to === "TOWN") { placeId = returnScreen; player = returnTile ? { x: returnTile.x, y: returnTile.y } : { x: places[returnScreen].spawn.x, y: places[returnScreen].spawn.y }; logMsg("You step back out into the harbour."); return; }
       if (to === "redlit") { senses("A red lamp, a velvet rope, and a card: “Closed for renovations.” The Quay's End keeps its counsel.", "seen", "OBJ"); return; }   // exterior only
       if (to === "locked") { logMsg("The door is locked; no one answers. (A stub, for now.)"); return; }   // filler stub
-      returnTile = { x: player.x, y: player.y }; returnScreen = isTownScreen(placeId) ? placeId : returnScreen;   // come back to this screen, where we entered
+      // R4 — only stamp the town-return tile when stepping IN from a town screen. Interior->interior hops
+      // (e.g. hotel lobby -> guest floor -> lobby) must PRESERVE the original town tile, or a later TOWN exit
+      // would surface the player at the inner room's coordinates.
+      if (isTownScreen(placeId)) { returnTile = { x: player.x, y: player.y }; returnScreen = placeId; }
       placeId = to; player = { x: places[to].spawn.x, y: places[to].spawn.y };
       announce(places[to].title);                                          // E1: the Bureau welcomes you in
       logMsg((places[to].sign || []).join("  —  "));

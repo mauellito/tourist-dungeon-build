@@ -465,6 +465,41 @@ function TD_GAME_TESTS() {
     assert(new Set(fps).size === 4, "all four vice interiors have distinct fixture fingerprints (no shared room)");
   });
 
+  test("R4 HOTEL: the lobby offers a real UP route (stairs + Otis) into a guest-floor interior", function () {
+    var g = game(); g._goto("hotel"); var v = g.view();
+    var up = []; Object.keys(v.features).forEach(function (k) { if (v.features[k].to === "guestfloor") up.push(v.features[k]); });
+    assert(up.length >= 2, "two ways up — the stairs AND the Otis — both lead to the guest floors (" + up.length + ")");
+    var otis = up.filter(function (f) { return /otis/i.test(f.label || ""); });
+    assert(otis.length === 1, "exactly one Otis elevator in the lobby");
+    // Otis STUB: only the UP side is built — no lobby fixture descends to the dungeon/down shaft.
+    var down = []; Object.keys(v.features).forEach(function (k) { var t = v.features[k].to; if (t === "DUNGEON") down.push(k); });
+    assert(down.length === 0, "the Otis DOWN side is a stub — no lobby fixture wired to the dungeon yet");
+  });
+
+  test("R4 GUEST FLOOR: a corridor of numbered rooms, with stairs AND the Otis back down to the lobby", function () {
+    var g = game(); g._goto("guestfloor"); var v = g.view();
+    assert(/guest floor/i.test(v.title), "the guest-floor interior exists (" + v.title + ")");
+    var rooms = 0; Object.keys(v.features).forEach(function (k) { if (/^Room \d{3}$/.test(v.features[k].label || "")) rooms++; });
+    assert(rooms >= 6, "a corridor of numbered guest rooms (" + rooms + ")");
+    var back = []; Object.keys(v.features).forEach(function (k) { if (v.features[k].to === "hotel") back.push(v.features[k]); });
+    assert(back.length >= 2, "stairs AND the Otis both lead back down to the lobby (" + back.length + ")");
+    assert(back.some(function (f) { return /otis/i.test(f.label || ""); }), "the Otis car waits on the guest floor");
+    assert(v.creatures.length >= 2 && v.creatures.every(function (c) { return c.friendly; }), "2+ friendly guests in the corridor");
+  });
+
+  test("R4 ROUND-TRIP: lobby <-> guest floor by stairs AND by the Otis (real transitions land correctly)", function () {
+    // up the STAIRS (lobby 39,5 -> guest floor), then DOWN the stairs (guest 39,8 -> lobby)
+    var g = game(); g._goto("hotel"); g._warp(38, 5); g.move("right"); g.open();
+    eq(g._place(), "guestfloor", "the lobby stairs carry you up to the guest floor");
+    g._warp(38, 8); g.move("right"); g.open();
+    eq(g._place(), "hotel", "the guest-floor stairs carry you back down to the lobby");
+    // up by the OTIS (lobby 8,5 -> guest floor), then down by the Otis (guest 8,8 -> lobby)
+    g._warp(7, 5); g.move("right"); g.open();
+    eq(g._place(), "guestfloor", "the Otis carries you up to the guest floor");
+    g._warp(7, 8); g.move("right"); g.open();
+    eq(g._place(), "hotel", "the Otis carries you back down to the lobby");
+  });
+
   // E1 — ENTRY ANNOUNCEMENT
   test("E1 ANNOUNCEMENT: entering a named space posts exactly one banner welcome; quick re-entry does not spam", function () {
     var g = game();
