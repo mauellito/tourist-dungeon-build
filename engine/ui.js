@@ -253,7 +253,7 @@ var TD_UI = (function () {
     // FOOD + LODGING (amber/gold)
     tavern: "food", saloon: "food", restaurant: "food", coffee: "food", chinese: "food", hotel: "food", motel: "food",
     // VICE / RED-LIGHT (magenta) — GATE 4: the bodega moved OUT to commerce (it's an enterable shop now)
-    redlit: "vice", redshop: "vice", palmreader: "vice",
+    redlit: "vice", redshop: "vice", palmreader: "vice", tattoo: "vice",   // R3: tattoo recategorised to the RLD
     // MARITIME (sea-teal)
     chandlery: "maritime", warehouse: "maritime", clamshack: "maritime", spa: "maritime"
     // everything else (store/apothecary/bodega/bookstore/fence/tailor/cobbler/barber/bakery/grocer/tattoo/blacksmith/gift…) = COMMERCE (warm tan)

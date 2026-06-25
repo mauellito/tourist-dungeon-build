@@ -439,12 +439,30 @@ function TD_GAME_TESTS() {
   // DISPLACES, per the June-11 ruling. The voice greet/chat/recycle flow is
   // covered by the voice-engine suite (run_voices) and the keeper-counter chats.)
 
-  test("D3 PALM READER interior: a stub flavour business (sign, counter, patrons; no mechanics)", function () {
+  test("D3 PALM READER interior: a distinct RLD vice room (sign, counter, patrons; no mechanics)", function () {
     var g = game(); g._goto("palmreader"); var v = g.view();
     assert(/palm reader/i.test(v.title), "the palm reader interior exists (" + v.title + ")");
     var counterAct = null; Object.keys(v.features).forEach(function (k) { if (v.features[k].type === "counter") counterAct = v.features[k].act; });
-    assert(counterAct === "flavor", "the counter is FLAVOUR only — no divination mechanics (red-pen-pending)");
+    assert(counterAct === "vice", "R3: the counter is a VICE/RLD room — no divination mechanics yet (red-pen-pending)");
+    // R3: each RLD venue is a DISTINCT layout — the palm reader carries its own crystal + waiting chairs.
+    var hasCrystal = Object.keys(v.features).some(function (k) { return /crystal/i.test(v.features[k].label || ""); });
+    assert(hasCrystal, "the palm reader has its own fixture (the crystal) — not the shared craft room");
     assert(v.creatures.length >= 2 && v.creatures.every(function (c) { return c.friendly; }), "2+ friendly patrons");
+  });
+
+  test("R3 RLD: the four vice venues each open a DISTINCT enterable interior (not the shared craft room)", function () {
+    var ids = ["redlit", "redshop", "palmreader", "tattoo"], sigs = {}, titles = {};
+    ids.forEach(function (id) {
+      var g = game(); g._goto(id); var v = g.view();
+      titles[v.title] = (titles[v.title] || 0) + 1;
+      // collect the signature fixture labels (non-counter look fixtures) as the room's fingerprint
+      var fp = Object.keys(v.features).map(function (k) { return v.features[k].label; }).filter(Boolean).sort().join("|");
+      sigs[id] = fp;
+      assert(v.creatures.length >= 2 && v.creatures.every(function (c) { return c.friendly; }), id + " has 2+ friendly patrons");
+    });
+    assert(Object.keys(titles).length === 4, "all four vice titles are distinct (" + Object.keys(titles).join(", ") + ")");
+    var fps = ids.map(function (id) { return sigs[id]; });
+    assert(new Set(fps).size === 4, "all four vice interiors have distinct fixture fingerprints (no shared room)");
   });
 
   // E1 — ENTRY ANNOUNCEMENT

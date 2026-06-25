@@ -58,10 +58,11 @@ var TD_GAME = (function () {
     barber: { title: "The Barber", glyph: "R", act: "flavor", counter: "the chair", sign: ["THE BARBER", "A trim, a shave, and the news you did not ask for."] },
     church: { title: "The Church", glyph: "C", act: "blessing", counter: "the rail", sign: ["THE CHURCH", "Open to the living and, by appointment, the lately-living."] },
     tim: { title: "Tim's Tour Guide", glyph: "G", act: "tim", counter: "the desk", sign: ["TIM'S TOUR GUIDE", "Hints sold here. (Closed.)"] },
-    tattoo: { title: "The Tattoo Parlor", glyph: "Z", act: "flavor", counter: "the table", sign: ["THE TATTOO PARLOR", "Permanent souvenirs of a temporary visit."] },
+    tattoo: { title: "The Tattoo Parlor", glyph: "Z", act: "vice", counter: "the table", sign: ["THE TATTOO PARLOR", "Permanent souvenirs of a temporary visit."] },
     boat: { title: "Boat Rental", glyph: "Y", act: "boat", counter: "the dock desk", sign: ["BOAT RENTAL", "Rent a boat. The boat goes where the boat goes."] },
-    redshop: { title: "the Red Light Shop", glyph: "x", act: "flavor", counter: "the curtained counter", sign: ["THE RED LIGHT SHOP", "Discreet sundries for the discerning visitor."] },
-    palmreader: { title: "the Palm Reader", glyph: "&", act: "flavor", counter: "the velvet table", sign: ["PALM READING", "Your fortune read; no promises made about the future, or the hand."] },
+    redlit: { title: "the Members' Club", glyph: "%", act: "vice", counter: "the bar", sign: ["MEMBERS ONLY", "A members' club. Membership is implied by your presence and revoked by your absence."] },   // R3: the missing redlit interior
+    redshop: { title: "the Red Light Shop", glyph: "x", act: "vice", counter: "the curtained counter", sign: ["THE RED LIGHT SHOP", "Discreet sundries for the discerning visitor."] },
+    palmreader: { title: "the Palm Reader", glyph: "&", act: "vice", counter: "the velvet table", sign: ["PALM READING", "Your fortune read; no promises made about the future, or the hand."] },
     chinese: { title: "the Golden Turnstile", glyph: "N", act: "food", counter: "the takeout window", sign: ["THE GOLDEN TURNSTILE", "Takeout. Fast, cheap, faintly suspicious of you."] },
     clamshack: { title: "the Clam Shack", glyph: "F", act: "food", counter: "the shucking counter", sign: ["THE CLAM SHACK", "Fried, by the water, no questions asked."] },
     gift1: { title: "Ye Olde Dungeon Gifte", glyph: "1", act: "flavor", counter: "the till", sign: ["YE OLDE DUNGEON GIFTE", "Genuine artefacts, genuinely. Ignore the shop next door."] },
@@ -754,11 +755,11 @@ var TD_GAME = (function () {
       var buildingTint = {};   // TOWN — every building-mass cell -> { cat, shade } so the renderer tints the WHOLE block by tenant category (not flat wall)
       (m.fronts || []).forEach(function (fr) {
         var vice = (typeof TD_UI !== "undefined" && TD_UI.buildingCategory && TD_UI.buildingCategory(fr.business) === "vice");
-        var inRLD = (rlr && inRect(rlr, fr.x, fr.y)) || vice;   // the RLD's venues (vice) are non-enterable wherever their doorstep lands
-        var interior = inRLD ? null : (INTERIORS[fr.business] ? fr.business : "empty");   // RLD fronts carry no `to` -> not a door
+        // R3 — vice/RLD fronts are now ENTERABLE like every other front (the perpetual-dusk tint is kept via
+        // red:vice). FLAG (operator): enterable interiors chosen OVER the old paid front-service — confirm or revert.
+        var interior = INTERIORS[fr.business] ? fr.business : "empty";
         features[key(fr.x, fr.y)] = { type: "front", glyph: fr.glyph, col: fr.col, business: fr.business, to: interior, red: vice,
-          label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null,
-          act: inRLD ? "rldservice" : "look", service: inRLD ? serviceFor(fr.business) : null };   // GATE 4: RLD fronts SELL a service; others reveal a door
+          label: fr.label, text: fr.text, bark: fr.bark || null, accent: fr.accent || null, act: "look", service: null };
         // TOWN — tag the building MASS (the slot's wall cells) with the tenant CATEGORY + a per-building shade
         // variance (so a row of same-category shops isn't uniform). The renderer fills "#" by this, not P.wall.
         var cat = (typeof TD_UI !== "undefined" && TD_UI.buildingCategory) ? TD_UI.buildingCategory(fr.business) : "commerce";
@@ -861,6 +862,29 @@ var TD_GAME = (function () {
         look(15, 5, dg, "the fittings", "The fittings of the place, arranged to look more official than they are.");
         look(31, 5, dg, "the fittings", "More of the same, on the other side, for symmetry's sake.");
         ox = 23; oy = 14; spawn = { x: 23, y: 12 };
+      } else if (act === "vice") {                   // R3 — RLD venues: each a DISTINCT redlit interior
+        carve(g, 9, 3, 38, 15);
+        if (id === "redlit") {                        // members' club: a bar, a row of booths, a velvet rope
+          counter(23, 4);
+          for (var bx = 12; bx <= 34; bx += 5) look(bx, 9, "▬", "a booth", "A private booth, curtained, the upholstery keeping its secrets and most of the stains.");
+          look(21, 13, "‖", "the velvet rope", "A velvet rope on brass posts, admitting the admitted and quietly regretting the rest.");
+          look(25, 13, "‖", "the velvet rope", "The other half of the rope, equally certain of your unsuitability.");
+        } else if (id === "redshop") {                // discreet sundries: curtained stalls + a coded rack
+          counter(23, 4);
+          for (var cx = 12; cx <= 34; cx += 5) look(cx, 9, "▒", "a curtained stall", "A curtained stall, the curtain doing more work than the merchandise behind it.");
+          look(10, 12, "▤", "a discreet rack", "A rack of discreet sundries, labelled in a code only the regulars trouble to read.");
+          look(36, 12, "▤", "a discreet rack", "More of the same, racked to the wall, priced by the blush of the buyer.");
+        } else if (id === "palmreader") {             // velvet table + crystal + a pair of waiting chairs
+          counter(23, 5);
+          look(23, 3, "◉", "the crystal", "A crystal ball, clouded with cigarette smoke and the futures of the credulous.");
+          look(14, 9, "╥", "a waiting chair", "A waiting chair, where the impatient learn patience, or learn to leave.");
+          look(32, 9, "╥", "a waiting chair", "Another chair; its last occupant's fortune was evidently unfavourable.");
+        } else {                                       // tattoo: the chair + a wall of flash art
+          counter(23, 4);
+          look(23, 8, "✖", "the tattoo chair", "The chair — reclined, vinyl, and confident. It has heard every reason and inked them anyway.");
+          for (var fx = 12; fx <= 34; fx += 4) look(fx, 3, "✶", "flash art", "Flash art pinned to the wall — anchors, hearts, and regrets you can pre-order.");
+        }
+        ox = 23; oy = 16; spawn = { x: 23, y: 14 };
       } else if (act === "flavor") {                 // craft shops: a signature fixture by trade
         carve(g, 10, 4, 34, 14);
         counter(22, 5);

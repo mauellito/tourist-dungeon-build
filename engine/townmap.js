@@ -977,7 +977,7 @@ var TD_TOWNMAP = (function () {
     { id: "bakery",     label: "a bakery",               glyph: "q", cat: "commerce", size: "small",  where: ["housing", "market", "civic"], weight: 5 },
     { id: "grocer",     label: "a grocer",               glyph: "g", cat: "commerce", size: "small",  where: ["housing", "market"], weight: 5 },
     { id: "barber",     label: "a barber",               glyph: "y", cat: "commerce", size: "small",  where: ["housing", "market"], weight: 4 },
-    { id: "tattoo",     label: "a tattoo parlour",       glyph: "z", cat: "commerce", size: "small",  where: ["market", "civic"], weight: 3 },
+    { id: "tattoo",     label: "a tattoo parlour",       glyph: "z", cat: "vice",     size: "small",  where: ["redlight"], weight: 3 },   // R3: tattoo -> the RLD (gives the 4th vice tenant so the 4 RLD slots fill)
     { id: "tailor",     label: "a tailor",               glyph: "u", cat: "commerce", size: "small",  where: ["housing", "market"], weight: 3 },
     { id: "cobbler",    label: "a cobbler",              glyph: "j", cat: "commerce", size: "small",  where: ["housing", "market"], weight: 3 },
     // GATE FIX R3 — the TRANSACTING shops are CAPPED at one canonical each (unique); generic flavour fills the rest.
