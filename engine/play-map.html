@@ -220,7 +220,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "0f4a2173";</script>
+<script>window.__BUILD = "93b6294a";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -334,8 +334,9 @@ window.__initPlayMap = function () {
         stairs: [
           { x: 2, y: 2, dir: "up", dest: null },        // arrival anchor (climb-home is the GATE-4 auto-return to the parent)
           { x: 4, y: 4, dir: "down", dest: child },     // CONTINUE the dive (keeps Sublevel 6 reachable past the set-piece)
-          { x: 10, y: 4, dir: "down", dest: "TOWN" }    // the SG ESCAPE — flee to the surface with the loot
-        ]
+          { x: 10, y: 4, dir: "down", dest: "TOWN" }    // the SG ESCAPE — slab-gated flight to the surface with the loot
+        ],
+        sg: { arts: [{ id: "A", x: 5, y: 3, name: "the Reliquary Ledger" }, { id: "B", x: 11, y: 3, name: "the Brass Astrolabe" }] }
       });
       world.nodes[node].nodeType = "SET-PIECE";
       world.nodes[node].authored = "sg_live";
@@ -377,9 +378,13 @@ window.__initPlayMap = function () {
   // =========================================================== DRAW =========
   // draw wrapper: measures frame time and input->render latency (cleared after the first render
   // following an input, so feel-loop frames don't inflate the latency reading) — R3 telemetry.
-  function draw() { maybeSetpiece(); var t0 = nowMs(); _draw(); lastFrameMs = nowMs() - t0; if (inputT) { lastLatencyMs = nowMs() - inputT; inputT = 0; } }
+  function draw() { var t0 = nowMs(); _draw(); lastFrameMs = nowMs() - t0; if (inputT) { lastLatencyMs = nowMs() - inputT; inputT = 0; } }
 
-  // ===================== TD_SMASHGRAB — throwaway §24 fun-test mode (self-contained) ==========
+  // ===================== TD_SMASHGRAB — §24 DEV SANDBOX ONLY (behind the V key) =================
+  // R11 — the §24 footrace NO LONGER auto-launches in normal play. The Smash-and-Grab now plays on the real
+  // authored floor, in the normal renderer, as the real character (engine: composition.setpiece==="smashgrab"
+  // drives TD_RESOLVE.SG from the live turn loop). This self-contained overlay is kept ONLY as a DEV sandbox
+  // reachable by pressing V — it never hijacks the screen on descent.
   var sgLog = [];
   function sgPush(line) { sgLog.push(line); if (sgLog.length > 8) sgLog.shift(); }
   function sgFloat(tile, text, col) {   // a float in vault-grid coords (no camera; the vault draws at origin)
@@ -391,17 +396,8 @@ window.__initPlayMap = function () {
   }
   function sgSfx(name) { if (typeof TD_SFX !== "undefined" && name) TD_SFX.cue(name); }
   function sgEnter() { if (typeof TD_SFX !== "undefined") TD_SFX.unlock(); var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — down the approach passage into the chamber: loot the treasure ($), grab ONE artifact across the chasm, then SPRINT the escape corridor and slip UNDER the slab before it grinds shut. Stay light enough to run."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
-  // R10 R3 — fire the SG footrace overlay on ARRIVAL at a SET-PIECE floor (view().setpiece === "smashgrab"),
-  // so the set-piece runs in the NORMAL descent — no longer only behind the V debug key (V stays a dev alias).
-  // Arms once per entry; re-arms when you step off the set-piece floor, so re-entering the rigged vault re-runs it.
-  var sgArmedNode = null;
-  function maybeSetpiece() {
-    if (typeof TD_SMASHGRAB === "undefined" || TD_SMASHGRAB.active()) return;
-    if (!(sim && sim._phase && sim._phase() === "dungeon")) return;
-    var v = sim.view();
-    if (v && v.setpiece === "smashgrab") { if (sgArmedNode !== v.node) { sgArmedNode = v.node; sgEnter(); } }
-    else { sgArmedNode = null; }
-  }
+  // R11 — the auto-launch is RETIRED. The Smash-and-Grab now plays on the real authored floor in the normal
+  // renderer (engine-driven); this overlay no longer fires on descent. V remains a dev sandbox (below).
   function sgApply(res) {
     var now = nowMs(), sg = TD_SMASHGRAB.view();
     sgSfx(res.sfx);                                   // step / loot / grab / chime / slam / crash — the module names the cue
@@ -577,6 +573,9 @@ window.__initPlayMap = function () {
           else if (bt) { var bcol = (window.TD_UI && TD_UI.townTone) ? TD_UI.townTone(bt.cat) : P.wall; bg = darkTint(bcol, bt.shade); glyph = "#"; col = bright ? bcol : dim(bcol); }   // tint the MASS by tenant category (muted)
           else { glyph = "#"; col = bright ? P.wall : P.wallDim; }
         }
+        // R11 — a COLLAPSED cell on the live Smash-and-Grab floor reads as fallen-away floor (the collapse
+        // is shown on the REAL floor, in the normal renderer — no separate §24 screen).
+        if (vw.sg && vw.sg.rubble && vw.sg.rubble(x, y)) { bg = P.chasm; glyph = "▒"; col = P.chasmGlyph; }
         if (bg) { ctx.fillStyle = bg; ctx.fillRect(px, py, TS, TS); }
         if (glyph) { ctx.fillStyle = bright ? col : dim(col); ctx.fillText(glyph, px + TS / 2, py + TS / 2 + 1); }
       }
@@ -1304,7 +1303,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "R10 — HAND-AUTHORED floors are real: a tagged node serves a hand-made grid with typed multi-dest stairs (validated, never reseeded). The §24 Smash-and-Grab set-piece now fires in the NORMAL descent (a prototype placement on goal_3 — final node is the operator's call).";
+  var VERSION = "R11 — the Smash-and-Grab is a REAL FLOOR now: descend onto the authored vault as your own character, grab one of two artifacts (the other is lost), and the collapse + slab clock runs in real turns — outrun it to the slab-gated exit or flee deeper. No separate §24 screen (V is a dev sandbox only).";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

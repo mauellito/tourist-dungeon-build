@@ -337,7 +337,8 @@ var TD_MAP = (function () {
       tag: "authored", rooms: 0, roomList: [], corridorCells: 0, corrLens: [], corrWidths: [],
       comX: nF ? ax / nF : (W2 >> 1), comY: nF ? ay / nF : (H2 >> 1), floorDensity: (W2 * H2 ? nF / (W2 * H2) : 0),
       source: "authored", W: W2, H: H2, features: levelData.features || [], stairs: stairs,
-      setpiece: levelData.setpiece || null   // R10 R3 — SET-PIECE hook (e.g. "smashgrab"): the host activates the overlay on arrival
+      setpiece: levelData.setpiece || null,   // R10 R3 — SET-PIECE hook (e.g. "smashgrab")
+      sg: levelData.sg || null   // R11 — the SG artifact spec ({ arts:[{id,x,y,name}] }) the live set-piece reads (grid-agnostic)
     };
   }
   // R10 R3 — the §24 SMASH-AND-GRAB set-piece floor (PLACEHOLDER). DEPENDENCY FLAG: the operator's real
@@ -353,13 +354,15 @@ var TD_MAP = (function () {
       "#..............#",
       "#.<..$..$..$...#",
       "#..............#",
-      "#......>.......#",
+      "#...>.....>....#",
       "################"
     ],
     stairs: [
-      { x: 2, y: 2, dir: "up", dest: null },       // arrival anchor; the climb-home is the GATE-4 auto-return
-      { x: 7, y: 4, dir: "down", dest: "TOWN" }    // the escape: flee to the surface with the loot
+      { x: 2, y: 2, dir: "up", dest: null },        // arrival anchor; the climb-home is the GATE-4 auto-return
+      { x: 4, y: 4, dir: "down", dest: null },      // CONTINUE (engine default has no graph child -> inert; sg_live wires the real child)
+      { x: 10, y: 4, dir: "down", dest: "TOWN" }    // the ESCAPE: slab-gated flight to the surface with the loot
     ],
+    sg: { arts: [{ id: "A", x: 5, y: 3, name: "the Reliquary Ledger" }, { id: "B", x: 11, y: 3, name: "the Brass Astrolabe" }] },
     features: [{ type: "setpiece", x: 2, y: 2, w: 12, h: 3, cx: 7, cy: 2, depth: 1, kind: "smashgrab" }]
   });
   // SECTION D R1 — FLOOR-TYPE REGISTRY: nodeType -> generator. STANDARD is the default (gen2). JUNCTION and
@@ -695,6 +698,67 @@ var TD_MAP = (function () {
     }
     function reveal(px, py) { losFrom(px, py).forEach(function (k) { ctrl.explored.add(k); }); }
 
+    // ===== R11 — SMASH-AND-GRAB ON THE LIVE FLOOR =====
+    // The authored SET-PIECE floor IS the §24 set-piece: the collapse/slab CLOCK (TD_RESOLVE.SG, calibration
+    // UNCHANGED) is driven from the REAL turn loop; the spatial collapse spreads over THIS floor's grid; the
+    // `$` are real treasures (their weight rides the REAL burden, which gates the pace); grabbing a designated
+    // artifact trips the clock and forecloses the other (the A/B doom-door choice). No overlay, no separate
+    // screen — it plays in the normal renderer as the real character. ALL of this runs ONLY when the live
+    // floor's composition.setpiece === "smashgrab"; every other floor is completely untouched.
+    var SGR = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.SG) ? TD_RESOLVE.SG : null;
+    function sgActiveFloor() { return !!(ctrl.sg && ctrl.composition && ctrl.composition.setpiece === "smashgrab"); }
+    function sgInit(comp) {
+      var arts = ((comp.sg && comp.sg.arts) || []).map(function (a) { return { id: a.id, x: a.x, y: a.y, name: a.name || (a.id === "A" ? "the Reliquary Ledger" : "the Brass Astrolabe"), taken: false }; });
+      return { setpiece: true, tripped: false, doorClosed: 0, origin: null, dist: null, escaped: false, dead: false, choice: null, arts: arts, toldFront: -2, grace: false };
+    }
+    function sgSprintable() {   // the REAL character burden gates the pace (not an abstract load): heavy -> can't outrun the slab
+      var b = playerBand(), k = b ? b.band.key : "unencumbered"; return k === "unencumbered" || k === "laden";
+    }
+    function sgFloorDist(ox, oy) {   // BFS over the LIVE floor (walkable) from the collapse origin
+      var D = [[0, -1], [0, 1], [-1, 0], [1, 0]], dist = {}, q = [[ox, oy]]; dist[ox + "," + oy] = 0;
+      while (q.length) { var c = q.shift(), cd = dist[c[0] + "," + c[1]]; for (var i = 0; i < 4; i++) { var nx = c[0] + D[i][0], ny = c[1] + D[i][1], k = nx + "," + ny; if (dist[k] !== undefined) continue; if (!inb(nx, ny) || !(ctrl.grid[ny][nx] === "." || ctrl.grid[ny][nx] === "~")) continue; dist[k] = cd + 1; q.push([nx, ny]); } }
+      return dist;
+    }
+    function sgFrontier() { return (ctrl.sg && SGR) ? SGR.frontier(ctrl.sg) : -1; }
+    function sgSealed() { return !!(ctrl.sg && SGR && SGR.sealed(ctrl.sg)); }
+    function sgRubble(x, y) { var s = ctrl.sg; if (!s || !s.tripped || !s.dist) return false; var d = s.dist[x + "," + y]; return (d !== undefined) && d <= sgFrontier(); }
+    function sgPlayerLead() { var s = ctrl.sg; if (!s || !s.dist) return 99; var d = s.dist[ctrl.player.x + "," + ctrl.player.y]; return (d === undefined) ? 99 : (d - sgFrontier()); }
+    function sgTrip() {
+      var s = ctrl.sg; if (!s || s.tripped) return;
+      s.tripped = true; s.doorClosed = 0; s.grace = true; s.origin = { x: ctrl.player.x, y: ctrl.player.y }; s.dist = sgFloorDist(s.origin.x, s.origin.y);
+      logMsg("The far wall buckles — the floor is COMING DOWN behind you, and a slab grinds loose toward the way out. RUN.", true);
+      senses("A cold draft pours up out of the split in the floor; the Bureau does not heat a room it expects you to leave.", "heard", "OBJ");
+    }
+    function sgTelegraph() {   // R2 — the collapse/slab pressure reads in the SENSES channel as feel-words; never a number
+      var s = ctrl.sg; if (!s || !s.tripped) return; var fr = Math.floor(sgFrontier()); if (fr === s.toldFront) return; s.toldFront = fr;
+      if (sgSealed()) { senses("The slab has ground down across the way out; only a hand's breadth of light shows beneath it now.", "heard", "OBJ"); return; }
+      var lead = sgPlayerLead();
+      if (lead <= 2) senses("The collapse is at your heels — grit and dark pour past your ankles. MOVE.", "heard", "OBJ");
+      else if (lead <= 5) senses("The floor is folding shut behind you faster than you would like; the slab ahead keeps grinding down.", "heard", "OBJ");
+      else senses("A low grinding rolls through the stone — the room is coming apart, unhurried but certain.", "heard", "OBJ");
+    }
+    function sgGrabArt(it) {   // grabbing one artifact forecloses the other (the doom-door choice) + trips the clock
+      var s = ctrl.sg; if (!s) return;
+      s.choice = { grabbed: it.sgId, opensDoor: "SG_DOOR_" + it.sgId, shutsDoor: "SG_DOOR_" + (it.sgId === "A" ? "B" : "A"), pairsRuled: false };
+      s.arts.forEach(function (a) { if (a.id === it.sgId) a.taken = true; });
+      // the OTHER pedestal sinks out of reach (you carry only one)
+      for (var k in ctrl.items) { var o = ctrl.items[k]; if (o && o.kind === "sgart" && o.sgId !== it.sgId) { delete ctrl.items[k]; } }
+      ctrl.inventory.push({ kind: "artifact", glyph: "☥", name: it.name, sgId: it.sgId, desc: it.name + " — lifted from its pedestal; the other is lost to you now." });
+      logMsg("You lift " + it.name + " from its pedestal. The far pedestal sinks out of reach — you may carry only the one.", true);
+      senses("Stone grinds on stone the instant your fingers close: you have made your choice, and the room has noted it.", "heard", "OBJ");
+      sgTrip();
+    }
+    // the live-loop SG tick: each player action advances the slab/collapse clock + spreads the collapse.
+    function sgTick() {
+      var s = ctrl.sg; if (!sgActiveFloor() || !s || !s.tripped || s.escaped || s.dead || ctrl.dead) return;
+      // the GRAB turn is a one-action head-start (the original §24 trips on grab and only the NEXT move advances
+      // the slab/collapse): don't advance or crush on the trip turn — you get one beat to break from the pedestal.
+      if (s.grace) { s.grace = false; sgTelegraph(); return; }
+      s.doorClosed += sgSprintable() ? 1 : (SGR ? SGR.TUNE.HEAVY_PACE : 1.165);
+      if (sgRubble(ctrl.player.x, ctrl.player.y)) { s.dead = true; die("The floor dropped out from under you and the dark took everything — the Bureau files it under 'reabsorbed, with effects.'"); return; }
+      sgTelegraph();
+    }
+
     function buildView() {
       ctrl.water = {}; ctrl.chasm = {}; ctrl.pendingFall = null; ctrl.sensedSecret = {};
       var meta = world.nodes[ctrl.node] || {};
@@ -842,6 +906,16 @@ var TD_MAP = (function () {
       spawnCoins();
       spawnGear();
       if (decorate) decorate(ctrl, { CX: comp.spawn.x, CY: comp.spawn.y, key: key, isFloor: isFloor });
+      // R11 — SET-PIECE SETUP: the authored SG floor IS the live §24. Build the run-state, clear wandering
+      // foes (a curated footrace, not a brawl), make the `$` REAL heavy treasures (greed -> real burden ->
+      // the slab pace), and place the designated A/B artifacts (grabbing one trips the clock + forecloses the
+      // other). Determinism: the floor is authored (fixed); only the run-state is fresh per arrival.
+      ctrl.sg = (comp.setpiece === "smashgrab") ? sgInit(comp) : null;
+      if (ctrl.sg) {
+        ctrl.creatures = [];
+        (comp.loot || []).forEach(function (l) { if (isFloor(l.x, l.y)) ctrl.items[key(l.x, l.y)] = makeCoins("gold", 50); });   // treasure with WEIGHT (the anti-greed lever)
+        ctrl.sg.arts.forEach(function (a) { if (isFloor(a.x, a.y)) ctrl.items[key(a.x, a.y)] = { kind: "sgart", sgId: a.id, glyph: "☥", name: a.name, desc: a.name + " on a pedestal — you may carry only ONE artifact out, and grabbing it brings the room down." }; });
+      }
     }
     // adaptive contents for a varied screen: loot on reachable floor. For the ASSEMBLER (live) floor,
     // secrets are the generator's own tag==="secret" cells (registered in buildView) and are NOT invented
@@ -1098,6 +1172,7 @@ var TD_MAP = (function () {
     function endTurn(mode, noWorld) {
       meterTick(mode, noWorld);
       if (!noWorld && !ctrl.dead) creaturesStep();   // GATE 8 (B): a SPRINT skips the world's step (you dart ahead) at a high fatigue cost
+      sgTick();   // R11 — advance the SMASH-AND-GRAB collapse/slab clock from the REAL turn loop (no-op off a set-piece floor)
       shared.turn += 1;
     }
 
@@ -1584,6 +1659,7 @@ var TD_MAP = (function () {
       }
       var onWater = isWater(nx, ny);
       if (ctrl.grid[ny][nx] !== "." && !onWater) return { moved: false };
+      if (sgRubble(nx, ny)) { logMsg("The floor there has already fallen away into the dark.", false); return { moved: false, event: ctrl.lastEvent }; }   // R11 — the collapse has eaten that cell
 
       ctrl.player.x = nx; ctrl.player.y = ny;
       ctrl.pendingDoor = null; ctrl.pendingFall = null;
@@ -1648,6 +1724,10 @@ var TD_MAP = (function () {
       if (ctrl.dead || ctrl.won) return { got: false };
       var k = key(ctrl.player.x, ctrl.player.y), it = ctrl.items[k];
       if (!it) { logMsg("There is nothing here to take.", false); return { got: false, event: ctrl.lastEvent }; }
+      if (it.kind === "sgart") {   // R11 — grab a SMASH-AND-GRAB artifact: records the A/B choice, forecloses the other, trips the collapse
+        delete ctrl.items[k]; sgGrabArt(it); endTurn("step");
+        return { got: true, artifact: true, sgId: it.sgId, choice: ctrl.sg && ctrl.sg.choice, event: ctrl.lastEvent };
+      }
       delete ctrl.items[k];
       if (it.kind === "coins") {                                // coins -> the PURSE (weight -> encumbrance), never the pack
         if (!ctrl.character.purse) ctrl.character.purse = { copper: 0, silver: 0, gold: 0 };
@@ -1842,7 +1922,11 @@ var TD_MAP = (function () {
       var st = stairAt(p.x, p.y);
       if (st && st.dest != null) {
         if (st.dest === "TOWN") {   // the WAY UP to the surface — hand back to the town controller; freeze the dive where we stand
+          // R11 — on a SMASH-AND-GRAB floor this escape `>` is the SLAB-GATED exit: once the slab has sealed,
+          // the way out is shut (the failure outcome — flee deeper via the continue stair, or be caught).
+          if (sgActiveFloor() && sgSealed()) { ctrl.pendingDoor = null; logMsg("The slab has slammed home across the passage — this way out is sealed. (Avarice, in excess of egress.)", true); senses("Stone meets stone with a sound like a held breath let go; the light under the slab is gone.", "heard", "OBJ"); return { opened: false, blocked: "slab", event: ctrl.lastEvent }; }
           ctrl.pendingDoor = null; ctrl.lastEvent = null; ctrl.lastUrgent = false;
+          if (sgActiveFloor() && ctrl.sg) ctrl.sg.escaped = true;   // R11 — fled with the loot before the slab; the run resolves clean
           return { opened: true, toTown: true, exited: true, to: "TOWN" };
         }
         var sFromNode = ctrl.node, sFromLevel = curLevel();
@@ -1978,7 +2062,11 @@ var TD_MAP = (function () {
         pendingFall: ctrl.pendingFall ? key(ctrl.pendingFall.x, ctrl.pendingFall.y) : null,
         vault: (world.nodes[ctrl.node] || {}).vault || null,
         compSource: ctrl.composition ? ctrl.composition.source : null,
-        setpiece: ctrl.composition ? (ctrl.composition.setpiece || null) : null,   // R10 R3 — the host fires the matching overlay (e.g. "smashgrab") on arrival at a SET-PIECE floor
+        setpiece: ctrl.composition ? (ctrl.composition.setpiece || null) : null,   // R10 R3 — set-piece marker (e.g. "smashgrab")
+        // R11 — the SMASH-AND-GRAB run-state for the NORMAL renderer (no overlay): which cells have collapsed
+        // (rubble), whether the clock is running / the slab has sealed, and the proximity of the edge. The
+        // PRESSURE is told in the senses channel (feel-words); this is just what the renderer paints on the floor.
+        sg: (sgActiveFloor() && ctrl.sg) ? { active: true, tripped: ctrl.sg.tripped, sealed: sgSealed(), escaped: ctrl.sg.escaped, choice: ctrl.sg.choice, rubble: function (x, y) { return sgRubble(x, y); }, proximity: ctrl.sg.tripped ? Math.max(0, Math.min(1, 1 - sgPlayerLead() / 8)) : 0 } : null,
         discoveries: discoveries, lastEvent: ctrl.lastEvent, lastUrgent: ctrl.lastUrgent,
         pendingDoor: ctrl.pendingDoor ? key(ctrl.pendingDoor.x, ctrl.pendingDoor.y) : null,
         // GATE 2 R2 — the equip/character readout: gear as FEEL-WORDS only (name + type-verb; armour bulk
@@ -2079,6 +2167,8 @@ var TD_MAP = (function () {
       _setChasm: function (x, y) { ctrl.chasm[key(x, y)] = 1; ctrl.grid[y][x] = "X"; },
       _passable: function (x, y) { return passable(x, y); },
       _composition: function () { return ctrl.composition || null; },
+      _sg: function () { return ctrl.sg || null; },   // R11 — the live SMASH-AND-GRAB run-state (test/inspection hook)
+      _sgRubble: function (x, y) { return sgRubble(x, y); }, _sgSealed: function () { return sgSealed(); },
       _compTally: function () { return asmTally; },
       _compose: function (nodeKey, numDoors) { return composeNode(seed, nodeKey, numDoors); },
       _levelWet: function (L) { return levelIsWet(L); },
