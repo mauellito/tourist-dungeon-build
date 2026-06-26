@@ -258,21 +258,112 @@ var TD_MAP = (function () {
       stairs: stairsArray({ x: up.x, y: up.y }, { x: down.x, y: down.y })
     };
   }
+  // R10 — AUTHORED-LEVEL TABLE: hand-made floors keyed by id, resolved from a graph node's `authored` ref
+  // (world.nodes[id].authored = <levelId>). Engine-side registry; the operator's real authored grids
+  // register here (or swap in by id). Each level: { id, rows:[ASCII], stairs:[{x,y,dir,dest}], features?, setpiece? }.
+  var AUTHORED_LEVELS = {};
+  function registerAuthored(level) { if (level && level.id) AUTHORED_LEVELS[level.id] = level; return level; }
+
+  // R10 — AUTHORED-FLOOR LOADER. Serves a hand-made floor VERBATIM (never reseeded). Rows use the engine's
+  // glyph vocabulary (. floor / # wall / + door / ? secret / $ loot / < up-stair / > down-stair / ~ water /
+  // X chasm); a stair MANIFEST maps each stair cell to { dir, dest } so a floor can carry SEVERAL typed
+  // down-stairs to DIFFERENT nodes (the R7 router consumes dest). Returns the SAME comp contract as
+  // composeNodeGen2/composeHandAuthored (source:"authored"). VALIDATED, NOT regenerated: the parsed grid runs
+  // the SAME hard invariants as STANDARD (0 open corners / single region / declared stairs reachable from
+  // spawn). On ANY failure it FLAGS loudly (console.error) and returns null — the caller falls back to the
+  // stub; a broken authored floor is NEVER served. 0 open corners stays non-negotiable.
+  function composeAuthored(levelData) {
+    var id = (levelData && levelData.id) || "?";
+    if (!levelData || !levelData.rows || !levelData.rows.length) { console.error("composeAuthored: level '" + id + "' has no rows — REFUSED."); return null; }
+    var rows = levelData.rows, H2 = rows.length, W2 = 0, y, x;
+    for (y = 0; y < H2; y++) W2 = Math.max(W2, rows[y].length);
+    var g = [], rawGrid = [], roomDoors = [], secrets = [], loot = [], gridStairs = {}, nF = 0, ax = 0, ay = 0;
+    for (y = 0; y < H2; y++) {
+      var row = [], raw = rows[y];
+      for (x = 0; x < W2; x++) {
+        var c = (x < raw.length) ? raw[x] : "#";
+        if (c === "+") roomDoors.push({ x: x, y: y, state: "closed" });
+        if (c === "?") secrets.push({ x: x, y: y });
+        if (c === "$") loot.push({ x: x, y: y });
+        if (c === "<" || c === ">") gridStairs[x + "," + y] = c;
+        var out = (c === "#") ? "#" : (c === "~") ? "~" : (c === "X") ? "X" : ".";   // every non-wall/water/chasm glyph renders as walkable floor
+        if (out === "." || out === "~") { nF++; ax += x; ay += y; }
+        row.push(out);
+      }
+      g.push(row); rawGrid.push(row.slice());
+    }
+    // --- the stair MANIFEST: each {x,y,dir,dest} must sit on a matching stair glyph in the grid ---
+    var manifest = levelData.stairs || [], stairs = [], up = null, down = null, badStair = [];
+    manifest.forEach(function (s) {
+      var gc = gridStairs[s.x + "," + s.y];
+      var want = (s.dir === "up") ? "<" : ">";
+      if (gc !== want) { badStair.push("(" + s.x + "," + s.y + ") dir " + s.dir + " has glyph '" + (gc || "none") + "', expected '" + want + "'"); return; }
+      var entry = { x: s.x, y: s.y, dir: s.dir, symbol: s.dir === "up" ? "▲" : "▼", dest: (s.dest === undefined ? null : s.dest), opens: null, shuts: null };
+      stairs.push(entry);
+      if (s.dir === "up" && !up) up = entry;
+      if (s.dir === "down" && !down) down = entry;
+    });
+    if (badStair.length) { console.error("composeAuthored: level '" + id + "' stair manifest mismatches the grid: " + badStair.join("; ") + " — REFUSED."); return null; }
+    if (!up) { console.error("composeAuthored: level '" + id + "' has no up-stair in its manifest (spawn/arrival need one) — REFUSED."); return null; }
+    var spawn = { x: up.x, y: up.y };
+    // --- spare floor cells for the GATE-4 return-stair fallback (mirrors gen2's breadthCells; cap 16) ---
+    var stairKeys = {}; stairs.forEach(function (s) { stairKeys[s.x + "," + s.y] = 1; });
+    var breadthCells = [];
+    for (y = 1; y < H2 - 1 && breadthCells.length < 16; y++) for (x = 1; x < W2 - 1 && breadthCells.length < 16; x++) {
+      if (g[y][x] !== ".") continue; var k = x + "," + y; if (stairKeys[k] || (x === spawn.x && y === spawn.y)) continue;
+      breadthCells.push({ x: x, y: y });
+    }
+    // --- VALIDATE against the SAME hard invariants as STANDARD (measure = the canonical gen2 law) ---
+    var why = [];
+    if (typeof TD_GEN2 !== "undefined" && TD_GEN2.measure) {
+      var m = TD_GEN2.measure(g);
+      if (m.leaks !== 0) why.push("open corners = " + m.leaks + " (must be 0)");
+      if (m.regions !== 1) why.push("regions = " + m.regions + " (must be 1)");
+    } else { why.push("TD_GEN2.measure unavailable — cannot validate"); }
+    // declared stairs reachable from spawn (BFS over walkable floor)
+    var seen = {}, q = [[spawn.x, spawn.y]]; seen[spawn.x + "," + spawn.y] = 1;
+    function wlk(xx, yy) { return yy >= 0 && yy < H2 && xx >= 0 && xx < W2 && (g[yy][xx] === "." || g[yy][xx] === "~"); }
+    while (q.length) { var p = q.shift(); [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var nx = p[0] + d[0], ny = p[1] + d[1], nk = nx + "," + ny; if (!seen[nk] && wlk(nx, ny)) { seen[nk] = 1; q.push([nx, ny]); } }); }
+    var unreached = stairs.filter(function (s) { return !seen[s.x + "," + s.y]; });
+    if (unreached.length) why.push(unreached.length + " declared stair(s) unreachable from spawn");
+    if (why.length) { console.error("composeAuthored: level '" + id + "' FAILED validation [" + why.join("; ") + "] — REFUSED (caller falls back to the stub); a broken authored floor is never served."); return null; }
+    return {
+      grid: g, rawGrid: rawGrid, spawn: spawn,
+      downStair: down ? { x: down.x, y: down.y, kind: "down" } : null,
+      upStair: up ? { x: up.x, y: up.y, kind: "up" } : null,
+      breadthCells: breadthCells,
+      doorPts: (down ? [down] : []).concat(up ? [up] : []).concat(breadthCells),
+      roomDoors: roomDoors, secrets: secrets, loot: loot, deadEnds: [],
+      tag: "authored", rooms: 0, roomList: [], corridorCells: 0, corrLens: [], corrWidths: [],
+      comX: nF ? ax / nF : (W2 >> 1), comY: nF ? ay / nF : (H2 >> 1), floorDensity: (W2 * H2 ? nF / (W2 * H2) : 0),
+      source: "authored", W: W2, H: H2, features: levelData.features || [], stairs: stairs,
+      setpiece: levelData.setpiece || null   // R10 R3 — SET-PIECE hook (e.g. "smashgrab"): the host activates the overlay on arrival
+    };
+  }
   // SECTION D R1 — FLOOR-TYPE REGISTRY: nodeType -> generator. STANDARD is the default (gen2). JUNCTION and
   // SET-PIECE are REGISTERED but stubbed to STANDARD for now (the JUNCTION puzzle-hub + wiring the SG node-
   // graph SET-PIECE are later rounds / the doom-door layer — FLAG). Every type's output runs the SAME leak-gate.
+  // R10 — a HAND-AUTHORED / SET-PIECE node serves its `authored` level via composeAuthored; if the ref is
+  // missing/unknown OR the floor fails validation (composeAuthored returns null), it FLAGS and FALLS BACK to
+  // the stub rectangle — never crashing the dive. The `authored` level data is threaded from the call site
+  // (buildView resolves world.nodes[id].authored), since this registry is module-level (no `world` here).
+  function authoredOrStub(s, k, n, d, authored) {
+    if (authored) { var a = composeAuthored(authored); if (a) return a; console.error("composeNode: HAND-AUTHORED node '" + k + "' authored floor '" + (authored.id || "?") + "' failed to load — FALLING BACK to the stub."); }
+    else console.error("composeNode: HAND-AUTHORED node '" + k + "' has no/unknown `authored` ref — FALLING BACK to the stub (FLAGGED).");
+    return composeHandAuthored(s, k, n, d);
+  }
   var FLOOR_TYPES = {
     STANDARD:        function (s, k, n, d) { return composeNodeGen2(s, k, n, d); },
-    "HAND-AUTHORED": function (s, k, n, d) { return composeHandAuthored(s, k, n, d); },
+    "HAND-AUTHORED": function (s, k, n, d, authored) { return authoredOrStub(s, k, n, d, authored); },
     JUNCTION:        function (s, k, n, d) { return composeNodeGen2(s, k, n, d); },   // STUB -> STANDARD (junction puzzle-hub is a later round)
-    "SET-PIECE":     function (s, k, n, d) { return composeNodeGen2(s, k, n, d); }    // STUB -> STANDARD (SG node-graph wiring = doom-door layer)
+    "SET-PIECE":     function (s, k, n, d, authored) { return authoredOrStub(s, k, n, d, authored); }   // R10 — SET-PIECE loads its authored grid (SG); falls back to the stub if absent
   };
-  function composeNode(seed, nodeKey, numDoors, depth, nodeType) {
+  function composeNode(seed, nodeKey, numDoors, depth, nodeType, authored) {
     // Route by nodeType through the registry (substitution = lookup). STANDARD = gen2, rendered directly + GATED
-    // (reseed until leaks=0/single-region/both-stairs). nodeType threaded from the CALL SITE (this fn is
-    // module-level — no `world` here). If the generator is absent: test-only legacy carver, else a debug floor.
+    // (reseed until leaks=0/single-region/both-stairs). nodeType + authored threaded from the CALL SITE (this fn
+    // is module-level — no `world` here). If the generator is absent: test-only legacy carver, else a debug floor.
     var gen = FLOOR_TYPES[nodeType] || FLOOR_TYPES.STANDARD;
-    var a = gen(seed, nodeKey, numDoors, depth);
+    var a = gen(seed, nodeKey, numDoors, depth, authored);
     if (a) { asmTally.gen2++; asmTally.assembler++; return a; }
     asmTally.noGen2++;
     // TEST-ONLY: legacy-carver unit suites (run_architecture/run_map) flip TD_MAP.setLegacy(true) to
@@ -590,7 +681,11 @@ var TD_MAP = (function () {
       var v = interp.view();
       var cl = curLevel();
       var nodeType = (world.nodes[ctrl.node] || {}).nodeType || "STANDARD";   // SECTION D — floor-type from the graph (operator canon; defaults STANDARD so the live dive is unchanged)
-      var comp = composeNode(seed, ctrl.node, v.options.length, cl, nodeType);   // depth -> features; nodeType -> registry
+      // R10 — resolve a HAND-AUTHORED / SET-PIECE node's authored level from the table (no-op for STANDARD nodes).
+      var authoredRef = (world.nodes[ctrl.node] || {}).authored;
+      var authoredData = authoredRef ? AUTHORED_LEVELS[authoredRef] : null;
+      if (authoredRef && !authoredData) console.error("buildView: node '" + ctrl.node + "' references unknown authored level '" + authoredRef + "' — composeNode will fall back to the stub (FLAGGED).");
+      var comp = composeNode(seed, ctrl.node, v.options.length, cl, nodeType, authoredData);   // depth -> features; nodeType + authored -> registry
       // R6 — STAIR ARRIVAL CONTINUITY: the floor is identical per node (deterministic seed, untouched); only
       // WHICH existing stair cell we spawn on changes. Climbing BACK up to a floor (arrivedVia "up") lands you
       // on that floor's DOWN-stair — the cell you left by — instead of the up-stair at the top. Descending in,
@@ -610,7 +705,21 @@ var TD_MAP = (function () {
       // a graph edge. If a node has more exits than the floor offers, FLAG the seam — never punch.
       // (The test-only legacy carver has no stair concept — it keeps the old doorPts[i]-by-edge mapping.)
       var seam = 0;
-      if (comp.breadthCells) {
+      if (comp.source === "authored") {
+        // R10 — AUTHORED floors place their stairs DIRECTLY from the manifest (each carries an explicit dest);
+        // the generic edge-mapper is skipped. A dest is matched to its graph edge (so interp.choose advances the
+        // lattice + checks takeable); "TOWN" exits to the surface; a null/unmatched dest FLAGS and stays an inert
+        // marker. The GATE-4 return-stair + GATE-5 town-exit blocks below still run (comp.breadthCells is present).
+        (comp.stairs || []).forEach(function (s) {
+          var k = key(s.x, s.y); if (doors[k]) return;
+          var type = (s.dir === "up") ? "stair_up" : "stair_down";
+          if (s.dest === "TOWN") { doors[k] = { type: "stair_up", toTown: true, takeable: true, to: "TOWN", label: "the way up — to the surface (Town)", tells: [] }; return; }
+          if (s.dest == null) { doors[k] = { type: type, takeable: false, to: null, label: "an authored stair (destination unassigned — operator canon)", tells: [] }; return; }
+          var ed = null; v.options.forEach(function (o) { if (o.to === s.dest) ed = o; });
+          if (!ed) { console.error("buildView: authored node '" + ctrl.node + "' stair dest '" + s.dest + "' has no matching graph edge — placed as an inert marker (FLAGGED)."); doors[k] = { type: type, takeable: false, to: s.dest, label: "an authored stair (no graph edge)", tells: [] }; return; }
+          doors[k] = { edgeId: ed.id, type: type, takeable: ed.takeable, reason: ed.reason, one_way: ed.one_way, to: s.dest, label: ed.label || ("a stair " + s.dir), tells: ed.tells || [] };
+        });
+      } else if (comp.breadthCells) {
         var bi = 0;
         v.options.forEach(function (o) {
           var toLevel = (world.nodes[o.to] || {}).level;
@@ -1965,6 +2074,11 @@ var TD_MAP = (function () {
     _gen2Clean: function (seed, depth) { var r = nodeRng((seed >>> 0) || 1, "leaksweep:g2"); return gen2Clean(function () { return r.int(1, 2000000000); }, depth || 0); },
     _composeType: function (nodeType, seed) { return composeNode((seed >>> 0) || 1, "ltest" + (seed || 0), 2, 6, nodeType); },   // SECTION D — compose one floor of a given type (leak-gate test hook)
     _floorTypes: function () { return Object.keys(FLOOR_TYPES); },
+    // R10 — AUTHORED-FLOOR loader + registry. composeAuthored serves/validates a hand-made floor; registerAuthored
+    // adds a level to the table a HAND-AUTHORED node resolves via its `authored` ref. Exposed for tests + content wiring.
+    composeAuthored: function (levelData) { return composeAuthored(levelData); },
+    registerAuthored: function (level) { return registerAuthored(level); },
+    authoredLevel: function (id) { return AUTHORED_LEVELS[id] || null; },
     _gen2Opts: GEN2_OPTS,
     // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
     CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_MIX: COIN_MIX
