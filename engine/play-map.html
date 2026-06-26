@@ -220,7 +220,7 @@
 <div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "04a69420";</script>
+<script>window.__BUILD = "0f4a2173";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -308,8 +308,42 @@ window.__initPlayMap = function () {
   function urlSeed() { var m = /[?&]seed=(\d+)/.exec(location.search); return m ? parseInt(m[1], 10) : null; }
   function randSeed() { return Math.floor(Math.random() * 1e6) + 1; }   // a FRESH world (UI shell only — never the testable core); same as the reroll button
 
+  // R10 R3 — PROTOTYPE PLACEMENT (host-side; the TD_GEN graph is OPERATOR CANON and is NOT edited). Tag a
+  // reachable descent node SET-PIECE and register a per-game authored SG floor whose stairs CONTINUE the dive
+  // (down -> the node's real child, via the R7 multi-dest router) AND offer the SG ESCAPE (down -> TOWN), so
+  // the set-piece runs in the normal descent without truncating the route to Sublevel 6. FLAG: WHICH lattice
+  // node the SG finally lands on is the OPERATOR's call — this targets goal_3 as a prototype. The SG GRID
+  // CONTENT is the operator's; this placeholder (pedestals + escape) proves the wiring and swaps out by id.
+  function placeSGSetpiece(world) {
+    try {
+      if (!world || !world.nodes || typeof TD_MAP === "undefined" || !TD_MAP.registerAuthored) return;
+      var node = "goal_3"; if (!world.nodes[node]) return;          // prototype target; absent on shallow seeds -> skip quietly
+      var lvl = world.nodes[node].level || 0, child = null;
+      (world.edges || []).forEach(function (e) { if (e.from === node && (world.nodes[e.to] || {}).level > lvl) child = e.to; });
+      if (!child) { console.warn("R10 R3: prototype SG node " + node + " has no down-edge child — SG not placed (FLAGGED)."); return; }
+      TD_MAP.registerAuthored({
+        id: "sg_live", setpiece: "smashgrab",
+        rows: [
+          "################",
+          "#..............#",
+          "#.<..$..$..$...#",
+          "#..............#",
+          "#...>.....>....#",
+          "################"
+        ],
+        stairs: [
+          { x: 2, y: 2, dir: "up", dest: null },        // arrival anchor (climb-home is the GATE-4 auto-return to the parent)
+          { x: 4, y: 4, dir: "down", dest: child },     // CONTINUE the dive (keeps Sublevel 6 reachable past the set-piece)
+          { x: 10, y: 4, dir: "down", dest: "TOWN" }    // the SG ESCAPE — flee to the surface with the loot
+        ]
+      });
+      world.nodes[node].nodeType = "SET-PIECE";
+      world.nodes[node].authored = "sg_live";
+    } catch (e) { console.error("R10 R3: placeSGSetpiece failed — SG not placed (FLAGGED): " + e); }
+  }
   function newGame(seed) {
     world = TD_GEN.generate(seed, { depth: 6 });   // GATE 5: the vertical slice is a 6-floor dive (uses the generator's existing depth opt; was the 3-4 default)
+    placeSGSetpiece(world);                          // R10 R3 — prototype: drop the §24 SG set-piece on a reachable descent node (host-side; TD_GEN graph not edited)
     session = { knowledge: new Set(), lives: 0 };
     sim = TD_GAME.create(world, { session: session });
     window.__TD_SIM = function () { return sim; };
@@ -343,7 +377,7 @@ window.__initPlayMap = function () {
   // =========================================================== DRAW =========
   // draw wrapper: measures frame time and input->render latency (cleared after the first render
   // following an input, so feel-loop frames don't inflate the latency reading) — R3 telemetry.
-  function draw() { var t0 = nowMs(); _draw(); lastFrameMs = nowMs() - t0; if (inputT) { lastLatencyMs = nowMs() - inputT; inputT = 0; } }
+  function draw() { maybeSetpiece(); var t0 = nowMs(); _draw(); lastFrameMs = nowMs() - t0; if (inputT) { lastLatencyMs = nowMs() - inputT; inputT = 0; } }
 
   // ===================== TD_SMASHGRAB — throwaway §24 fun-test mode (self-contained) ==========
   var sgLog = [];
@@ -357,6 +391,17 @@ window.__initPlayMap = function () {
   }
   function sgSfx(name) { if (typeof TD_SFX !== "undefined" && name) TD_SFX.cue(name); }
   function sgEnter() { if (typeof TD_SFX !== "undefined") TD_SFX.unlock(); var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — down the approach passage into the chamber: loot the treasure ($), grab ONE artifact across the chasm, then SPRINT the escape corridor and slip UNDER the slab before it grinds shut. Stay light enough to run."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
+  // R10 R3 — fire the SG footrace overlay on ARRIVAL at a SET-PIECE floor (view().setpiece === "smashgrab"),
+  // so the set-piece runs in the NORMAL descent — no longer only behind the V debug key (V stays a dev alias).
+  // Arms once per entry; re-arms when you step off the set-piece floor, so re-entering the rigged vault re-runs it.
+  var sgArmedNode = null;
+  function maybeSetpiece() {
+    if (typeof TD_SMASHGRAB === "undefined" || TD_SMASHGRAB.active()) return;
+    if (!(sim && sim._phase && sim._phase() === "dungeon")) return;
+    var v = sim.view();
+    if (v && v.setpiece === "smashgrab") { if (sgArmedNode !== v.node) { sgArmedNode = v.node; sgEnter(); } }
+    else { sgArmedNode = null; }
+  }
   function sgApply(res) {
     var now = nowMs(), sg = TD_SMASHGRAB.view();
     sgSfx(res.sfx);                                   // step / loot / grab / chime / slam / crash — the module names the cue
@@ -1259,7 +1304,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "R7 — the dive now routes through the multi-stair model (stairs[].dest): every staircase carries its own destination, so a floor can hold several typed stairs going to different places. Same 6-floor dive, new mechanism.";
+  var VERSION = "R10 — HAND-AUTHORED floors are real: a tagged node serves a hand-made grid with typed multi-dest stairs (validated, never reseeded). The §24 Smash-and-Grab set-piece now fires in the NORMAL descent (a prototype placement on goal_3 — final node is the operator's call).";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

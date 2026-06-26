@@ -340,6 +340,28 @@ var TD_MAP = (function () {
       setpiece: levelData.setpiece || null   // R10 R3 — SET-PIECE hook (e.g. "smashgrab"): the host activates the overlay on arrival
     };
   }
+  // R10 R3 — the §24 SMASH-AND-GRAB set-piece floor (PLACEHOLDER). DEPENDENCY FLAG: the operator's real
+  // authored SG grid is NOT in the repo — TD_SMASHGRAB is an abstract overlay (no tile grid). This placeholder
+  // (a chamber with pedestals `$` + an escape `>` to the surface) PROVES THE WIRING now; the operator's real
+  // SG grid swaps in by registering the SAME id ("sg_setpiece"). `setpiece:"smashgrab"` tells the host to fire
+  // the TD_SMASHGRAB footrace overlay on arrival. The up-stair `<` is the arrival anchor (climb-home is the
+  // GATE-4 auto-return to the parent); the escape `>` flees to TOWN. Law-safe (solid rectangle => 0 corners).
+  registerAuthored({
+    id: "sg_setpiece", setpiece: "smashgrab",
+    rows: [
+      "################",
+      "#..............#",
+      "#.<..$..$..$...#",
+      "#..............#",
+      "#......>.......#",
+      "################"
+    ],
+    stairs: [
+      { x: 2, y: 2, dir: "up", dest: null },       // arrival anchor; the climb-home is the GATE-4 auto-return
+      { x: 7, y: 4, dir: "down", dest: "TOWN" }    // the escape: flee to the surface with the loot
+    ],
+    features: [{ type: "setpiece", x: 2, y: 2, w: 12, h: 3, cx: 7, cy: 2, depth: 1, kind: "smashgrab" }]
+  });
   // SECTION D R1 — FLOOR-TYPE REGISTRY: nodeType -> generator. STANDARD is the default (gen2). JUNCTION and
   // SET-PIECE are REGISTERED but stubbed to STANDARD for now (the JUNCTION puzzle-hub + wiring the SG node-
   // graph SET-PIECE are later rounds / the doom-door layer — FLAG). Every type's output runs the SAME leak-gate.
@@ -1956,6 +1978,7 @@ var TD_MAP = (function () {
         pendingFall: ctrl.pendingFall ? key(ctrl.pendingFall.x, ctrl.pendingFall.y) : null,
         vault: (world.nodes[ctrl.node] || {}).vault || null,
         compSource: ctrl.composition ? ctrl.composition.source : null,
+        setpiece: ctrl.composition ? (ctrl.composition.setpiece || null) : null,   // R10 R3 — the host fires the matching overlay (e.g. "smashgrab") on arrival at a SET-PIECE floor
         discoveries: discoveries, lastEvent: ctrl.lastEvent, lastUrgent: ctrl.lastUrgent,
         pendingDoor: ctrl.pendingDoor ? key(ctrl.pendingDoor.x, ctrl.pendingDoor.y) : null,
         // GATE 2 R2 — the equip/character readout: gear as FEEL-WORDS only (name + type-verb; armour bulk
