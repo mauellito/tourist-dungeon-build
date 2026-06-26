@@ -664,6 +664,23 @@ var TD_MAP = (function () {
         if (cn.dir === "out") doors[k] = { type: "stair_up", toTown: true, takeable: true, to: "TOWN", connector: cn.kind, label: "a mop closet — the one-way OUT to the surface (Town)", tells: [] };
         else doors[k] = { type: "connector", connector: cn.kind, oneway: true, dest: cn.dest, takeable: false, label: "a " + cn.kind + " connector (one-way " + (cn.dir || "?") + ") — destination unassigned (operator canon)", tells: [] };
       });
+      // R7 — ROUTE THE DIVE THROUGH stairs[].dest. The live router (ctrl.stairs, below) is DERIVED from the
+      // final door layer so EVERY actual stair carries its destination: the down-stair <- the down-edge's
+      // target; the up-stair <- the up-edge; the synthetic RETURN stair <- the came-from node; the entrance's
+      // way-up <- "TOWN". This supersedes the dormant Section D R2 scaffolding (gen2's two physical cells with
+      // dest:null, kept on comp.stairs for the leak-gate). openDoor resolves every stair transition via .dest,
+      // never the implicit single up/down. CAPABILITY ONLY: the graph (TD_GEN) is untouched — with one up + one
+      // down per floor this is identical to before, but a floor can now hold several typed stairs, each routing
+      // to a different node. liveStairs IS the realizable lattice router.
+      var liveStairs = [];
+      Object.keys(doors).forEach(function (k) {
+        var dr = doors[k]; if (dr.type !== "stair_up" && dr.type !== "stair_down") return;   // breadth/plain/connector doors are NOT stairs
+        var pc = k.split(",").map(Number), dir = (dr.type === "stair_up") ? "up" : "down";
+        liveStairs.push({ x: pc[0], y: pc[1], dir: dir, symbol: (dir === "up") ? "▲" : "▼",
+          dest: dr.toTown ? "TOWN" : (dr.to != null ? dr.to : (dr.returnTo != null ? dr.returnTo : null)),
+          edgeId: dr.edgeId || null, returnTo: (dr.returnTo != null) ? dr.returnTo : null,
+          oneway: !!dr.one_way, toTown: !!dr.toTown, reason: dr.reason || null, opens: null, shuts: null });
+      });
       ctrl.grid = g; ctrl.doors = doors; ctrl.features = {};
       ctrl.items = {}; ctrl.plain = {}; ctrl.secrets = {};
       // v21 — room doorways carry a rendered state (closed / ajar / open) — the GENERATOR'S own door tags.
@@ -675,7 +692,7 @@ var TD_MAP = (function () {
       ctrl.player = { x: comp.spawn.x, y: comp.spawn.y };
       ctrl.composition = comp;
       ctrl.featureRooms = comp.features || [];   // ARCHITECTURAL FEATURES — for the view (telegraph/voice wire in R3)
-      ctrl.stairs = comp.stairs || [];           // SECTION D R2 — the floor's multi-stair model (additive; the live up/down doors still drive descent/ascent)
+      ctrl.stairs = liveStairs;                  // R7 — the LIVE multi-stair router (door-derived, dest-stamped). comp.stairs (gen2's physical up/down) stays for the leak-gate / compose consumers.
       ctrl.connectors = comp.connectors || [];   // SECTION D R4 — dead-end connector tiles (CRMC wired as a town-exit door; others flagged stubs)
       // v2 (Jaquay) — MAP MEMORY: explored geometry persists per node across revisits
       // within a run (the node is deterministic, so the keys stay valid). Live LOS layers
@@ -1664,6 +1681,10 @@ var TD_MAP = (function () {
       return { fell: true, recenter: true, to: ctrl.node };
     }
 
+    // R7 — the stairs[] entry sitting on a cell (the live router's lookup). null for breadth/plain/connector
+    // doors (which are not stairs) — those keep edge routing. Each stair carries the .dest stamped in buildView.
+    function stairAt(x, y) { var s = ctrl.stairs || []; for (var i = 0; i < s.length; i++) if (s[i].x === x && s[i].y === y) return s[i]; return null; }
+
     function openDoor() {
       if (ctrl.dead || ctrl.won) return { opened: false };
       ctrl.fx = [];
@@ -1682,6 +1703,42 @@ var TD_MAP = (function () {
       }
       if (Math.max(Math.abs(p.x - ctrl.player.x), Math.abs(p.y - ctrl.player.y)) > 1) { ctrl.pendingDoor = null; return { opened: false }; }
       var d = p.meta;
+      // R7 — ROUTE THROUGH stairs[].dest: the stair under this door is the live router. Its .dest is the
+      // destination ("TOWN" = the surface, a node-ref for a graph stair, the came-from node for a synthetic
+      // return). The descend, ascend, and synthetic-return paths ALL resolve here. Breadth/plain/connector
+      // doors are NOT stairs (stairAt -> null) and keep edge routing below; a stair with a null dest FLAGS
+      // and drops to the legacy path — never strands.
+      var st = stairAt(p.x, p.y);
+      if (st && st.dest != null) {
+        if (st.dest === "TOWN") {   // the WAY UP to the surface — hand back to the town controller; freeze the dive where we stand
+          ctrl.pendingDoor = null; ctrl.lastEvent = null; ctrl.lastUrgent = false;
+          return { opened: true, toTown: true, exited: true, to: "TOWN" };
+        }
+        var sFromNode = ctrl.node, sFromLevel = curLevel();
+        if (st.edgeId) {            // a real graph stair: advance the interpreter (it checks takeable / requirements / completion)
+          if (onCross) { var soc = onCross(d, ctrl); if (soc && soc.block) { logMsg(soc.block, false); return { opened: false, blocked: soc.block }; } }
+          var sr = interp.choose(st.edgeId);
+          if (!sr.ok) { logMsg(st.reason || d.reason || "the way is barred", false); return { opened: false, blocked: ctrl.lastEvent }; }
+          if (st.oneway) { logMsg("The way seals behind you with a click. It will not open from this side.", true); senses("A click, behind and below; the way has closed.", "heard", "OBJ"); }
+          else { ctrl.lastEvent = null; ctrl.lastUrgent = false; }
+          ctrl.node = interp.state.node; ctrl.won = !!sr.complete;
+        } else {                    // a synthetic return stair (no graph edge): set the resolved destination node directly
+          interp.state.node = st.dest; ctrl.node = st.dest; ctrl.won = false; ctrl.lastEvent = null; ctrl.lastUrgent = false;
+        }
+        ctrl.pendingDoor = null;
+        if (!shared.cameFrom) shared.cameFrom = {};
+        if (ctrl.node !== sFromNode) shared.cameFrom[ctrl.node] = sFromNode;
+        if (st.oneway) delete shared.cameFrom[ctrl.node];
+        if (curLevel() > sFromLevel && typeof TD_STATS !== "undefined" && TD_STATS.XP) awardXP(TD_STATS.XP.descentXP(curLevel()), "descend");
+        shared.deepest = Math.max(shared.deepest || 0, curLevel());
+        // R6 arrival continuity — fed by the dest-resolved direction (ascend -> down-stair, descend -> up-stair)
+        pendingArrival = (curLevel() < sFromLevel) ? "up" : (curLevel() > sFromLevel) ? "down" : "same";
+        shared.turn += 1;
+        buildView();
+        return { opened: true, traversed: st.edgeId || ("stair:" + st.dest), recenter: true, won: ctrl.won, to: ctrl.node };
+      }
+      if (st && st.dest == null) console.warn("R7: stair at " + p.x + "," + p.y + " (node " + ctrl.node + ") has a null dest — falling back to legacy edge/return routing (FLAGGED, not stranded).");
+      // --- LEGACY FALLBACK: non-stair breadth/connector doors, or a flagged null-dest stair ---
       if (d.toTown) {   // GATE 5 R2: the WAY UP to the surface — hand back to the town controller (no graph edge); freeze the dungeon where we stand so a re-descent resumes here
         ctrl.pendingDoor = null; ctrl.lastEvent = null; ctrl.lastUrgent = false;
         return { opened: true, toTown: true, exited: true, to: "TOWN" };
