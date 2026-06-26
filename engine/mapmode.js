@@ -453,6 +453,10 @@ var TD_MAP = (function () {
     ctrl.autoOpenDoors = shared.autoOpenDoors;
     var decorate = opts.decorate || null;   // town layer places signals / marks brass
     var onCross = opts.onCross || null;      // town layer gates a door (e.g. Brass Door)
+    // R6 — STAIR ARRIVAL CONTINUITY: the direction of the edge just traversed, consumed by the next
+    // buildView() to choose the arrival cell. "up" (climbed back) -> spawn on the floor's DOWN-stair (the
+    // cell you left by); "down"/"same"/null -> the default up-stair/breadth arrival. Reset after each load.
+    var pendingArrival = null;
 
     function curLevel() { return (world.nodes[ctrl.node] || {}).level || 0; }
     function inDungeon() { return curLevel() >= 1; }
@@ -587,6 +591,16 @@ var TD_MAP = (function () {
       var cl = curLevel();
       var nodeType = (world.nodes[ctrl.node] || {}).nodeType || "STANDARD";   // SECTION D — floor-type from the graph (operator canon; defaults STANDARD so the live dive is unchanged)
       var comp = composeNode(seed, ctrl.node, v.options.length, cl, nodeType);   // depth -> features; nodeType -> registry
+      // R6 — STAIR ARRIVAL CONTINUITY: the floor is identical per node (deterministic seed, untouched); only
+      // WHICH existing stair cell we spawn on changes. Climbing BACK up to a floor (arrivedVia "up") lands you
+      // on that floor's DOWN-stair — the cell you left by — instead of the up-stair at the top. Descending in,
+      // the entrance, breadth/same edges, and the initial load all keep the default up-stair/breadth arrival.
+      if (pendingArrival === "up" && cl >= 1) {
+        var dst = comp.downStair;
+        if (dst && comp.grid[dst.y] && comp.grid[dst.y][dst.x] === ".") comp.spawn = { x: dst.x, y: dst.y };   // the carved down-stair: always a reachable floor cell
+        else console.warn("R6: node " + ctrl.node + " (Sublevel " + cl + ") had no usable down-stair for an up-arrival — falling back to the up-stair (FLAGGED, not stranded).");
+      }
+      pendingArrival = null;   // consume: a later non-transition rebuild must not inherit a stale direction
       var g = comp.grid, doors = {};
       // FRAME LIFTED: the controller adopts THIS floor's actual dimensions (gen2 now varies +/-20%, ~43..65 x
       // 27..41). All bounds/FOV/render/camera read W/H, so they track the live floor with no truncation.
@@ -1674,6 +1688,7 @@ var TD_MAP = (function () {
       }
       if (d.returnTo) {   // GATE 4 R3: a guaranteed RETURN up-stair (no graph up-edge exists) -> ascend to where we descended from
         interp.state.node = d.returnTo; ctrl.node = d.returnTo; ctrl.won = false; ctrl.pendingDoor = null;
+        pendingArrival = "up";   // R6 — the return stair is always an ASCENT: arrive at the destination floor's down-stair (the cell we left by)
         ctrl.lastEvent = null; ctrl.lastUrgent = false; shared.turn += 1; buildView();
         return { opened: true, ascended: true, traversed: "return:" + d.returnTo, recenter: true, to: ctrl.node };
       }
@@ -1693,6 +1708,9 @@ var TD_MAP = (function () {
       if (d.type === "oneway") delete shared.cameFrom[ctrl.node];                                     // a one-way stair clicks shut: no return
       if (curLevel() > fromLevel && typeof TD_STATS !== "undefined" && TD_STATS.XP) awardXP(TD_STATS.XP.descentXP(curLevel()), "descend");   // XP beat for reaching a new floor
       shared.deepest = Math.max(shared.deepest || 0, curLevel());   // GATE F — track the deepest floor reached (run tally)
+      // R6 — record the traversed edge's direction so buildView places the arrival cell: ascending lands you
+      // at the destination's down-stair (the cell you left by); descending/same keep the default arrival.
+      pendingArrival = (curLevel() < fromLevel) ? "up" : (curLevel() > fromLevel) ? "down" : "same";
       shared.turn += 1;
       buildView();
       return { opened: true, traversed: d.edgeId, recenter: true, won: ctrl.won, to: ctrl.node };
