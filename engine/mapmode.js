@@ -341,12 +341,12 @@ var TD_MAP = (function () {
       sg: levelData.sg || null   // R11 — the SG artifact spec ({ arts:[{id,x,y,name}] }) the live set-piece reads (grid-agnostic)
     };
   }
-  // R10 R3 — the §24 SMASH-AND-GRAB set-piece floor (PLACEHOLDER). DEPENDENCY FLAG: the operator's real
-  // authored SG grid is NOT in the repo — TD_SMASHGRAB is an abstract overlay (no tile grid). This placeholder
-  // (a chamber with pedestals `$` + an escape `>` to the surface) PROVES THE WIRING now; the operator's real
-  // SG grid swaps in by registering the SAME id ("sg_setpiece"). `setpiece:"smashgrab"` tells the host to fire
-  // the TD_SMASHGRAB footrace overlay on arrival. The up-stair `<` is the arrival anchor (climb-home is the
-  // GATE-4 auto-return to the parent); the escape `>` flees to TOWN. Law-safe (solid rectangle => 0 corners).
+  // R10/R11 — the §24 SMASH-AND-GRAB set-piece floor (PLACEHOLDER). DEPENDENCY FLAG: the operator's real
+  // authored SG grid is NOT in the repo. This placeholder (a chamber with pedestals `$` + an escape `>` to the
+  // surface) PROVES THE WIRING; the operator's real SG grid swaps in by registering the SAME id ("sg_setpiece").
+  // `setpiece:"smashgrab"` makes the LIVE floor itself the set-piece (R11: ctrl.sg / sgTick drive the collapse
+  // + slab clock from the real turn loop — there is no overlay; the §24 throwaway was deleted in R12). The
+  // up-stair `<` is the arrival anchor (climb-home is the GATE-4 auto-return); the escape `>` flees to TOWN.
   registerAuthored({
     id: "sg_setpiece", setpiece: "smashgrab",
     rows: [

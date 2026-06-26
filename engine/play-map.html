@@ -151,8 +151,6 @@
   #debug { position:fixed; right:0; top:0; bottom:0; width:330px; overflow:auto; background:#15130f; color:#cfe3b0; font:12px/1.4 "Consolas",monospace; padding:10px; display:none; z-index:60; }
   #debug pre { white-space:pre-wrap; word-break:break-word; margin:0; }
   .vstamp { position:fixed; right:8px; bottom:6px; font:11px "Consolas",monospace; color:#8a7c66; background:rgba(239,231,214,.9); padding:2px 6px; border:1px solid var(--rule); border-radius:3px; }
-  .sgprompt { position:fixed; left:8px; bottom:6px; font:bold 12px "Consolas",monospace; color:#7a4f26; background:rgba(244,227,160,.95); padding:3px 9px; border:1px solid var(--accent); border-radius:3px; z-index:30; }
-  .sgprompt b { color:#9a2f23; }
 </style>
 </head>
 <body>
@@ -217,10 +215,9 @@
 </div>
 <aside id="debug"><pre id="debugBody"></pre></aside>
 <div class="vstamp" id="vstamp"></div>
-<div class="sgprompt" id="sgprompt">Press <b>V</b> — §24 fun-test (Smash-and-Grab)</div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "93b6294a";</script>
+<script>window.__BUILD = "1620a557";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -380,112 +377,7 @@ window.__initPlayMap = function () {
   // following an input, so feel-loop frames don't inflate the latency reading) — R3 telemetry.
   function draw() { var t0 = nowMs(); _draw(); lastFrameMs = nowMs() - t0; if (inputT) { lastLatencyMs = nowMs() - inputT; inputT = 0; } }
 
-  // ===================== TD_SMASHGRAB — §24 DEV SANDBOX ONLY (behind the V key) =================
-  // R11 — the §24 footrace NO LONGER auto-launches in normal play. The Smash-and-Grab now plays on the real
-  // authored floor, in the normal renderer, as the real character (engine: composition.setpiece==="smashgrab"
-  // drives TD_RESOLVE.SG from the live turn loop). This self-contained overlay is kept ONLY as a DEV sandbox
-  // reachable by pressing V — it never hijacks the screen on descent.
-  var sgLog = [];
-  function sgPush(line) { sgLog.push(line); if (sgLog.length > 8) sgLog.shift(); }
-  function sgFloat(tile, text, col) {   // a float in vault-grid coords (no camera; the vault draws at origin)
-    if (!TD_FEEL.isEnabled()) return;
-    var d = document.createElement("div"); d.className = "dmgfloat"; d.textContent = text;
-    d.style.color = P[col] || P.signal; d.style.fontSize = "12px"; d.style.letterSpacing = "1px";
-    d.style.left = (tile.x * TS + TS / 2) + "px"; d.style.top = (tile.y * TS - 12) + "px";
-    stageEl.appendChild(d); setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 950);
-  }
-  function sgSfx(name) { if (typeof TD_SFX !== "undefined" && name) TD_SFX.cue(name); }
-  function sgEnter() { if (typeof TD_SFX !== "undefined") TD_SFX.unlock(); var r = TD_SMASHGRAB.enter(sim ? sim.view().turn || 0 : 0); sgLog = []; sgPush("§24 RIGGED VAULT — down the approach passage into the chamber: loot the treasure ($), grab ONE artifact across the chasm, then SPRINT the escape corridor and slip UNDER the slab before it grinds shut. Stay light enough to run."); if (r && r.tell) sgPush("⟪ " + r.tell + " ⟫"); draw(); }
-  // R11 — the auto-launch is RETIRED. The Smash-and-Grab now plays on the real authored floor in the normal
-  // renderer (engine-driven); this overlay no longer fires on descent. V remains a dev sandbox (below).
-  function sgApply(res) {
-    var now = nowMs(), sg = TD_SMASHGRAB.view();
-    sgSfx(res.sfx);                                   // step / loot / grab / chime / slam / crash — the module names the cue
-    if (res.grind) sgSfx("grind");                    // repeating stone-grind while the slab descends
-    if (res.crash) sgSfx("crash");                    // a band of floor just dropped behind you
-    // the collapse GAINS: rising rumble + shake that scales with how close the death-edge is
-    if (sg.collapse && sg.collapse.active && !res.escaped && !res.dead) {
-      var prox = (typeof res.proximity === "number") ? res.proximity : sg.collapse.proximity;
-      if (prox > 0.15) { TD_FEEL.shake(prox > 0.66 ? "hard" : prox > 0.33 ? "med" : "soft", now); if (prox > 0.45) sgSfx("rumble"); }
-    }
-    if (res.treasure) { TD_FEEL.shake("soft", now); sgFloat(sg.player, "LOOT +$" + res.value + "  ($" + res.score + (sg.sprintable ? ")" : " — TOO HEAVY TO SPRINT)"), sg.sprintable ? "item" : "dmgTaken"); }
-    var t = res.ev;   // the artifact-grab trip
-    if (t && t.tremor) { sgSfx(t.sfx); sgSfx("rumble"); TD_FEEL.shake(t.severity, now); TD_FEEL.flash(t.tile, "critical", now); if (t.float) sgFloat(t.tile, t.float, "dmgDealt"); if (t.fell) sgFloat({ x: t.fell.x, y: t.fell.y }, t.fell.name + " — TUMBLES INTO THE CHASM", "dmgTaken"); (t.lines || []).forEach(sgPush); }
-    if (res.reason) sgPush(res.reason);
-    if (res.escaped) { sgFloat(sg.player, "ESCAPED — $" + (res.score || 0), "item"); (res.lines || []).forEach(sgPush); }
-    else if (res.dead) { TD_FEEL.shake("hard", now); TD_FEEL.flash(sg.swallowed ? sg.player : (sg.slab || sg.player), "critical", now); sgFloat(sg.player, sg.swallowed ? "SWALLOWED." : "SUMMARILY VOIDED.", "dmgTaken"); (res.lines || []).forEach(sgPush); }
-    draw(); if (TD_FEEL.hasActive(nowMs())) startFeel();
-  }
-  function drawSmashGrab() {
-    var sg = TD_SMASHGRAB.view(), now = nowMs();
-    var availW = Math.min(1500, Math.max(560, (window.innerWidth || 1280) - 320));   // TOWN R3 — wider sidebar (264) + gaps
-    var availH = Math.min(940, Math.max(340, (window.innerHeight || 820) - 165));   // TOWN R3 — no bottom strip: map reclaims the vertical space
-    var HEADER = 56;   // reserved top strip for the readout (so it never overlaps the grid)
-    TS = Math.max(16, Math.min(40, Math.floor(Math.min(availW / sg.w, availH / sg.h))));
-    FONT = (TS - 4) + "px " + FACE;
-    var cvW = sg.w * TS, cvH = sg.h * TS + HEADER;
-    if (cv.width !== cvW || cv.height !== cvH) { cv.width = cvW; cv.height = cvH; }
-    var shk = TD_FEEL.isEnabled() ? TD_FEEL.shakeOffset(now) : { dx: 0, dy: 0 };
-    ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
-    ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
-    ctx.save(); ctx.translate(shk.dx, HEADER + shk.dy);
-    for (var y = 0; y < sg.h; y++) for (var x = 0; x < sg.w; x++) {
-      var c = sg.base(x, y), px = x * TS, py = y * TS;
-      if (c === "#") { ctx.fillStyle = P.wall; ctx.fillRect(px, py, TS, TS); continue; }
-      if (c === "~") { ctx.fillStyle = P.water; ctx.fillRect(px, py, TS, TS); ctx.fillStyle = P.waterGlyph; ctx.globalAlpha = 0.5; ctx.fillText("≈", px + TS / 2, py + TS / 2 + 1); ctx.globalAlpha = 1; continue; }
-      if (sg.tripped && sg.rubble(x, y)) {   // collapsed floor — impassable rubble creeping up behind you
-        ctx.fillStyle = P.rampart; ctx.fillRect(px, py, TS, TS);
-        ctx.fillStyle = P.critical; ctx.globalAlpha = 0.45; ctx.fillText("▒", px + TS / 2, py + TS / 2 + 1); ctx.globalAlpha = 1;
-        continue;
-      }
-      ctx.fillStyle = P.floorBgDim; ctx.fillRect(px, py, TS, TS);
-      if (c === ">") { ctx.fillStyle = P.door; ctx.fillText(">", px + TS / 2, py + TS / 2 + 1); }
-      else if (c === "=" && !sg.tripped) { ctx.strokeStyle = P.rampart; ctx.lineWidth = 1; ctx.strokeRect(px + 2, py + 1, TS - 4, 3); }   // the dormant slab, hanging in the corridor ceiling
-    }
-    sg.treas.forEach(function (tr) { if (tr.taken) return; ctx.fillStyle = P.item; ctx.fillText("$", tr.x * TS + TS / 2, tr.y * TS + TS / 2 + 1); });
-    sg.arts.forEach(function (a) {
-      if (a.taken) return;
-      if (a.fallen) { ctx.globalAlpha = 0.4; ctx.fillStyle = P.item; ctx.fillText(a.id === "A" ? "♦" : "✦", a.x * TS + TS / 2, a.y * TS + TS / 2 + 1); ctx.globalAlpha = 1; return; }   // tumbled into the chasm
-      ctx.fillStyle = P.item; ctx.fillText(a.id === "A" ? "♦" : "✦", a.x * TS + TS / 2, a.y * TS + TS / 2 + 1);
-    });
-    // THE STONE SLAB grinding DOWN across the escape corridor (telegraphed, staged; a true funnel)
-    if (sg.tripped && sg.slab) { var sx = sg.slab, sh = Math.max(2, Math.min(1, sg.doorProgress) * TS); ctx.fillStyle = P.rampart; ctx.fillRect(sx.x * TS, sx.y * TS, TS, sh); ctx.strokeStyle = sg.sealed ? P.critical : P.signal; ctx.lineWidth = 2; ctx.strokeRect(sx.x * TS + 1, sx.y * TS + 1, TS - 2, Math.max(2, sh - 2)); }
-    if (TD_FEEL.isEnabled()) TD_FEEL.active(now).forEach(function (e) { if (e.kind !== "flash" || !e.tile) return; ctx.globalAlpha = (1 - e.p) * 0.7; ctx.fillStyle = P[e.color] || P.critical; ctx.fillRect(e.tile.x * TS, e.tile.y * TS, TS, TS); ctx.globalAlpha = 1; });
-    ctx.fillStyle = P.player; ctx.fillText("@", sg.player.x * TS + TS / 2, sg.player.y * TS + TS / 2 + 1);
-    ctx.restore();
-    // readout (top): a status line + a LOAD/SPRINT line + controls
-    ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.font = "bold 17px " + FACE;
-    var loadStr = "LOAD: " + sg.load + " — SPRINT: " + (sg.sprintable ? "yes" : "NO") + "   ·   SCORE: $" + sg.score;
-    if (sg.escaped) { ctx.fillStyle = P.item; ctx.fillText("ESCAPED with $" + sg.score + " — clear of the §24. Press V to re-run.", cv.width / 2, 6); }
-    else if (sg.dead) { ctx.fillStyle = P.critical; ctx.fillText((sg.swallowed ? "SWALLOWED by the collapse" : "SUMMARILY VOIDED — sealed in") + " — $" + sg.score + " lost. Press V to re-run.", cv.width / 2, 6); }
-    else if (sg.tripped) { var lead = sg.collapse.lead; ctx.fillStyle = (sg.doorRemaining <= 5 || lead <= 3) ? P.critical : P.signal; ctx.fillText("RUN — collapse " + (lead <= 0 ? "AT YOUR HEELS" : lead + " behind") + " · slab seals in " + sg.doorRemaining + " · $" + sg.score, cv.width / 2, 6); }
-    else { ctx.fillStyle = P.signal; ctx.fillText("§24 — loot $ (richer the DEEPER) then grab an artifact (g); the floor falls behind + the slab seals ahead", cv.width / 2, 6); }
-    ctx.font = "13px " + FACE;
-    ctx.fillStyle = sg.sprintable ? P.signal : P.critical; ctx.fillText(loadStr + "   (threshold " + TD_SMASHGRAB.TUNE.SPRINT_THRESHOLD + ")", cv.width / 2, 28);
-    var snd = (typeof TD_SFX !== "undefined") ? ("sound " + (TD_SFX.isEnabled() ? "on" : "off") + " (k) · vol " + Math.round(TD_SFX.volume() * 100) + "% ([ ])") : "";
-    ctx.fillStyle = P.faint || "#8a7c66"; ctx.fillText("arrows / W A S D move · g grab · Esc leave · V re-run · " + snd, cv.width / 2, 46);
-  }
-  function renderSgLog() {
-    msglogEl.innerHTML = sgLog.map(function (l) { return '<div class="line note">' + escapeHTML(l) + "</div>"; }).join("");
-    msglogEl.scrollTop = msglogEl.scrollHeight;
-  }
-  function handleSmashGrab(k, code) {
-    if (typeof TD_SFX !== "undefined") {
-      if (k === "k") { TD_SFX.setEnabled(!TD_SFX.isEnabled()); draw(); return; }                 // sound on/off
-      if (k === "[") { TD_SFX.setVolume(TD_SFX.volume() - 0.1); draw(); return; }                 // volume down
-      if (k === "]") { TD_SFX.setVolume(TD_SFX.volume() + 0.1); draw(); return; }                 // volume up
-    }
-    if (TD_SMASHGRAB.over()) { if (k === "v" || k === "Escape") { if (k === "v") sgEnter(); else { TD_SMASHGRAB.leave(); draw(); } } return; }
-    if (k === "Escape") { TD_SMASHGRAB.leave(); draw(); return; }
-    if (k === "g") { sgApply(TD_SMASHGRAB.get()); return; }
-    var dir = MOVE[k] || NUMPAD[code]; if (dir) { sgApply(TD_SMASHGRAB.move(dir)); return; }
-  }
-
   function _draw() {
-    var sgp = document.getElementById("sgprompt");
-    if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) { if (sgp) sgp.style.display = "none"; drawSmashGrab(); renderSgLog(); renderDebug(); return; }   // throwaway §24 mode owns the screen while active
-    if (sgp) sgp.style.display = "";
     var vw = sim.view();
     checkBarks(vw);   // the Bureau may add a line before we render the log
     // TOWN: a bigger fixed tile size + a SCROLLING CAMERA that follows the avatar — the
@@ -1135,21 +1027,6 @@ window.__initPlayMap = function () {
 
   function renderDebug() {
     if (debugPanel.style.display !== "block") return;
-    // THROWAWAY §24: when the rigged vault is active, the overlay measures the squeeze instead.
-    if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) {
-      var sgv = TD_SMASHGRAB.view();
-      debugBody.textContent = JSON.stringify({
-        smashgrab: { tripped: sgv.tripped, sealed: sgv.sealed, doorRemaining: sgv.doorRemaining, doorProgress: Math.round(sgv.doorProgress * 100) / 100, escapeTurns: sgv.escapeTurns,
-          slab: sgv.slab, passedSlab: sgv.passedSlab, escapeLen: sgv.escapeLen,
-          collapse: sgv.collapse, score: sgv.score, swallowed: sgv.swallowed,
-          load: sgv.load, sprintable: sgv.sprintable, carried: sgv.carried ? sgv.carried.name : null, treasCarried: sgv.treasCarried,
-          fallenPending: sgv.fallenPending, runs: sgv.runs, dead: sgv.dead, escaped: sgv.escaped },
-        TUNE: TD_SMASHGRAB.TUNE,
-        sfx: (typeof TD_SFX !== "undefined") ? { on: TD_SFX.isEnabled(), volume: Math.round(TD_SFX.volume() * 100) / 100, audio: TD_SFX._hasAudio(), lastCues: TD_SFX.lastCues() } : "n/a",
-        feel: { frameMs: Math.round(lastFrameMs * 10) / 10, lastHooks: lastFeelHooks, active: TD_FEEL.active(nowMs()).length, juice: TD_FEEL.isEnabled() ? "ON" : "OFF (press j)" }
-      }, null, 2);
-      return;
-    }
     var v = sim.view();
     debugBody.textContent = JSON.stringify({
       feel: {
@@ -1188,9 +1065,6 @@ window.__initPlayMap = function () {
     inputT = nowMs();   // R3: stamp input arrival for the input->render latency readout
     if (k === "~" || k === "`") { debugPanel.style.display = (debugPanel.style.display === "block") ? "none" : "block"; renderDebug(); return; }
     if (k === "j") { TD_FEEL.setEnabled(!TD_FEEL.isEnabled()); if (feelRAF) { cancelAnimationFrame(feelRAF); feelRAF = null; } draw(); return; }   // "juice off" toggle (comparison / perf / accessibility)
-    // THROWAWAY §24 fun-test: V enters/re-runs the rigged vault; while active it owns input.
-    if (typeof TD_SMASHGRAB !== "undefined" && TD_SMASHGRAB.active()) { e.preventDefault(); handleSmashGrab(k, code); return; }
-    if (k === "v" && typeof TD_SMASHGRAB !== "undefined") { e.preventDefault(); sgEnter(); return; }
 
     // the REVIEW LOG (L) — your searchable memory of both streams
     if (raw === "L") { e.preventDefault(); if (reviewOpen) closeReview(); else openReview(); return; }
@@ -1303,21 +1177,10 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "R11 — the Smash-and-Grab is a REAL FLOOR now: descend onto the authored vault as your own character, grab one of two artifacts (the other is lost), and the collapse + slab clock runs in real turns — outrun it to the slab-gated exit or flee deeper. No separate §24 screen (V is a dev sandbox only).";
+  var VERSION = "R12 — the Smash-and-Grab is ONLY a real floor: descend onto the authored vault as your own character, grab one of two artifacts (the other is lost), and the collapse + slab clock runs in real turns — outrun it to the slab-gated exit or flee deeper. The old §24 mini-game is gone entirely.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
-  if (location.hash.indexOf("#sg") === 0 && typeof TD_SMASHGRAB !== "undefined") {   // dev hook: auto-enter the §24 fun-test for render checks
-    sgEnter();
-    if (location.hash === "#sgrun") {   // #sgrun: script a mid-chase (grab + a few flee steps) so the collapse renders
-      var sgvD = TD_SMASHGRAB.view(), DD = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-      var bfsD = function (sx, sy, tx, ty) { var v = TD_SMASHGRAB.view(), q = [[sx, sy]], seen = {}, prev = {}; seen[sx + "," + sy] = 1; while (q.length) { var c = q.shift(); if (c[0] === tx && c[1] === ty) { var p = [], k = tx + "," + ty; while (k !== sx + "," + sy) { var pp = prev[k]; p.unshift(pp.d); k = pp.f; } return p; } for (var d in DD) { var nx = c[0] + DD[d][0], ny = c[1] + DD[d][1], kk = nx + "," + ny, ch = v.base(nx, ny); if (seen[kk] || ch === "#" || ch === "~" || v.rubble(nx, ny)) continue; seen[kk] = 1; prev[kk] = { f: c[0] + "," + c[1], d: d }; q.push([nx, ny]); } } return []; };
-      var goD = function (tx, ty) { var p = TD_SMASHGRAB.view().player, path = bfsD(p.x, p.y, tx, ty); for (var i = 0; i < path.length && !TD_SMASHGRAB.over(); i++) sgApply(TD_SMASHGRAB.move(path[i])); };
-      var aD = sgvD.arts[0]; goD(aD.x, aD.y); sgApply(TD_SMASHGRAB.get());
-      var ex = TD_SMASHGRAB.view().exit, pth = bfsD(TD_SMASHGRAB.view().player.x, TD_SMASHGRAB.view().player.y, ex.x, ex.y);
-      for (var i = 0; i < 6 && i < pth.length && !TD_SMASHGRAB.over(); i++) sgApply(TD_SMASHGRAB.move(pth[i]));
-    }
-  }
 };
 </script>
 
@@ -1333,7 +1196,7 @@ window.__initPlayMap = function () {
     "rng.js", "resolve.js", "bestiary.js", "stats.js", "charsys.js", "burden.js", "econ.js", "status.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
     "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "mapmode.js",
     "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js",
-    "smashgrab.js", "sfx.js", "game.js", "ui.js", "feel.js"
+    "sfx.js", "game.js", "ui.js", "feel.js"
   ];
   var b = window.__BUILD || "dev", done = 0;
   files.forEach(function (f) {
