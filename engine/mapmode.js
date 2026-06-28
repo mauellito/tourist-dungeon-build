@@ -381,25 +381,30 @@ var TD_MAP = (function () {
   // up-stair (the multi-stair / dead-end lattice is operator-reserved, a later round): the first cross-level
   // DOWN edge -> the one `>` (dest = the deeper node = the next sublevel's entry); the first cross-level UP
   // edge -> the one `<` (dest = the shallower node). Extra cross-level edges are FLAGGED, not built.
-  function classifySublevelEdges(level, edges, nodeLevel, downCell, upCell) {
-    var corridors = [], downCand = [], upCand = [];
+  function classifySublevelEdges(level, edges, nodeLevel, downCell, upCell, setPieceSet) {
+    setPieceSet = setPieceSet || {};
+    var corridors = [], downCand = [], upCand = [], portalCand = [];
     (edges || []).forEach(function (e) {
       var fl = nodeLevel[e.from], tl = nodeLevel[e.to];
-      if (fl === level && tl === level) { corridors.push({ id: e.id, from: e.from, to: e.to }); }     // same-level -> walk
-      else if (fl === level && typeof tl === "number" && tl > level) { downCand.push(e); }            // descend
-      else if (fl === level && typeof tl === "number" && tl < level) { upCand.push(e); }              // climb
-      // edges INTO this level from elsewhere are realised on the OTHER level's floor (its down/up-stair)
+      if (fl !== level) return;   // only edges OUT of this sublevel are realised here
+      if (setPieceSet[e.to]) { portalCand.push(e); }                                      // 3c — a SET-PIECE neighbour is a PORTAL to its own floor (the SG stays separate)
+      else if (tl === level) { corridors.push({ id: e.id, from: e.from, to: e.to }); }    // same-level ordinary -> walk
+      else if (typeof tl === "number" && tl > level) { downCand.push(e); }                // descend
+      else if (typeof tl === "number" && tl < level) { upCand.push(e); }                  // climb
     });
     var stairs = [], extra = 0;
-    if (downCand.length && downCell) { stairs.push({ x: downCell.x, y: downCell.y, dir: "down", dest: downCand[0].to, edgeId: downCand[0].id }); extra += (downCand.length - 1); }
+    // 3c — a SET-PIECE PORTAL is the descent of choice (the SG sits on the spine): it takes the down-stair
+    // cell; the SG floor's own continue-stair carries the dive onward. Else the first cross-level down edge.
+    if (portalCand.length && downCell) { stairs.push({ x: downCell.x, y: downCell.y, dir: "down", dest: portalCand[0].to, edgeId: portalCand[0].id, portal: true }); extra += (portalCand.length - 1) + downCand.length; }
+    else if (downCand.length && downCell) { stairs.push({ x: downCell.x, y: downCell.y, dir: "down", dest: downCand[0].to, edgeId: downCand[0].id }); extra += (downCand.length - 1); }
     if (upCand.length && upCell) { stairs.push({ x: upCell.x, y: upCell.y, dir: "up", dest: upCand[0].to, edgeId: upCand[0].id }); extra += (upCand.length - 1); }
-    if (extra) console.warn("composeSublevel: Sublevel " + level + " has " + extra + " extra cross-level edge(s) beyond the single up/down — FLAGGED (multi-stair lattice is operator-reserved, not built).");
+    if (extra) console.warn("composeSublevel: Sublevel " + level + " has " + extra + " extra cross-level/portal edge(s) beyond the single up/down — FLAGGED (multi-stair lattice is operator-reserved, not built).");
     return { stairs: stairs, corridors: corridors, extraCrossLevel: extra };
   }
   // composeSublevel(seed, level, nodes [, edges, nodeLevel]) — nodes: [{ id, kind }] the ORDINARY nodes at
   // this sublevel (NO set-piece). edges/nodeLevel (optional, Phase 2): classify cross-level -> stairs,
   // same-level -> corridors.
-  function composeSublevel(seed, level, nodes, edges, nodeLevel) {
+  function composeSublevel(seed, level, nodes, edges, nodeLevel, setPieceSet) {
     nodes = (nodes || []).filter(function (n) { return n && n.nodeType !== "SET-PIECE"; });   // SG stays its own floor
     // ROOM >= NODE GUARANTEE: reseed the gen2 floor (deterministically — by varying the compose key per try)
     // until it has at least as many rooms as ordinary nodes, so EVERY node gets a real room (none on a spare
@@ -432,7 +437,7 @@ var TD_MAP = (function () {
     });
     if (seam) console.warn("composeSublevel: Sublevel " + level + " had " + nodes.length + " nodes but only " + rooms.length + " rooms — " + seam + " placed on spare cells / dropped (FLAGGED, not punched).");
     // Phase 2 — edges -> stairs (cross-level) + corridors (same-level). Off without edges (Phase 1 behaviour).
-    var edgeModel = (edges && nodeLevel) ? classifySublevelEdges(level, edges, nodeLevel, comp.downStair, comp.upStair)
+    var edgeModel = (edges && nodeLevel) ? classifySublevelEdges(level, edges, nodeLevel, comp.downStair, comp.upStair, setPieceSet)
                                          : { stairs: [], corridors: [], extraCrossLevel: 0 };
     return {
       grid: g, rawGrid: comp.rawGrid, source: "sublevel", level: level, W: comp.W, H: comp.H,
@@ -446,13 +451,14 @@ var TD_MAP = (function () {
   // Gather the live world's ORDINARY nodes at a sublevel + the touching edges + a node->level map, then
   // compose the one contiguous floor for that sublevel (the live wiring's entry point; deterministic).
   function composeSublevelLive(world, seed, cl) {
-    var nodeLevel = {}, nodes = [];
+    var nodeLevel = {}, nodes = [], setPieceSet = {};
     Object.keys(world.nodes).forEach(function (id) {
       var m = world.nodes[id]; nodeLevel[id] = m.level;
+      if (m.nodeType === "SET-PIECE") setPieceSet[id] = 1;   // 3c — SET-PIECE neighbours become portals, not rooms
       if (m.level === cl && m.nodeType !== "SET-PIECE") nodes.push({ id: id, kind: (id.indexOf("hub") === 0 ? "hub" : id.indexOf("goal") === 0 ? "goal" : (id.indexOf("vault") === 0 ? "vault" : "pocket")), nodeType: m.nodeType });
     });
     var edges = (world.edges || []).filter(function (e) { return nodeLevel[e.from] === cl || nodeLevel[e.to] === cl; });
-    return composeSublevel(seed, cl, nodes, edges, nodeLevel);
+    return composeSublevel(seed, cl, nodes, edges, nodeLevel, setPieceSet);
   }
   // R10/R11 — the §24 SMASH-AND-GRAB set-piece floor (PLACEHOLDER). DEPENDENCY FLAG: the operator's real
   // authored SG grid is NOT in the repo. This placeholder (a chamber with pedestals `$` + an escape `>` to the
