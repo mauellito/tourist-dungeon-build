@@ -37,6 +37,9 @@
      whole layout fits with no PAGE scroll; the vitals sit pinned at the top, overflow (log/controls) scrolls
      INSIDE the column. Net: dossier/vitals read on the right without scrolling; nothing runs off the bottom. */
   aside#sidebar { flex:0 0 264px; display:flex; flex-direction:column; gap:8px; max-height:calc(100vh - 96px); overflow-y:auto; }
+  /* UI FIX — don't let the flex column COMPRESS the cards (compression is what clipped their content behind
+     .card's overflow:hidden); each card/cue keeps its natural height and the sidebar (overflow-y:auto) scrolls. */
+  aside#sidebar > .card, aside#sidebar > .cue { flex:0 0 auto; }
   /* a compact controls footer (moved out of the prime sidebar — not immediately actionable) */
   .legendfoot { margin-top:10px; }
   .legendfoot .card-b { padding:6px 10px; }
@@ -88,6 +91,8 @@
   .log .line.crit .tn { color:var(--bad); }
 
   /* the senses panel — atmosphere, visually distinct (italic, steel-blue) */
+  /* UI FIX — cap the panel so long sense streams SCROLL inside their own box instead of overflowing the card */
+  .card-b.senses { max-height:90px; overflow-y:auto; }
   .senses .sline { font-style:italic; color:#4a6b86; font:12.5px/1.45 "Georgia",serif; padding:2px 0; }
   .senses .sline .kx { font:9px "Consolas",monospace; font-style:normal; color:#8fa6b8; text-transform:uppercase; letter-spacing:1px; margin-right:5px; }
   .senses .none { color:var(--faint); font-style:italic; font-size:12px; }
@@ -217,7 +222,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "1620a557";</script>
+<script>window.__BUILD = "13dbe05e";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -839,7 +844,7 @@ window.__initPlayMap = function () {
   function renderSenses(vw) {
     var ms = (vw.messages || []).filter(function (m) { return m.ch === "senses"; });
     if (!ms.length) { sensesEl.innerHTML = '<div class="none">— the air is quiet —</div>'; return; }
-    sensesEl.innerHTML = ms.slice(-5).map(function (m) {
+    sensesEl.innerHTML = ms.slice(-3).map(function (m) {
       return '<div class="sline"><span class="kx">' + escapeHTML(m.kind || "sense") + "</span>" + escapeHTML(m.text) + "</div>";
     }).join("");
   }
