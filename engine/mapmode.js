@@ -401,9 +401,21 @@ var TD_MAP = (function () {
   // same-level -> corridors.
   function composeSublevel(seed, level, nodes, edges, nodeLevel) {
     nodes = (nodes || []).filter(function (n) { return n && n.nodeType !== "SET-PIECE"; });   // SG stays its own floor
-    var comp = composeNodeGen2(seed, "SUBLEVEL_" + level, Math.max(2, nodes.length), level || 1);
+    // ROOM >= NODE GUARANTEE: reseed the gen2 floor (deterministically — by varying the compose key per try)
+    // until it has at least as many rooms as ordinary nodes, so EVERY node gets a real room (none on a spare
+    // cell). Keep the best (most-rooms) candidate; stop early once it suffices. Deterministic: same seed+level
+    // -> same try sequence -> same chosen floor. If even the best (after MAXTRY) still falls short, the seam
+    // FLAG below catches it (never punch).
+    var need = nodes.length, MAXTRY = 10, comp = null, rooms = null;
+    for (var t = 0; t < MAXTRY; t++) {
+      var cand = composeNodeGen2(seed, "SUBLEVEL_" + level + (t ? ":" + t : ""), Math.max(2, need), level || 1);
+      if (!cand) continue;
+      var rm = sgFloorRooms(cand.grid);
+      if (!comp || rm.length > rooms.length) { comp = cand; rooms = rm; }   // keep the most-rooms floor seen
+      if (rm.length >= need) break;                                          // enough rooms for every node -> done
+    }
     if (!comp) return null;
-    var g = comp.grid, up = comp.upStair || comp.spawn, rooms = sgFloorRooms(g);
+    var g = comp.grid, up = comp.upStair || comp.spawn;
     // assign each node to a distinct room: the HUB (or first node) takes the room nearest the up-stair (arrival),
     // the rest take the largest remaining rooms. Overflow (more nodes than rooms) -> spare breadth cells, FLAGGED.
     var taken = {}, placements = [], seam = 0;
