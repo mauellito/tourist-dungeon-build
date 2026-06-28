@@ -423,10 +423,10 @@ var TD_MAP = (function () {
     var order = nodes.slice().sort(function (a, b) { return (b.kind === "hub" ? 1 : 0) - (a.kind === "hub" ? 1 : 0); });
     order.forEach(function (n, idx) {
       var ri = (idx === 0 && up) ? nearestRoom(up.x, up.y) : nearestRoom(comp.comX || (g[0].length >> 1), comp.comY || (g.length >> 1));
-      if (ri != null) { taken[ri] = 1; var r = rooms[ri]; placements.push({ id: n.id, kind: n.kind, x: r.cx, y: r.cy, roomSize: r.size }); }
+      if (ri != null) { taken[ri] = 1; var r = rooms[ri]; placements.push({ id: n.id, kind: n.kind, x: r.cx, y: r.cy, roomSize: r.size, cells: r.cells }); }
       else { // no spare room — place content on a spare breadth/floor cell (still reachable), FLAG the seam
         var spare = (comp.breadthCells || []).filter(function (c) { return !placements.some(function (p) { return p.x === c.x && p.y === c.y; }); })[0];
-        if (spare) { placements.push({ id: n.id, kind: n.kind, x: spare.x, y: spare.y, roomSize: 0, overflow: true }); seam++; }
+        if (spare) { placements.push({ id: n.id, kind: n.kind, x: spare.x, y: spare.y, roomSize: 0, overflow: true, cells: [{ x: spare.x, y: spare.y }] }); seam++; }
         else { seam++; }
       }
     });
@@ -436,11 +436,23 @@ var TD_MAP = (function () {
                                          : { stairs: [], corridors: [], extraCrossLevel: 0 };
     return {
       grid: g, rawGrid: comp.rawGrid, source: "sublevel", level: level, W: comp.W, H: comp.H,
-      upStair: comp.upStair, downStair: comp.downStair, breadthCells: comp.breadthCells,
+      spawn: comp.spawn, upStair: comp.upStair, downStair: comp.downStair, breadthCells: comp.breadthCells,
       rooms: rooms, placements: placements, roomCount: rooms.length, nodeCount: nodes.length, seam: seam,
       sublevelStairs: edgeModel.stairs, corridors: edgeModel.corridors, extraCrossLevel: edgeModel.extraCrossLevel,
-      stairs: comp.stairs, secrets: comp.secrets, loot: comp.loot, features: comp.features
+      stairs: comp.stairs, secrets: comp.secrets, loot: comp.loot, features: comp.features,
+      roomDoors: comp.roomDoors, connectors: [], comX: comp.comX, comY: comp.comY, doorPts: comp.doorPts
     };
+  }
+  // Gather the live world's ORDINARY nodes at a sublevel + the touching edges + a node->level map, then
+  // compose the one contiguous floor for that sublevel (the live wiring's entry point; deterministic).
+  function composeSublevelLive(world, seed, cl) {
+    var nodeLevel = {}, nodes = [];
+    Object.keys(world.nodes).forEach(function (id) {
+      var m = world.nodes[id]; nodeLevel[id] = m.level;
+      if (m.level === cl && m.nodeType !== "SET-PIECE") nodes.push({ id: id, kind: (id.indexOf("hub") === 0 ? "hub" : id.indexOf("goal") === 0 ? "goal" : (id.indexOf("vault") === 0 ? "vault" : "pocket")), nodeType: m.nodeType });
+    });
+    var edges = (world.edges || []).filter(function (e) { return nodeLevel[e.from] === cl || nodeLevel[e.to] === cl; });
+    return composeSublevel(seed, cl, nodes, edges, nodeLevel);
   }
   // R10/R11 — the §24 SMASH-AND-GRAB set-piece floor (PLACEHOLDER). DEPENDENCY FLAG: the operator's real
   // authored SG grid is NOT in the repo. This placeholder (a chamber with pedestals `$` + an escape `>` to the
@@ -676,6 +688,17 @@ var TD_MAP = (function () {
     var pendingArrival = null;
 
     function curLevel() { return (world.nodes[ctrl.node] || {}).level || 0; }
+    // CONTIGUOUS FLOORS (Model A) — WALKING into a node's room marks that node REACHED: same-level travel
+    // advances the interpreter (visited / required / completion) WITHOUT a grid swap. The level is unchanged
+    // (all the floor's rooms are the same sublevel), so curLevel() and the rendered floor stay put.
+    function markNodeReached(nodeId) {
+      if (!nodeId || nodeId === ctrl.node) return;
+      ctrl.node = nodeId;
+      if (interp && interp.state) {
+        interp.state.node = nodeId; interp.state.visited.add(nodeId);
+        if (world.nodes[nodeId] && world.nodes[nodeId].required) interp.state.visitedRequired.add(nodeId);
+      }
+    }
     function inDungeon() { return curLevel() >= 1; }
     // v2 (Jaquay) — WATER IS RATIONED: an OCCASIONAL level feature, not standard terrain
     // on every floor. A minority of levels are "wet" (deterministic per seed+level), and
@@ -872,7 +895,13 @@ var TD_MAP = (function () {
       var authoredRef = (world.nodes[ctrl.node] || {}).authored;
       var authoredData = authoredRef ? AUTHORED_LEVELS[authoredRef] : null;
       if (authoredRef && !authoredData) console.error("buildView: node '" + ctrl.node + "' references unknown authored level '" + authoredRef + "' — composeNode will fall back to the stub (FLAGGED).");
-      var comp = composeNode(seed, ctrl.node, v.options.length, cl, nodeType, authoredData);   // depth -> features; nodeType + authored -> registry
+      // CONTIGUOUS FLOORS (Model A) — an ordinary sublevel (level>=1, not a SET-PIECE / authored / vault node)
+      // renders as ONE contiguous floor: every ordinary node on that level is a ROOM joined by gen2 corridors,
+      // and only the single up/down STAIRS change sublevels. The SG set-piece (3c) + the entrance (level 0) keep
+      // the node-floor path. composeSublevelLive is deterministic, so re-entry renders the identical floor.
+      var ordinarySublevel = (cl >= 1 && nodeType !== "SET-PIECE" && !meta.authored && !meta.vault && typeof TD_GEN2 !== "undefined");
+      var comp = ordinarySublevel ? composeSublevelLive(world, seed, cl) : null;
+      if (!comp) { comp = composeNode(seed, ctrl.node, v.options.length, cl, nodeType, authoredData); ordinarySublevel = false; }   // depth -> features; nodeType + authored -> registry
       // R6 — STAIR ARRIVAL CONTINUITY: the floor is identical per node (deterministic seed, untouched); only
       // WHICH existing stair cell we spawn on changes. Climbing BACK up to a floor (arrivedVia "up") lands you
       // on that floor's DOWN-stair — the cell you left by — instead of the up-stair at the top. Descending in,
@@ -892,7 +921,17 @@ var TD_MAP = (function () {
       // a graph edge. If a node has more exits than the floor offers, FLAG the seam — never punch.
       // (The test-only legacy carver has no stair concept — it keeps the old doorPts[i]-by-edge mapping.)
       var seam = 0;
-      if (comp.source === "authored") {
+      if (comp.source === "sublevel") {
+        // CONTIGUOUS FLOORS — only the cross-level STAIRS are doors; same-level nodes are ROOMS you WALK to
+        // (no same-level door, no grid swap). The single down/up stairs carry their dest for R7 routing; the
+        // GATE-4 return-stair below still provides the climb-home if the graph wired no up-edge.
+        (comp.sublevelStairs || []).forEach(function (s) {
+          var k = key(s.x, s.y); if (doors[k]) return;
+          var type = (s.dir === "up") ? "stair_up" : "stair_down", ed = null;
+          (world.edges || []).forEach(function (o) { if (o.id === s.edgeId) ed = o; });
+          doors[k] = { edgeId: s.edgeId, type: type, takeable: ed ? ed.takeable : true, reason: ed ? ed.reason : null, one_way: ed ? !!ed.one_way : false, to: s.dest, label: (type === "stair_down" ? "a stair down — deeper" : "a stair up"), tells: [] };
+        });
+      } else if (comp.source === "authored") {
         // R10 — AUTHORED floors place their stairs DIRECTLY from the manifest (each carries an explicit dest);
         // the generic edge-mapper is skipped. A dest is matched to its graph edge (so interp.choose advances the
         // lattice + checks takeable); "TOWN" exits to the surface; a null/unmatched dest FLAGS and stays an inert
@@ -993,14 +1032,30 @@ var TD_MAP = (function () {
       // v2 (Jaquay) — MAP MEMORY: explored geometry persists per node across revisits
       // within a run (the node is deterministic, so the keys stay valid). Live LOS layers
       // on top at render; what you've seen stays remembered when you leave and return.
-      ctrl.explored = ctrl.exploredByNode[ctrl.node] || (ctrl.exploredByNode[ctrl.node] = new Set());
+      // MAP MEMORY persists per FLOOR — keyed by SUBLEVEL for the contiguous floors (all the level's nodes
+      // share one floor), else per node (SET-PIECE / authored / entrance).
+      var exKey = (comp.source === "sublevel") ? ("L" + cl) : ctrl.node;
+      ctrl.explored = ctrl.exploredByNode[exKey] || (ctrl.exploredByNode[exKey] = new Set());
       reveal(comp.spawn.x, comp.spawn.y);
       ctrl.pendingDoor = null;
-      // gen2 floors are rendered DIRECTLY — its own skin lays terrain (chasm/water); the controller adds
-      // no water of its own (that would change cells). Other generators keep the controller water pass.
-      if (comp.source !== "gen2") placeTerrain(comp);
+      // gen2 (and sublevel, which IS a gen2 grid) floors are rendered DIRECTLY — their own skin lays terrain;
+      // the controller adds no water of its own. Other generators keep the controller water pass.
+      if (comp.source !== "gen2" && comp.source !== "sublevel") placeTerrain(comp);
       // gen2's own loot ($) cells become items (its authored rewards), then the usual gameplay fill runs.
       (comp.loot || []).forEach(function (l, i) { if (isFloor(l.x, l.y)) tryItem(l.x, l.y, ["souvenir", "ration", "bandage"][i % 3]); });
+      // CONTIGUOUS FLOORS — lay each ordinary node's CONTENT into its room + map the room's cells to the node,
+      // so WALKING into a room marks that node reached (move() reads ctrl.cellToNode). Same-level travel is
+      // walking — there is NO same-level door / grid swap.
+      ctrl.cellToNode = {};
+      if (comp.source === "sublevel") {
+        (comp.placements || []).forEach(function (p) {
+          (p.cells || []).forEach(function (c) { ctrl.cellToNode[key(c.x, c.y)] = p.id; });
+          if (isFloor(p.x, p.y) && !ctrl.items[key(p.x, p.y)] && !doors[key(p.x, p.y)]) {
+            if (p.kind === "vault") ctrl.items[key(p.x, p.y)] = makeCoins("gold", 30);       // the vault's loot
+            else if (p.kind !== "hub") tryItem(p.x, p.y, p.kind === "goal" ? "souvenir" : "ration");
+          }
+        });
+      }
       if (inDungeon()) placeDefaults(comp);
       placeGlimpses();
       spawnCreatures();
@@ -1764,6 +1819,7 @@ var TD_MAP = (function () {
 
       ctrl.player.x = nx; ctrl.player.y = ny;
       ctrl.pendingDoor = null; ctrl.pendingFall = null;
+      if (ctrl.cellToNode && ctrl.cellToNode[key(nx, ny)]) markNodeReached(ctrl.cellToNode[key(nx, ny)]);   // CONTIGUOUS FLOORS — walked into a node's room
       reveal(nx, ny);
       var f = featureAt(nx, ny);
       if (f) {
@@ -1797,6 +1853,7 @@ var TD_MAP = (function () {
       var clear = inb(nx, ny) && ctrl.grid[ny] && ctrl.grid[ny][nx] === "." && !creatureAt(nx, ny) && !ctrl.doors[key(nx, ny)] && !plainAt(nx, ny) && !(ctrl.roomDoors && ctrl.roomDoors[key(nx, ny)]) && !isChasm(nx, ny) && !isWater(nx, ny);
       if (!clear) return move(dir);   // can't sprint into the world — a normal step
       ctrl.player.x = nx; ctrl.player.y = ny; ctrl.pendingDoor = null; ctrl.pendingFall = null;
+      if (ctrl.cellToNode && ctrl.cellToNode[key(nx, ny)]) markNodeReached(ctrl.cellToNode[key(nx, ny)]);   // CONTIGUOUS FLOORS — sprinted into a node's room
       reveal(nx, ny);
       var f = featureAt(nx, ny);
       if (f) {
@@ -2033,6 +2090,10 @@ var TD_MAP = (function () {
         var sFromNode = ctrl.node, sFromLevel = curLevel();
         if (st.edgeId) {            // a real graph stair: advance the interpreter (it checks takeable / requirements / completion)
           if (onCross) { var soc = onCross(d, ctrl); if (soc && soc.block) { logMsg(soc.block, false); return { opened: false, blocked: soc.block }; } }
+          // CONTIGUOUS FLOORS — on a sublevel floor the stair can be taken from ANY room, so anchor the
+          // interpreter at the stair-edge's `from` node before choosing (a no-op on the node-floor path,
+          // where it is already the current node).
+          var sed = null; (world.edges || []).forEach(function (o) { if (o.id === st.edgeId) sed = o; }); if (sed) interp.state.node = sed.from;
           var sr = interp.choose(st.edgeId);
           if (!sr.ok) { logMsg(st.reason || d.reason || "the way is barred", false); return { opened: false, blocked: ctrl.lastEvent }; }
           if (st.oneway) { logMsg("The way seals behind you with a click. It will not open from this side.", true); senses("A click, behind and below; the way has closed.", "heard", "OBJ"); }

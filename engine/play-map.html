@@ -222,7 +222,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "74b20dd6";</script>
+<script>window.__BUILD = "f2176d09";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -346,7 +346,9 @@ window.__initPlayMap = function () {
   }
   function newGame(seed) {
     world = TD_GEN.generate(seed, { depth: 6 });   // GATE 5: the vertical slice is a 6-floor dive (uses the generator's existing depth opt; was the 3-4 default)
-    placeSGSetpiece(world);                          // R10 R3 — prototype: drop the §24 SG set-piece on a reachable descent node (host-side; TD_GEN graph not edited)
+    // CONTIGUOUS FLOORS 3b — the live SG portal is PAUSED while ordinary sublevels become single contiguous
+    // floors; it returns in 3c as a stair-reached portal off its sublevel (the R11 set-piece mechanic intact).
+    // placeSGSetpiece(world);   // re-enabled in 3c (FLAG)
     session = { knowledge: new Set(), lives: 0 };
     sim = TD_GAME.create(world, { session: session });
     window.__TD_SIM = function () { return sim; };
@@ -1182,7 +1184,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "R12 — the Smash-and-Grab is ONLY a real floor: descend onto the authored vault as your own character, grab one of two artifacts (the other is lost), and the collapse + slab clock runs in real turns — outrun it to the slab-gated exit or flee deeper. The old §24 mini-game is gone entirely.";
+  var VERSION = "CONTIGUOUS FLOORS — each dungeon SUBLEVEL is now ONE walkable floor: a level's rooms (its hub, goal, vaults, pockets) are joined by corridors and you WALK between them; only stairs change sublevels. No more map-swap on a door. (Smash-and-Grab portal returns next round.)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
