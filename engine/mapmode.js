@@ -341,6 +341,68 @@ var TD_MAP = (function () {
       sg: levelData.sg || null   // R11 — the SG artifact spec ({ arts:[{id,x,y,name}] }) the live set-piece reads (grid-agnostic)
     };
   }
+
+  // ===== CONTIGUOUS FLOORS (Model A) — Phase 1: the SUBLEVEL composer (offline; not yet wired live) =====
+  // Compose ONE gen2 floor for a whole sublevel and lay the level's ORDINARY nodes into it as ROOMS, joined
+  // by gen2's own corridors into ONE region. Each node's content goes into its room; the up-stair is the
+  // arrival anchor and the down-stair is the single descent. SET-PIECE nodes are EXCLUDED (the Smash-and-Grab
+  // stays its own stair/portal-reached floor — operator-reserved). Phase 1 proves: exactly one grid, whole-
+  // floor single-region, every node's room walk-reachable from the stair-in. (Live wiring is Phase 3.)
+  //
+  // findRooms — the gen2 floor's discrete ROOMS = connected components of "roomy" cells (a cell whose 2x2 is
+  // all floor, matching TD_GEN2.measure's room test). Corridors (width-1) are NOT rooms; they join the rooms.
+  function sgFloorRooms(g) {
+    var H = g.length, W = g[0].length;
+    function fl(x, y) { return y >= 0 && y < H && x >= 0 && x < W && (g[y][x] === "." || g[y][x] === "~"); }
+    function roomy(x, y) { if (!fl(x, y)) return false; var q = [[0, 0], [-1, 0], [0, -1], [-1, -1]]; for (var i = 0; i < 4; i++) { var ox = x + q[i][0], oy = y + q[i][1]; if (fl(ox, oy) && fl(ox + 1, oy) && fl(ox, oy + 1) && fl(ox + 1, oy + 1)) return true; } return false; }
+    var seen = {}, rooms = [];
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+      if (!roomy(x, y) || seen[x + "," + y]) continue;
+      var stack = [[x, y]], cells = []; seen[x + "," + y] = 1;
+      while (stack.length) { var c = stack.pop(); cells.push({ x: c[0], y: c[1] }); [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && roomy(nx, ny)) { seen[k] = 1; stack.push([nx, ny]); } }); }
+      // room CENTER = the member cell nearest the centroid (a real floor cell, good for content placement)
+      var sx = 0, sy = 0; cells.forEach(function (c) { sx += c.x; sy += c.y; }); var cx = sx / cells.length, cy = sy / cells.length;
+      var best = cells[0], bd = 1e9; cells.forEach(function (c) { var d = Math.abs(c.x - cx) + Math.abs(c.y - cy); if (d < bd) { bd = d; best = c; } });
+      rooms.push({ cells: cells, size: cells.length, cx: best.x, cy: best.y });
+    }
+    rooms.sort(function (a, b) { return b.size - a.size; });   // biggest rooms first
+    return rooms;
+  }
+  // BFS reachability over the floor (4-dir, walkable), from (ox,oy): returns the reached-cell set.
+  function sgReachSet(g, ox, oy) {
+    var H = g.length, W = g[0].length, seen = {}, q = [[ox, oy]]; seen[ox + "," + oy] = 1;
+    function fl(x, y) { return y >= 0 && y < H && x >= 0 && x < W && (g[y][x] === "." || g[y][x] === "~"); }
+    while (q.length) { var c = q.shift(); [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && fl(nx, ny)) { seen[k] = 1; q.push([nx, ny]); } }); }
+    return seen;
+  }
+  // composeSublevel(seed, level, nodes) — nodes: [{ id, kind }] the ORDINARY nodes at this sublevel (NO set-piece).
+  function composeSublevel(seed, level, nodes) {
+    nodes = (nodes || []).filter(function (n) { return n && n.nodeType !== "SET-PIECE"; });   // SG stays its own floor
+    var comp = composeNodeGen2(seed, "SUBLEVEL_" + level, Math.max(2, nodes.length), level || 1);
+    if (!comp) return null;
+    var g = comp.grid, up = comp.upStair || comp.spawn, rooms = sgFloorRooms(g);
+    // assign each node to a distinct room: the HUB (or first node) takes the room nearest the up-stair (arrival),
+    // the rest take the largest remaining rooms. Overflow (more nodes than rooms) -> spare breadth cells, FLAGGED.
+    var taken = {}, placements = [], seam = 0;
+    function nearestRoom(tx, ty) { var best = null, bd = 1e9; rooms.forEach(function (r, i) { if (taken[i]) return; var d = Math.abs(r.cx - tx) + Math.abs(r.cy - ty); if (d < bd) { bd = d; best = i; } }); return best; }
+    var order = nodes.slice().sort(function (a, b) { return (b.kind === "hub" ? 1 : 0) - (a.kind === "hub" ? 1 : 0); });
+    order.forEach(function (n, idx) {
+      var ri = (idx === 0 && up) ? nearestRoom(up.x, up.y) : nearestRoom(comp.comX || (g[0].length >> 1), comp.comY || (g.length >> 1));
+      if (ri != null) { taken[ri] = 1; var r = rooms[ri]; placements.push({ id: n.id, kind: n.kind, x: r.cx, y: r.cy, roomSize: r.size }); }
+      else { // no spare room — place content on a spare breadth/floor cell (still reachable), FLAG the seam
+        var spare = (comp.breadthCells || []).filter(function (c) { return !placements.some(function (p) { return p.x === c.x && p.y === c.y; }); })[0];
+        if (spare) { placements.push({ id: n.id, kind: n.kind, x: spare.x, y: spare.y, roomSize: 0, overflow: true }); seam++; }
+        else { seam++; }
+      }
+    });
+    if (seam) console.warn("composeSublevel: Sublevel " + level + " had " + nodes.length + " nodes but only " + rooms.length + " rooms — " + seam + " placed on spare cells / dropped (FLAGGED, not punched).");
+    return {
+      grid: g, rawGrid: comp.rawGrid, source: "sublevel", level: level, W: comp.W, H: comp.H,
+      upStair: comp.upStair, downStair: comp.downStair, breadthCells: comp.breadthCells,
+      rooms: rooms, placements: placements, roomCount: rooms.length, nodeCount: nodes.length, seam: seam,
+      stairs: comp.stairs, secrets: comp.secrets, loot: comp.loot, features: comp.features
+    };
+  }
   // R10/R11 — the §24 SMASH-AND-GRAB set-piece floor (PLACEHOLDER). DEPENDENCY FLAG: the operator's real
   // authored SG grid is NOT in the repo. This placeholder (a chamber with pedestals `$` + an escape `>` to the
   // surface) PROVES THE WIRING; the operator's real SG grid swaps in by registering the SAME id ("sg_setpiece").
@@ -2192,6 +2254,9 @@ var TD_MAP = (function () {
     composeAuthored: function (levelData) { return composeAuthored(levelData); },
     registerAuthored: function (level) { return registerAuthored(level); },
     authoredLevel: function (id) { return AUTHORED_LEVELS[id] || null; },
+    // CONTIGUOUS FLOORS (Model A) Phase 1 — the offline sublevel composer + a reachability probe (test hooks).
+    composeSublevel: function (seed, level, nodes) { return composeSublevel(seed, level, nodes); },
+    _reachSet: function (grid, ox, oy) { return sgReachSet(grid, ox, oy); },
     _gen2Opts: GEN2_OPTS,
     // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
     CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_MIX: COIN_MIX
