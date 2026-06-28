@@ -375,8 +375,31 @@ var TD_MAP = (function () {
     while (q.length) { var c = q.shift(); [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (!seen[k] && fl(nx, ny)) { seen[k] = 1; q.push([nx, ny]); } }); }
     return seen;
   }
-  // composeSublevel(seed, level, nodes) — nodes: [{ id, kind }] the ORDINARY nodes at this sublevel (NO set-piece).
-  function composeSublevel(seed, level, nodes) {
+  // Phase 2 — classify the sublevel's graph edges into STAIRS (cross-level) vs CORRIDORS (same-level). Same-
+  // level edges are satisfied by WALKING (the nodes' rooms are already joined by gen2 corridors into one
+  // region — no door). Cross-level edges become stairs, but THIS BUILD ships a SINGLE down-stair + a SINGLE
+  // up-stair (the multi-stair / dead-end lattice is operator-reserved, a later round): the first cross-level
+  // DOWN edge -> the one `>` (dest = the deeper node = the next sublevel's entry); the first cross-level UP
+  // edge -> the one `<` (dest = the shallower node). Extra cross-level edges are FLAGGED, not built.
+  function classifySublevelEdges(level, edges, nodeLevel, downCell, upCell) {
+    var corridors = [], downCand = [], upCand = [];
+    (edges || []).forEach(function (e) {
+      var fl = nodeLevel[e.from], tl = nodeLevel[e.to];
+      if (fl === level && tl === level) { corridors.push({ id: e.id, from: e.from, to: e.to }); }     // same-level -> walk
+      else if (fl === level && typeof tl === "number" && tl > level) { downCand.push(e); }            // descend
+      else if (fl === level && typeof tl === "number" && tl < level) { upCand.push(e); }              // climb
+      // edges INTO this level from elsewhere are realised on the OTHER level's floor (its down/up-stair)
+    });
+    var stairs = [], extra = 0;
+    if (downCand.length && downCell) { stairs.push({ x: downCell.x, y: downCell.y, dir: "down", dest: downCand[0].to, edgeId: downCand[0].id }); extra += (downCand.length - 1); }
+    if (upCand.length && upCell) { stairs.push({ x: upCell.x, y: upCell.y, dir: "up", dest: upCand[0].to, edgeId: upCand[0].id }); extra += (upCand.length - 1); }
+    if (extra) console.warn("composeSublevel: Sublevel " + level + " has " + extra + " extra cross-level edge(s) beyond the single up/down — FLAGGED (multi-stair lattice is operator-reserved, not built).");
+    return { stairs: stairs, corridors: corridors, extraCrossLevel: extra };
+  }
+  // composeSublevel(seed, level, nodes [, edges, nodeLevel]) — nodes: [{ id, kind }] the ORDINARY nodes at
+  // this sublevel (NO set-piece). edges/nodeLevel (optional, Phase 2): classify cross-level -> stairs,
+  // same-level -> corridors.
+  function composeSublevel(seed, level, nodes, edges, nodeLevel) {
     nodes = (nodes || []).filter(function (n) { return n && n.nodeType !== "SET-PIECE"; });   // SG stays its own floor
     var comp = composeNodeGen2(seed, "SUBLEVEL_" + level, Math.max(2, nodes.length), level || 1);
     if (!comp) return null;
@@ -396,10 +419,14 @@ var TD_MAP = (function () {
       }
     });
     if (seam) console.warn("composeSublevel: Sublevel " + level + " had " + nodes.length + " nodes but only " + rooms.length + " rooms — " + seam + " placed on spare cells / dropped (FLAGGED, not punched).");
+    // Phase 2 — edges -> stairs (cross-level) + corridors (same-level). Off without edges (Phase 1 behaviour).
+    var edgeModel = (edges && nodeLevel) ? classifySublevelEdges(level, edges, nodeLevel, comp.downStair, comp.upStair)
+                                         : { stairs: [], corridors: [], extraCrossLevel: 0 };
     return {
       grid: g, rawGrid: comp.rawGrid, source: "sublevel", level: level, W: comp.W, H: comp.H,
       upStair: comp.upStair, downStair: comp.downStair, breadthCells: comp.breadthCells,
       rooms: rooms, placements: placements, roomCount: rooms.length, nodeCount: nodes.length, seam: seam,
+      sublevelStairs: edgeModel.stairs, corridors: edgeModel.corridors, extraCrossLevel: edgeModel.extraCrossLevel,
       stairs: comp.stairs, secrets: comp.secrets, loot: comp.loot, features: comp.features
     };
   }
@@ -2255,7 +2282,7 @@ var TD_MAP = (function () {
     registerAuthored: function (level) { return registerAuthored(level); },
     authoredLevel: function (id) { return AUTHORED_LEVELS[id] || null; },
     // CONTIGUOUS FLOORS (Model A) Phase 1 — the offline sublevel composer + a reachability probe (test hooks).
-    composeSublevel: function (seed, level, nodes) { return composeSublevel(seed, level, nodes); },
+    composeSublevel: function (seed, level, nodes, edges, nodeLevel) { return composeSublevel(seed, level, nodes, edges, nodeLevel); },
     _reachSet: function (grid, ox, oy) { return sgReachSet(grid, ox, oy); },
     _gen2Opts: GEN2_OPTS,
     // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
