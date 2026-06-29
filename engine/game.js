@@ -1654,6 +1654,10 @@ var TD_GAME = (function () {
       intakeAdjust: intakeAdjust, allocReset: allocReset, pickSign: pickSign, pickSex: pickSex, pickVisa: pickVisa,
       _intakeOpen: function () { return intakeOpen; }, _intakeStage: function () { return intakeStage; }, _backgrounds: function () { return intakeList(); },
       say: function (t) { logMsg(t); },   // the Bureau speaks during play (presentation flavour)
+      // general host hook: append a line to the active screen's FIELD LOG (dungeon log in the dive, else the
+      // town/shared log). Append-only — does NOT clobber lastEvent. Used by the play-map EMERGENCY channel so an
+      // on-screen alert always also lands in the log.
+      pushLog: function (text, urgent) { if (!text) return; if (placeId === "DUNGEON" && dungeon && dungeon.pushLog) { dungeon.pushLog(text, urgent); return; } shared.messages.push({ text: text, urgent: !!urgent, ch: "event", kind: null, obj: null }); if (shared.messages.length > 120) shared.messages.shift(); },
       isDead: function () { return dead; }, isComplete: function () { return won; },
       SIG: SIG, brassTarget: brassTarget,
       _interact: function (type) { lastEvent = null; act(type); return { event: lastEvent, phase: placeId === "DUNGEON" ? "dungeon" : "town" }; },

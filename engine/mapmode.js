@@ -2341,6 +2341,10 @@ var TD_MAP = (function () {
       _featureRooms: function () { return ctrl.featureRooms || []; }, _emitFeatureTells: function () { emitFeatureTells(); },   // R3 test hooks
       _setPlayer: function (x, y) { ctrl.player.x = x; ctrl.player.y = y; },
       isDead: function () { return ctrl.dead; }, isComplete: function () { return ctrl.won; },
+      // general host hook: append a line to the FIELD LOG (the message stream the host renders + the L review
+      // log persist). Used by the play-map EMERGENCY channel so an on-screen alert always also lands in the log.
+      // Appends only — does NOT touch ctrl.lastEvent (the current action's result cue stays intact).
+      pushLog: function (text, urgent) { if (!text) return; ctrl.messages.push({ text: text, urgent: !!urgent, ch: "event", kind: null, obj: null }); if (ctrl.messages.length > 120) ctrl.messages.shift(); },
       // helpers for the town layer + tests
       _doors: function () { return ctrl.doors; },
       _player: function () { return ctrl.player; },

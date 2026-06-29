@@ -122,6 +122,18 @@
   .banner.entry { background:rgba(42,38,28,.95); border-color:#caa15a; color:#f3e7c8; }   /* E1 entry announcement: Bureau brass, not crisis red */
   @keyframes flashbanner { 0%{opacity:0;transform:translateX(-50%) translateY(-6px);} 8%{opacity:1;transform:translateX(-50%) translateY(0);} 72%{opacity:1;} 100%{opacity:0;} }
 
+  /* EMERGENCY OVERLAY — a prominent critical-beat band (upper-third). Holds, then fades; the text also lands
+     in the field log (see emergency() in script). 'danger' kind tints alarm-red; default is Bureau amber. */
+  .emergband { position:absolute; top:21%; left:50%; transform:translateX(-50%) scale(1); max-width:86%; text-align:center;
+    background:rgba(22,18,11,.93); color:#f3e7c8; font:bold 22px/1.18 "Consolas",monospace; letter-spacing:1.5px; text-transform:uppercase;
+    padding:13px 26px; border:2px solid #caa15a; border-radius:6px; z-index:30; pointer-events:none;
+    box-shadow:0 0 0 2px rgba(0,0,0,.45), 0 6px 26px rgba(0,0,0,.5);
+    opacity:0; visibility:hidden; transition:opacity .5s ease, transform .5s ease; }
+  .emergband.show { opacity:1; visibility:visible; transform:translateX(-50%) scale(1.02); }
+  .emergband.danger { background:rgba(44,9,6,.95); color:#ffd9d1; border-color:#ff2d1f;
+    box-shadow:0 0 0 2px rgba(0,0,0,.5), 0 0 30px rgba(255,45,31,.55); }
+  .emergband.nomotion { transition:none; }   /* prefers-reduced-motion: keep the message, drop the motion */
+
   /* the --more-- halt */
   .more { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(14,8,6,.45); z-index:20; }
   .more.show { display:flex; }
@@ -176,6 +188,7 @@
   <div id="game">
     <div class="stage">
       <canvas id="cv" width="902" height="506"></canvas>
+      <div id="emergband" class="emergband"></div>
       <div id="banner" class="banner"></div>
       <div id="more" class="more"><div class="box"><span id="more-text"></span><span class="more-tag">— press any key to continue —</span></div></div>
       <div id="overlay" class="overlay-host"></div>
@@ -222,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "6627e20d";</script>
+<script>window.__BUILD = "54e9b736";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -348,6 +361,7 @@ window.__initPlayMap = function () {
     window.__TD_SIM = function () { return sim; };
     window.__TD_VIEW = function () { return sim.view(); };
     window.__TD_CAMERA = function () { return camera; };          // {x,y,ts,vpw,vph,town} — for the camera-tracking E2E
+    window.__TD_FX = { emergency: emergency, shake: shake, setRumble: setRumble, hostShakeOffset: hostShakeOffset, shakeActive: shakeActive, pump: pumpSgFx, rumble: function () { return rumbleMag; }, band: function () { return emergEl; }, draw: function () { draw(); } };   // EMERGENCY/shake test hooks
     resetUI();
     seedInput.value = seed;
     metaEl.textContent = "depth " + world.meta.depth + " · arrival day " + world.arrival_day;
@@ -373,6 +387,57 @@ window.__initPlayMap = function () {
     verifyEl.innerHTML = (v.pass ? "<b>Checker:</b> " : "<b class='no'>CHECKER FAILED:</b> ") + parts.join(" &nbsp; ");
   }
 
+  // ============================================ EMERGENCY OVERLAY + SCREEN SHAKE ==
+  // A general, reusable critical-beat channel (first wired to the SG collapse, below):
+  //   emergency(text, kind) — a prominent band (upper-third) that holds ~1.5s then fades ~0.5s, AND commits the
+  //     text to the FIELD LOG so it persists/scrolls even if the overlay is missed. kind "danger" tints red.
+  //   shake(magnitude_px, ms)  — jitters the canvas by a DECAYING random offset; always returns to rest.
+  //   setRumble(magnitude_px)  — a sustained low jitter (0 = off) layered under the discrete shakes.
+  // Both honour prefers-reduced-motion: the MESSAGE is always kept; the MOTION is dropped.
+  var prefersReduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var emergEl = document.getElementById("emergband"), emergTimers = [];
+  var hostShakes = [], rumbleMag = 0, shakeRAF = null;
+  function hostShakeOffset(now) {
+    var dx = 0, dy = 0;
+    for (var i = hostShakes.length - 1; i >= 0; i--) { var s = hostShakes[i], e = now - s.t0; if (e >= s.dur) { hostShakes.splice(i, 1); continue; } var amp = s.mag * (1 - e / s.dur); dx += (Math.random() * 2 - 1) * amp; dy += (Math.random() * 2 - 1) * amp; }
+    if (rumbleMag > 0) { dx += (Math.random() * 2 - 1) * rumbleMag; dy += (Math.random() * 2 - 1) * rumbleMag; }
+    return { dx: dx, dy: dy };
+  }
+  function shakeActive() { return hostShakes.length > 0 || rumbleMag > 0; }
+  function ensureShakeLoop() { if (shakeRAF) return; var step = function () { shakeRAF = null; draw(); if (shakeActive()) shakeRAF = requestAnimationFrame(step); }; shakeRAF = requestAnimationFrame(step); }
+  function shake(mag, ms) { if (prefersReduced || !(mag > 0)) return; hostShakes.push({ mag: mag, dur: Math.max(16, ms || 180), t0: nowMs() }); ensureShakeLoop(); }
+  function setRumble(mag) { var m = prefersReduced ? 0 : Math.max(0, mag || 0); if (m === rumbleMag) { if (m > 0) ensureShakeLoop(); return; } var was = rumbleMag; rumbleMag = m; if (rumbleMag > 0) ensureShakeLoop(); else if (was > 0) draw(); }
+  function emergency(text, kind) {
+    if (!text) return;
+    if (sim && sim.pushLog) sim.pushLog(text, true);   // ALWAYS into the field log first (persists even if the band is missed)
+    if (!emergEl) return;
+    emergTimers.forEach(clearTimeout); emergTimers = [];
+    emergEl.textContent = text;
+    emergEl.className = "emergband" + (kind === "danger" ? " danger" : "") + (prefersReduced ? " nomotion" : "");
+    void emergEl.offsetWidth;                           // reflow so a back-to-back re-show re-triggers the fade
+    emergEl.classList.add("show");
+    emergTimers.push(setTimeout(function () { emergEl.classList.remove("show"); emergTimers.push(setTimeout(function () { emergEl.className = "emergband"; }, prefersReduced ? 0 : 560)); }, 1500));
+  }
+  // SG COLLAPSE WIRING — edge-detect the beats from the live view and drive the channel. The discrete BEATS fire
+  // exactly ONCE per turn (turn-gated, never per animation frame); the rumble updates every frame for smoothness.
+  var sgPrev = { tripped: false, sealed: false, inRubble: false, wasActive: false }, sgFxTurn = -1;
+  function pumpSgFx(vw) {
+    var sg = vw.sg;
+    setRumble((sg && sg.active && sg.tripped && !sg.sealed) ? (1.1 + 2.6 * (sg.proximity || 0)) : 0);   // ongoing rumble, rising as the front nears
+    if (vw.turn === sgFxTurn) return; sgFxTurn = vw.turn;                                                // the beats below are per-TURN, not per-frame
+    var dead = !!vw.dead, pl = vw.player;
+    if (sg && sg.active && sg.tripped) {
+      if (!sgPrev.tripped) { emergency("THE FLOOR SPLITS — RUN", "danger"); shake(7, 280); }              // IGNITE: a jolt, then the rumble takes over
+      var inR = !!(pl && sg.rubble && sg.rubble(pl.x, pl.y));
+      if (inR) { shake(9, 200); if (!sgPrev.inRubble) emergency("Debris rakes you — MOVE", "danger"); }   // DEBRIS overtakes: sharp shake every turn in it; the alert on the leading edge
+      if (sg.sealed && !sgPrev.sealed) { emergency("The stairwell is gone.", "danger"); shake(15, 460); } // SEAL: heavy shake
+      sgPrev.tripped = true; sgPrev.sealed = !!sg.sealed; sgPrev.inRubble = inR; sgPrev.wasActive = true;
+    } else {
+      if (sgPrev.wasActive && sgPrev.tripped && !sgPrev.sealed && !dead) { emergency("You burst clear as the floor caves behind you."); shake(6, 280); }   // left a live collapse, alive -> clean escape
+      sgPrev.tripped = false; sgPrev.sealed = false; sgPrev.inRubble = false; sgPrev.wasActive = false;
+    }
+  }
+
   // =========================================================== DRAW =========
   // draw wrapper: measures frame time and input->render latency (cleared after the first render
   // following an input, so feel-loop frames don't inflate the latency reading) — R3 telemetry.
@@ -381,6 +446,7 @@ window.__initPlayMap = function () {
   function _draw() {
     var vw = sim.view();
     checkBarks(vw);   // the Bureau may add a line before we render the log
+    pumpSgFx(vw);     // drive the EMERGENCY overlay + screen shake off the live SG collapse beats (before the log renders)
     // TOWN: a bigger fixed tile size + a SCROLLING CAMERA that follows the avatar — the
     // town is larger than the viewport, so it scrolls (Tradition A). DUNGEON/interior:
     // the whole place fits, shrink-to-fit as before. All draw helpers read TS/FONT and
@@ -411,6 +477,7 @@ window.__initPlayMap = function () {
     if (camXs == null || !town) { camXs = camX; camYs = camY; }
     else { camXs += (camX - camXs) * 0.35; camYs += (camY - camYs) * 0.35; if (Math.abs(camX - camXs) < 0.02 && Math.abs(camY - camYs) < 0.02 || !TD_FEEL.hasActive(nowF)) { camXs = camX; camYs = camY; } }
     var shk = TD_FEEL.isEnabled() ? TD_FEEL.shakeOffset(nowF) : { dx: 0, dy: 0 };
+    if (TD_FEEL.isEnabled()) { var hsk = hostShakeOffset(nowF); shk = { dx: shk.dx + hsk.dx, dy: shk.dy + hsk.dy }; }   // + the EMERGENCY/SG host shake ('juice off' drops it; decays to rest)
     var vis = new Set(vw.visible), exp = new Set(vw.explored);
     ctx.fillStyle = P.voidc; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.font = FONT; ctx.textBaseline = "middle"; ctx.textAlign = "center";
@@ -1181,7 +1248,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "SG VAULT LEGEND — in the Smash-and-Grab vault, `$` is now a SECRET DOOR (hidden in the wall until you Search beside it, then it opens like a door) and `S` is a SECRET ROOM holding a loot cache. Two artifacts still sit in the upper pillar-chambers split by uncrossable water (grab one, the other is lost), one stairwell `<` out, and grabbing an artifact still ROLLS the floor toward the stair (sprint to beat it, ~28 turns cushion; let it overtake you and debris bleeds you). Global `$`=loot elsewhere is untouched.";
+  var VERSION = "EMERGENCY OVERLAY + SCREEN SHAKE — critical beats now hit you in the GUT: a bold danger band flashes on screen (and always lands in the field log) and the whole view SHAKES. First wired to the Smash-and-Grab collapse: the grab SPLITS the floor (jolt + the band 'THE FLOOR SPLITS — RUN', then a rising rumble as the front nears); debris overtaking you snaps a sharp shake + 'Debris rakes you — MOVE'; the stairwell sealing is a heavy shake + 'The stairwell is gone.'; a clean escape reads 'You burst clear…'. Honours reduced-motion (keeps the words, drops the shake).";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
