@@ -836,12 +836,18 @@ var TD_MAP = (function () {
     // screen — it plays in the normal renderer as the real character. ALL of this runs ONLY when the live
     // floor's composition.setpiece === "smashgrab"; every other floor is completely untouched.
     var SGR = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.SG) ? TD_RESOLVE.SG : null;
+    // SG DIRECTIONAL COLLAPSE — tunables (SG-floor-only; replace R11's generic clock). The front's cells-per-turn
+    // is DERIVED at grab time from the floor's own artifact->stairwell distance so it SEALS at ~SG_SEAL_TURNS,
+    // grid-agnostic (the operator's real grid drops in unchanged). GRACE = the break-from-pedestal head-start;
+    // a SPRINT advances the front less (you gain ground); DEBRIS = survivable per-turn damage on overtake (not
+    // instant death). Tuned against the sim (tests/run_sg_collapse.py) — see the report.
+    var SG_SEAL_TURNS = 70, SG_GRACE = 3, SG_DEBRIS_DMG = 4, SG_SPRINT_FRONT = 0.7;
     function sgActiveFloor() { return !!(ctrl.sg && ctrl.composition && ctrl.composition.setpiece === "smashgrab"); }
     function sgInit(comp) {
       var arts = ((comp.sg && comp.sg.arts) || []).map(function (a) { return { id: a.id, x: a.x, y: a.y, name: a.name || (a.id === "A" ? "the Reliquary Ledger" : "the Brass Astrolabe"), taken: false }; });
-      return { setpiece: true, tripped: false, doorClosed: 0, origin: null, dist: null, escaped: false, dead: false, choice: null, arts: arts, toldFront: -2, grace: false };
+      return { setpiece: true, tripped: false, frontTurns: 0, origin: null, dist: null, escaped: false, dead: false, choice: null, arts: arts, toldFront: -2, grace: false, frontRate: 1, stairDist: 0, stairCell: null };
     }
-    function sgSprintable() {   // the REAL character burden gates the pace (not an abstract load): heavy -> can't outrun the slab
+    function sgSprintable() {   // the REAL character burden gates the pace (not an abstract load): heavy -> can't outrun the front
       var b = playerBand(), k = b ? b.band.key : "unencumbered"; return k === "unencumbered" || k === "laden";
     }
     function sgFloorDist(ox, oy) {   // BFS over the LIVE floor (walkable) from the collapse origin
@@ -849,15 +855,24 @@ var TD_MAP = (function () {
       while (q.length) { var c = q.shift(), cd = dist[c[0] + "," + c[1]]; for (var i = 0; i < 4; i++) { var nx = c[0] + D[i][0], ny = c[1] + D[i][1], k = nx + "," + ny; if (dist[k] !== undefined) continue; if (!inb(nx, ny) || !(ctrl.grid[ny][nx] === "." || ctrl.grid[ny][nx] === "~")) continue; dist[k] = cd + 1; q.push([nx, ny]); } }
       return dist;
     }
-    function sgFrontier() { return (ctrl.sg && SGR) ? SGR.frontier(ctrl.sg) : -1; }
-    function sgSealed() { return !!(ctrl.sg && SGR && SGR.sealed(ctrl.sg)); }
+    // DIRECTIONAL FRONT: the collapse edge, in BFS-distance cells from the grab origin, after its grace head-start.
+    function sgFrontier() { var s = ctrl.sg; if (!s || !s.tripped) return -1; return Math.max(0, s.frontTurns - SG_GRACE) * s.frontRate; }
+    // SEALED when the front reaches the STAIRWELL (the escape distance) — the point of no return.
+    function sgSealed() { var s = ctrl.sg; return !!(s && s.tripped && s.stairDist > 0 && sgFrontier() >= s.stairDist); }
     function sgRubble(x, y) { var s = ctrl.sg; if (!s || !s.tripped || !s.dist) return false; var d = s.dist[x + "," + y]; return (d !== undefined) && d <= sgFrontier(); }
     function sgPlayerLead() { var s = ctrl.sg; if (!s || !s.dist) return 99; var d = s.dist[ctrl.player.x + "," + ctrl.player.y]; return (d === undefined) ? 99 : (d - sgFrontier()); }
     function sgTrip() {
       var s = ctrl.sg; if (!s || s.tripped) return;
-      s.tripped = true; s.doorClosed = 0; s.grace = true; s.origin = { x: ctrl.player.x, y: ctrl.player.y }; s.dist = sgFloorDist(s.origin.x, s.origin.y);
-      logMsg("The far wall buckles — the floor is COMING DOWN behind you, and a slab grinds loose toward the way out. RUN.", true);
-      senses("A cold draft pours up out of the split in the floor; the Bureau does not heat a room it expects you to leave.", "heard", "OBJ");
+      s.tripped = true; s.frontTurns = 0; s.grace = true; s.origin = { x: ctrl.player.x, y: ctrl.player.y }; s.dist = sgFloorDist(s.origin.x, s.origin.y);
+      // The front rolls from the grabbed artifact TOWARD THE STAIRWELL. Find the escape stair (toTown), else the
+      // nearest stair, and DERIVE the front's cells-per-turn from that distance so the stair seals at ~SEAL_TURNS.
+      var stair = null;
+      for (var dk in ctrl.doors) { if (ctrl.doors[dk].toTown) { var p = dk.split(",").map(Number); stair = { x: p[0], y: p[1] }; break; } }
+      if (!stair) for (var dk2 in ctrl.doors) { var dr = ctrl.doors[dk2]; if (dr.type === "stair_down" || dr.type === "stair_up") { var p2 = dk2.split(",").map(Number); stair = { x: p2[0], y: p2[1] }; break; } }
+      s.stairCell = stair; s.stairDist = stair ? (s.dist[stair.x + "," + stair.y] || 0) : 0;
+      s.frontRate = (s.stairDist > 0) ? (s.stairDist / Math.max(1, SG_SEAL_TURNS - SG_GRACE)) : (SGR ? SGR.TUNE.COLLAPSE_RATE_SETPIECE : 1);
+      logMsg("The floor splits at your feet and the collapse begins ROLLING toward the way out — outrun it to the stairs. RUN.", true);
+      senses("A cold draft pours up out of the split; behind you the floor is folding into the dark, gaining, rolling your way.", "heard", "OBJ");
     }
     function sgTelegraph() {   // R2 — the collapse/slab pressure reads in the SENSES channel as feel-words; never a number
       var s = ctrl.sg; if (!s || !s.tripped) return; var fr = Math.floor(sgFrontier()); if (fr === s.toldFront) return; s.toldFront = fr;
@@ -878,14 +893,21 @@ var TD_MAP = (function () {
       senses("Stone grinds on stone the instant your fingers close: you have made your choice, and the room has noted it.", "heard", "OBJ");
       sgTrip();
     }
-    // the live-loop SG tick: each player action advances the slab/collapse clock + spreads the collapse.
-    function sgTick() {
+    // the live-loop SG tick: each player action rolls the DIRECTIONAL collapse front toward the stairwell.
+    // mode === "sprint" + the real burden allows it -> the front advances LESS (you GAIN ground); else it
+    // advances a full turn. If the front is on/past your cell -> DEBRIS DAMAGE (survivable, per-turn), not an
+    // instant kill: fall behind the front and you bleed, you do not auto-die.
+    function sgTick(mode) {
       var s = ctrl.sg; if (!sgActiveFloor() || !s || !s.tripped || s.escaped || s.dead || ctrl.dead) return;
-      // the GRAB turn is a one-action head-start (the original §24 trips on grab and only the NEXT move advances
-      // the slab/collapse): don't advance or crush on the trip turn — you get one beat to break from the pedestal.
+      // the GRAB turn is a one-action head-start — break from the pedestal before the front starts rolling.
       if (s.grace) { s.grace = false; sgTelegraph(); return; }
-      s.doorClosed += sgSprintable() ? 1 : (SGR ? SGR.TUNE.HEAVY_PACE : 1.165);
-      if (sgRubble(ctrl.player.x, ctrl.player.y)) { s.dead = true; die("The floor dropped out from under you and the dark took everything — the Bureau files it under 'reabsorbed, with effects.'"); return; }
+      s.frontTurns += (mode === "sprint" && sgSprintable()) ? SG_SPRINT_FRONT : 1;
+      if (sgRubble(ctrl.player.x, ctrl.player.y)) {   // the front has overtaken you -> debris rakes you this turn
+        ctrl.meters.hp = Math.max(0, ctrl.meters.hp - SG_DEBRIS_DMG);
+        ctrl.fx = ctrl.fx || []; ctrl.fx.push({ x: ctrl.player.x, y: ctrl.player.y, amount: SG_DEBRIS_DMG, kind: "taken" });
+        senses("Debris rakes across you — you are IN the collapse now; get clear or it will bury you.", "heard", "OBJ");
+        if (ctrl.meters.hp <= 0) { s.dead = true; die("The collapse caught the visitor in the open and the floor took everything — the Bureau files it under 'reabsorbed, with effects.'"); return; }
+      }
       sgTelegraph();
     }
 
@@ -1334,7 +1356,7 @@ var TD_MAP = (function () {
     function endTurn(mode, noWorld) {
       meterTick(mode, noWorld);
       if (!noWorld && !ctrl.dead) creaturesStep();   // GATE 8 (B): a SPRINT skips the world's step (you dart ahead) at a high fatigue cost
-      sgTick();   // R11 — advance the SMASH-AND-GRAB collapse/slab clock from the REAL turn loop (no-op off a set-piece floor)
+      sgTick(mode);   // SG — roll the DIRECTIONAL collapse front from the REAL turn loop (mode "sprint" gains ground; no-op off a set-piece floor)
       shared.turn += 1;
     }
 
@@ -1821,7 +1843,8 @@ var TD_MAP = (function () {
       }
       var onWater = isWater(nx, ny);
       if (ctrl.grid[ny][nx] !== "." && !onWater) return { moved: false };
-      if (sgRubble(nx, ny)) { logMsg("The floor there has already fallen away into the dark.", false); return { moved: false, event: ctrl.lastEvent }; }   // R11 — the collapse has eaten that cell
+      // SG — collapsed (rubble) cells are NOT blocked: you can be overtaken / cut back through the collapse,
+      // taking DEBRIS DAMAGE (sgTick), but it never hard-walls you in. (Falling behind the front = bleeding.)
 
       ctrl.player.x = nx; ctrl.player.y = ny;
       ctrl.pendingDoor = null; ctrl.pendingFall = null;

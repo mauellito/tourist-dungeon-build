@@ -222,7 +222,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "10933ad6";</script>
+<script>window.__BUILD = "0e833e95";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1185,7 +1185,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "CONTIGUOUS FLOORS — each dungeon SUBLEVEL is ONE walkable floor: a level's rooms (hub, goal, vaults, pockets) are joined by corridors and you WALK between them; only stairs change sublevels. The Smash-and-Grab is a stair-reached portal off its sublevel (the footrace plays as before).";
+  var VERSION = "SG DIRECTIONAL COLLAPSE — grab an artifact and the floor starts ROLLING from that chamber toward the stairwell: outrun it (sprint, if you're light enough) to the exit; let it overtake you and debris bleeds you (survivable, not instant); reach the stair before it seals (~70 turns) or be trapped. The other artifact is lost.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
