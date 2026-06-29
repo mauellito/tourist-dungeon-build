@@ -222,7 +222,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "0e833e95";</script>
+<script>window.__BUILD = "e325f3f2";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -323,22 +323,15 @@ window.__initPlayMap = function () {
       var lvl = world.nodes[node].level || 0, child = null;
       (world.edges || []).forEach(function (e) { if (e.from === node && (world.nodes[e.to] || {}).level > lvl) child = e.to; });
       if (!child) { console.warn("R10 R3: prototype SG node " + node + " has no down-edge child — SG not placed (FLAGGED)."); return; }
+      if (typeof TD_SG_VAULT === "undefined") { console.error("SG vault grid (sg_vault.js) not loaded — SG not placed (FLAGGED)."); return; }
+      // The operator's hand-drawn 64x40 vault is the live SG floor: its single stairwell `<` is the way out —
+      // collapse-gated (the directional collapse rolls toward it) and routes ONWARD to the next sublevel (the
+      // node's real child), so escaping the collapse carries the dive deeper. Two artifacts in the upper o-chambers.
       TD_MAP.registerAuthored({
         id: "sg_live", setpiece: "smashgrab",
-        rows: [
-          "################",
-          "#..............#",
-          "#.<..$..$..$...#",
-          "#..............#",
-          "#...>.....>....#",
-          "################"
-        ],
-        stairs: [
-          { x: 2, y: 2, dir: "up", dest: null },        // arrival anchor (climb-home is the GATE-4 auto-return to the parent)
-          { x: 4, y: 4, dir: "down", dest: child },     // CONTINUE the dive (keeps Sublevel 6 reachable past the set-piece)
-          { x: 10, y: 4, dir: "down", dest: "TOWN" }    // the SG ESCAPE — slab-gated flight to the surface with the loot
-        ],
-        sg: { arts: [{ id: "A", x: 5, y: 3, name: "the Reliquary Ledger" }, { id: "B", x: 11, y: 3, name: "the Brass Astrolabe" }] }
+        rows: TD_SG_VAULT.rows,
+        stairs: [{ x: TD_SG_VAULT.stairCell.x, y: TD_SG_VAULT.stairCell.y, dir: "up", dest: child }],
+        sg: { arts: TD_SG_VAULT.arts }
       });
       world.nodes[node].nodeType = "SET-PIECE";
       world.nodes[node].authored = "sg_live";
@@ -1185,7 +1178,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "SG DIRECTIONAL COLLAPSE — grab an artifact and the floor starts ROLLING from that chamber toward the stairwell: outrun it (sprint, if you're light enough) to the exit; let it overtake you and debris bleeds you (survivable, not instant); reach the stair before it seals (~70 turns) or be trapped. The other artifact is lost.";
+  var VERSION = "SG GRID IS REAL — the Smash-and-Grab vault is now the operator's hand-drawn 64×40 floor: two artifacts in the upper pillar-chambers split by uncrossable water (grab one, the other is lost), a web of corridors and secret-loot pockets, and one stairwell `<` out. Grab an artifact and the floor ROLLS from that chamber toward the `<`: sprint (if you're light) and you beat it with ~28 turns to spare; walk or loot and it closes; let it overtake you and debris bleeds you (survivable). Reach the stair before it seals (~70 turns) or be trapped.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
@@ -1202,7 +1195,7 @@ window.__initPlayMap = function () {
   // CURRENT ORDER PRESERVED — rng.js ... feel.js. Keep in sync with sync_build.py's self-check.
   var files = [
     "rng.js", "resolve.js", "bestiary.js", "stats.js", "charsys.js", "burden.js", "econ.js", "status.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
-    "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "mapmode.js",
+    "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "sg_vault.js", "mapmode.js",
     "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js",
     "sfx.js", "game.js", "ui.js", "feel.js"
   ];

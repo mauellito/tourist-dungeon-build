@@ -285,6 +285,7 @@ var TD_MAP = (function () {
         if (c === "+") roomDoors.push({ x: x, y: y, state: "closed" });
         if (c === "?") secrets.push({ x: x, y: y });
         if (c === "$") loot.push({ x: x, y: y });
+        if (c === "S") loot.push({ x: x, y: y, pocket: true });   // SG vault — 'S' = a secret-loot pocket (a grabbable pocket; one-line remap to a ? secret if the operator prefers)
         if (c === "<" || c === ">") gridStairs[x + "," + y] = c;
         var out = (c === "#") ? "#" : (c === "~") ? "~" : (c === "X") ? "X" : ".";   // every non-wall/water/chasm glyph renders as walkable floor
         if (out === "." || out === "~") { nF++; ax += x; ay += y; }
@@ -997,7 +998,11 @@ var TD_MAP = (function () {
       // GATE 4 R3 — GUARANTEE A REACHABLE UP-STAIR. The lattice is ~88% down-directed (most nodes have
       // no up-edge), so descending would otherwise strand you. Wire a RETURN up-stair at the generator's
       // own (reachable) up-stair cell, back to the node we descended FROM, whenever the graph wired none.
-      if (comp.breadthCells) {
+      // SET-PIECE EXCEPTION: an authored set-piece floor (the SG vault) declares ALL its exits in its
+      // manifest — its single `<` stairwell IS the way out (collapse-gated). NEVER punch a generic return
+      // stair onto a spare floor cell here: those cells live in the artifact chambers, and a stray door
+      // both clobbers an artifact pedestal and gives a free back-door the set-piece must not have.
+      if (comp.breadthCells && !comp.setpiece) {
         var back = shared.cameFrom && shared.cameFrom[ctrl.node];
         // place a RETURN stair to where we came from unless a door already leads there (a pocket up-edge
         // elsewhere does NOT count — it doesn't go home). Prefer the floor's up-stair cell; else any spare
@@ -2108,10 +2113,12 @@ var TD_MAP = (function () {
       // and drops to the legacy path — never strands.
       var st = stairAt(p.x, p.y);
       if (st && st.dest != null) {
+        // SG — the collapse seals THE STAIRWELL (s.stairCell) it rolls toward: once sealed, that exit is shut
+        // (the point of no return), whether it routes to TOWN or onward to the next sublevel. Other stairs unaffected.
+        if (sgActiveFloor() && sgSealed() && ctrl.sg && ctrl.sg.stairCell && p.x === ctrl.sg.stairCell.x && p.y === ctrl.sg.stairCell.y) {
+          ctrl.pendingDoor = null; logMsg("The collapse has reached the stairwell — the way out is gone. You are sealed in. (Avarice, in excess of egress.)", true); senses("Stone meets stone with a sound like a held breath let go; the last light under the stair is gone.", "heard", "OBJ"); return { opened: false, blocked: "slab", event: ctrl.lastEvent };
+        }
         if (st.dest === "TOWN") {   // the WAY UP to the surface — hand back to the town controller; freeze the dive where we stand
-          // R11 — on a SMASH-AND-GRAB floor this escape `>` is the SLAB-GATED exit: once the slab has sealed,
-          // the way out is shut (the failure outcome — flee deeper via the continue stair, or be caught).
-          if (sgActiveFloor() && sgSealed()) { ctrl.pendingDoor = null; logMsg("The slab has slammed home across the passage — this way out is sealed. (Avarice, in excess of egress.)", true); senses("Stone meets stone with a sound like a held breath let go; the light under the slab is gone.", "heard", "OBJ"); return { opened: false, blocked: "slab", event: ctrl.lastEvent }; }
           ctrl.pendingDoor = null; ctrl.lastEvent = null; ctrl.lastUrgent = false;
           if (sgActiveFloor() && ctrl.sg) ctrl.sg.escaped = true;   // R11 — fled with the loot before the slab; the run resolves clean
           return { opened: true, toTown: true, exited: true, to: "TOWN" };
