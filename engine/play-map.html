@@ -222,7 +222,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "e325f3f2";</script>
+<script>window.__BUILD = "6627e20d";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -751,6 +751,9 @@ window.__initPlayMap = function () {
         gk("@", P.player, "you") + gk("r L d", P.creature, "creatures") +
         gk("% ! *", P.item, "items") + gk("+ &gt; ^", P.door, "doors") +
         gk("¶", P.signal, "signals") +
+        // SG VAULT key (operator's map glyphs): '$' secret door (hidden in the wall until you Search beside
+        // it, then opens like a door) · 'S' secret room (the loot cache it opens into). Door hue / item hue.
+        gk("$", P.door, "secret door") + gk("S", P.item, "secret room") +
       "</div>" +
       // TOWN A — the building CATEGORY legend (each hue means one category; redundant with glyph + sign).
       "<hr><div class='glyphkey' id='townlegend'>" +
@@ -1178,7 +1181,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "SG GRID IS REAL — the Smash-and-Grab vault is now the operator's hand-drawn 64×40 floor: two artifacts in the upper pillar-chambers split by uncrossable water (grab one, the other is lost), a web of corridors and secret-loot pockets, and one stairwell `<` out. Grab an artifact and the floor ROLLS from that chamber toward the `<`: sprint (if you're light) and you beat it with ~28 turns to spare; walk or loot and it closes; let it overtake you and debris bleeds you (survivable). Reach the stair before it seals (~70 turns) or be trapped.";
+  var VERSION = "SG VAULT LEGEND — in the Smash-and-Grab vault, `$` is now a SECRET DOOR (hidden in the wall until you Search beside it, then it opens like a door) and `S` is a SECRET ROOM holding a loot cache. Two artifacts still sit in the upper pillar-chambers split by uncrossable water (grab one, the other is lost), one stairwell `<` out, and grabbing an artifact still ROLLS the floor toward the stair (sprint to beat it, ~28 turns cushion; let it overtake you and debris bleeds you). Global `$`=loot elsewhere is untouched.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

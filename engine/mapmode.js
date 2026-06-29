@@ -277,17 +277,24 @@ var TD_MAP = (function () {
     if (!levelData || !levelData.rows || !levelData.rows.length) { console.error("composeAuthored: level '" + id + "' has no rows — REFUSED."); return null; }
     var rows = levelData.rows, H2 = rows.length, W2 = 0, y, x;
     for (y = 0; y < H2; y++) W2 = Math.max(W2, rows[y].length);
-    var g = [], rawGrid = [], roomDoors = [], secrets = [], loot = [], gridStairs = {}, nF = 0, ax = 0, ay = 0;
+    var g = [], rawGrid = [], roomDoors = [], secrets = [], loot = [], caches = [], gridStairs = {}, nF = 0, ax = 0, ay = 0;
+    // SG VAULT LEGEND (operator canon, scoped to the SG set-piece ONLY): in the authored SG vault, '$' is a
+    // SECRET DOOR (hidden until searched, then opens/passes — reuse the '?' wall-secret mechanic) and 'S' is a
+    // SECRET ROOM / loot cache (the room a '$' opens into; cache content is placed there). Everywhere ELSE the
+    // legacy authored read stands ('$' = loot, 'S' = a loot pocket); global gen2 '$' = loot is untouched.
+    var isSGVault = !!(levelData && levelData.setpiece === "smashgrab");
     for (y = 0; y < H2; y++) {
       var row = [], raw = rows[y];
       for (x = 0; x < W2; x++) {
         var c = (x < raw.length) ? raw[x] : "#";
         if (c === "+") roomDoors.push({ x: x, y: y, state: "closed" });
         if (c === "?") secrets.push({ x: x, y: y });
-        if (c === "$") loot.push({ x: x, y: y });
-        if (c === "S") loot.push({ x: x, y: y, pocket: true });   // SG vault — 'S' = a secret-loot pocket (a grabbable pocket; one-line remap to a ? secret if the operator prefers)
+        if (c === "$") { if (isSGVault) secrets.push({ x: x, y: y }); else loot.push({ x: x, y: y }); }                 // SG: '$' = a SECRET DOOR (wall until searched); else legacy loot
+        if (c === "S") { if (isSGVault) caches.push({ x: x, y: y }); else loot.push({ x: x, y: y, pocket: true }); }   // SG: 'S' = a SECRET ROOM cache cell; else legacy loot pocket
         if (c === "<" || c === ">") gridStairs[x + "," + y] = c;
-        var out = (c === "#") ? "#" : (c === "~") ? "~" : (c === "X") ? "X" : ".";   // every non-wall/water/chasm glyph renders as walkable floor
+        // a SG secret door renders as wall until the player searches it open (search() flips it to floor); all
+        // other non-wall/water/chasm glyphs (incl. SG 'S' room cells) render as walkable floor.
+        var out = (c === "#") ? "#" : (c === "~") ? "~" : (c === "X") ? "X" : (isSGVault && c === "$") ? "#" : ".";
         if (out === "." || out === "~") { nF++; ax += x; ay += y; }
         row.push(out);
       }
@@ -334,7 +341,7 @@ var TD_MAP = (function () {
       upStair: up ? { x: up.x, y: up.y, kind: "up" } : null,
       breadthCells: breadthCells,
       doorPts: (down ? [down] : []).concat(up ? [up] : []).concat(breadthCells),
-      roomDoors: roomDoors, secrets: secrets, loot: loot, deadEnds: [],
+      roomDoors: roomDoors, secrets: secrets, loot: loot, caches: caches, deadEnds: [],
       tag: "authored", rooms: 0, roomList: [], corridorCells: 0, corrLens: [], corrWidths: [],
       comX: nF ? ax / nF : (W2 >> 1), comY: nF ? ay / nF : (H2 >> 1), floorDensity: (W2 * H2 ? nF / (W2 * H2) : 0),
       source: "authored", W: W2, H: H2, features: levelData.features || [], stairs: stairs,
@@ -1096,13 +1103,16 @@ var TD_MAP = (function () {
       spawnGear();
       if (decorate) decorate(ctrl, { CX: comp.spawn.x, CY: comp.spawn.y, key: key, isFloor: isFloor });
       // R11 — SET-PIECE SETUP: the authored SG floor IS the live §24. Build the run-state, clear wandering
-      // foes (a curated footrace, not a brawl), make the `$` REAL heavy treasures (greed -> real burden ->
-      // the slab pace), and place the designated A/B artifacts (grabbing one trips the clock + forecloses the
-      // other). Determinism: the floor is authored (fixed); only the run-state is fresh per arrival.
+      // foes (a curated footrace, not a brawl), seed the SECRET-ROOM caches (operator legend: the 'S' rooms a
+      // '$' secret door opens into) with REAL heavy treasure (greed -> real burden -> the slab pace), and
+      // place the designated A/B artifacts (grabbing one trips the clock + forecloses the other). The '$'
+      // secret doors themselves are registered above (comp.secrets) — hidden until searched. Determinism: the
+      // floor is authored (fixed); only the run-state is fresh per arrival.
       ctrl.sg = (comp.setpiece === "smashgrab") ? sgInit(comp) : null;
       if (ctrl.sg) {
         ctrl.creatures = [];
-        (comp.loot || []).forEach(function (l) { if (isFloor(l.x, l.y)) ctrl.items[key(l.x, l.y)] = makeCoins("gold", 50); });   // treasure with WEIGHT (the anti-greed lever)
+        (comp.loot || []).forEach(function (l) { if (isFloor(l.x, l.y)) ctrl.items[key(l.x, l.y)] = makeCoins("gold", 50); });   // any legacy '$'-loot fallback (none in the operator vault; '$' there is a secret door)
+        (comp.caches || []).forEach(function (cc) { if (isFloor(cc.x, cc.y) && !ctrl.items[key(cc.x, cc.y)]) ctrl.items[key(cc.x, cc.y)] = makeCoins("gold", 50); });   // the SECRET-ROOM caches ('S'): heavy treasure with WEIGHT (the anti-greed lever)
         ctrl.sg.arts.forEach(function (a) { if (isFloor(a.x, a.y)) ctrl.items[key(a.x, a.y)] = { kind: "sgart", sgId: a.id, glyph: "☥", name: a.name, desc: a.name + " on a pedestal — you may carry only ONE artifact out, and grabbing it brings the room down." }; });
       }
     }
