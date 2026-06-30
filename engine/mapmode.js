@@ -1047,6 +1047,24 @@ var TD_MAP = (function () {
       // never the implicit single up/down. CAPABILITY ONLY: the graph (TD_GEN) is untouched — with one up + one
       // down per floor this is identical to before, but a floor can now hold several typed stairs, each routing
       // to a different node. liveStairs IS the realizable lattice router.
+      // HARD GUARANTEE (strand guard, item 1): every reachable floor MUST offer at least one OPENABLE exit to
+      // a connected floor — a level with one barred door and no usable stair is unplayable. The graph + the
+      // GATE-4/5 return/town stairs already ensure this (proven by tests/run_strand_guard.py), but if the door
+      // layer ever produced none (a null-dest authored stair as the sole exit, a future floor type), FLAG it
+      // loudly and drop in a guaranteed way-up (to where we came, else to TOWN) on a spare reachable cell so a
+      // stranding floor can NEVER ship silently. Runs before liveStairs so the fallback is a real router exit.
+      (function () {
+        var hasExit = false;
+        for (var dk in doors) { var dd = doors[dk]; if (dd.toTown || dd.returnTo != null) { hasExit = true; break; } if ((dd.type === "stair_up" || dd.type === "stair_down" || dd.type === "oneway" || dd.type === "connector") && dd.takeable !== false) { hasExit = true; break; } }
+        if (hasExit) return;
+        var back = (shared.cameFrom && shared.cameFrom[ctrl.node]);
+        var spare = (comp.breadthCells || []).concat(comp.upStair ? [comp.upStair] : []), cell = null;
+        for (var ci = 0; ci < spare.length; ci++) { var sc = spare[ci]; if (sc && !doors[key(sc.x, sc.y)]) { cell = sc; break; } }
+        if (!cell) { console.error("STRAND GUARD: node '" + ctrl.node + "' (level " + cl + ", " + comp.source + ") had NO openable exit AND no spare cell for a fallback — FLAGGED (a stranding floor)."); return; }
+        if (back != null) doors[key(cell.x, cell.y)] = { type: "stair_up", returnTo: back, takeable: true, to: back, label: "a stair up (the way you came)", tells: [] };
+        else doors[key(cell.x, cell.y)] = { type: "stair_up", toTown: true, takeable: true, to: "TOWN", label: "the way up — back to the surface (Town)", tells: [] };
+        console.error("STRAND GUARD: node '" + ctrl.node + "' (level " + cl + ", " + comp.source + ") had NO openable exit — placed a guaranteed way-up at " + cell.x + "," + cell.y + " (FLAGGED, not stranded).");
+      })();
       var liveStairs = [];
       Object.keys(doors).forEach(function (k) {
         var dr = doors[k]; if (dr.type !== "stair_up" && dr.type !== "stair_down") return;   // breadth/plain/connector doors are NOT stairs
@@ -2141,7 +2159,7 @@ var TD_MAP = (function () {
           // where it is already the current node).
           var sed = null; (world.edges || []).forEach(function (o) { if (o.id === st.edgeId) sed = o; }); if (sed) interp.state.node = sed.from;
           var sr = interp.choose(st.edgeId);
-          if (!sr.ok) { logMsg(st.reason || d.reason || "the way is barred", false); return { opened: false, blocked: ctrl.lastEvent }; }
+          if (!sr.ok) { logMsg(st.reason || d.reason || "This way is barred — seek another stair; the floor has more than one way on.", false); return { opened: false, blocked: ctrl.lastEvent }; }
           if (st.oneway) { logMsg("The way seals behind you with a click. It will not open from this side.", true); senses("A click, behind and below; the way has closed.", "heard", "OBJ"); }
           else { ctrl.lastEvent = null; ctrl.lastUrgent = false; }
           ctrl.node = interp.state.node; ctrl.won = !!sr.complete;
@@ -2175,7 +2193,7 @@ var TD_MAP = (function () {
       if (onCross) { var oc = onCross(d, ctrl); if (oc && oc.block) { logMsg(oc.block, false); return { opened: false, blocked: oc.block }; } }
       var fromNode = ctrl.node, fromLevel = curLevel();
       var r = interp.choose(d.edgeId);
-      if (!r.ok) { logMsg(d.reason || "the way is barred", false); return { opened: false, blocked: ctrl.lastEvent }; }
+      if (!r.ok) { logMsg(d.reason || "This way is barred — seek another stair; the floor has more than one way on.", false); return { opened: false, blocked: ctrl.lastEvent }; }
       if (d.type === "oneway") { logMsg("The way seals behind you with a click. It will not open from this side.", true); senses("A click, behind and below; the way has closed.", "heard", "OBJ"); }
       else { ctrl.lastEvent = null; ctrl.lastUrgent = false; }
       ctrl.node = interp.state.node; ctrl.won = !!r.complete; ctrl.pendingDoor = null;
