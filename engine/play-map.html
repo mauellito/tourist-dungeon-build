@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "0d123dc4";</script>
+<script>window.__BUILD = "d829afd2";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -523,6 +523,7 @@ window.__initPlayMap = function () {
         else if (ch === "=") { bg = P.rampartBg; glyph = "▓"; col = P.rampart; }   // town perimeter rampart (Amendment 1)
         else if (ch === ":") { bg = bright ? P.floorBg : P.floorBgDim; glyph = ":"; col = P.fence; }   // an enclosure fence (see-through)
         else if (ch === "X") { bg = P.chasm; glyph = vw.pendingFall === k ? "▼" : "·"; col = P.chasmGlyph; }
+        else if (ch === "?") { glyph = "#"; col = bright ? P.wall : P.wallDim; }   // item 4 — an UNFOUND '?' secret seam reads as ordinary wall (hidden until you Search beside it; opens to floor when found)
         else if (ch === "#") {
           // GATE 1 — the CHURCH footprint reads in the sanctified jewel palette (stained-glass), so the
           // landmark is unmistakable against the bone-coloured ordinary walls.
@@ -818,9 +819,9 @@ window.__initPlayMap = function () {
         gk("@", P.player, "you") + gk("r L d", P.creature, "creatures") +
         gk("% ! *", P.item, "items") + gk("+ &gt; ^", P.door, "doors") +
         gk("¶", P.signal, "signals") +
-        // SG VAULT key (operator's map glyphs): '$' secret door (hidden in the wall until you Search beside
-        // it, then opens like a door) · 'S' secret room (the loot cache it opens into). Door hue / item hue.
-        gk("$", P.door, "secret door") + gk("S", P.item, "secret room") +
+        // SECRETS (Search 's' beside a wall to find them): '?' a hidden passage in any floor; in the SG vault
+        // '$' a secret door + 'S' the secret room it opens into. Door hue (passages) / item hue (the cache).
+        gk("?", P.door, "secret passage") + gk("$", P.door, "secret door") + gk("S", P.item, "secret room") +
       "</div>" +
       // TOWN A — the building CATEGORY legend (each hue means one category; redundant with glyph + sign).
       "<hr><div class='glyphkey' id='townlegend'>" +
@@ -1248,7 +1249,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "EMERGENCY OVERLAY + SCREEN SHAKE — critical beats now hit you in the GUT: a bold danger band flashes on screen (and always lands in the field log) and the whole view SHAKES. First wired to the Smash-and-Grab collapse: the grab SPLITS the floor (jolt + the band 'THE FLOOR SPLITS — RUN', then a rising rumble as the front nears); debris overtaking you snaps a sharp shake + 'Debris rakes you — MOVE'; the stairwell sealing is a heavy shake + 'The stairwell is gone.'; a clean escape reads 'You burst clear…'. Honours reduced-motion (keeps the words, drops the shake).";
+  var VERSION = "PLAYTEST FIXES — (1) STRAND GUARD: no reachable floor can trap you (every floor keeps an openable exit; tested + an in-engine net). (2) PICKUP IDENTITY: picking an item up now says 'You pick up <name> (<weight>).' — no silent pickups. (3) WEIGHT ON EVERYTHING: food, bandages, charms and the heavy relics all weigh on you now (consumables kept light so combat stays fair). (4) SEARCH FINDS SECRETS: '?' hidden passages are tucked in the walls — Search ('s') beside a suspicious wall and a seam grinds open into a hidden pocket. New legend keys: '?' secret passage · '$' secret door · 'S' secret room.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

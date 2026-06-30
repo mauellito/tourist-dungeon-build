@@ -89,17 +89,20 @@ var TD_MAP = (function () {
   }
 
   // --- items (the floor loot + inventory) -----------------------------------
+  // item 3 — EVERYTHING carries weight (lb), so TD_BURDEN counts the whole pack, not just gear. Consumables are
+  // kept LIGHT so combat/burden calibration holds (a bun/bandage barely registers; the encumbrance you feel is
+  // still gear + coins + the heavy relics). 25 coins = 1 lb, so these read 5–12 coins on pickup.
   var ITEMS = {
-    ration:   { glyph: "%", name: "a vendor's bun",        use: "eat",     food: 55,
+    ration:   { glyph: "%", name: "a vendor's bun",        use: "eat",     food: 55, weight: 0.5,
       desc: "A cold bun from a harbour cart. Eating it climbs you back up the hunger ladder." },
-    bandage:  { glyph: "!", name: "a roll of field bandage", use: "heal",  heal: 30,
+    bandage:  { glyph: "!", name: "a roll of field bandage", use: "heal",  heal: 30, weight: 0.2,
       desc: "Municipal-issue field dressing. Apply it to close your wounds." },
-    souvenir: { glyph: "*", name: "a chipped harbour charm", use: "inspect",
+    souvenir: { glyph: "*", name: "a chipped harbour charm", use: "inspect", weight: 0.3,
       desc: "A glazed charm shaped like the Brass Door. It does nothing, expensively." }
   };
   function makeItem(kind) {
     var d = ITEMS[kind];
-    return { kind: kind, glyph: d.glyph, name: d.name, desc: d.desc, use: d.use, food: d.food, heal: d.heal };
+    return { kind: kind, glyph: d.glyph, name: d.name, desc: d.desc, use: d.use, food: d.food, heal: d.heal, weight: d.weight || 0 };
   }
 
   function key(x, y) { return x + "," + y; }
@@ -181,7 +184,11 @@ var TD_MAP = (function () {
       var row = [];
       for (var x = 0; x < sw; x++) {
         var c = (src[y] && src[y][x]) || "#";
-        var out = GEN2_WALL[c] ? "#" : (c === "X") ? "X" : (c === "~") ? "~" : ".";   // walkable footprint preserved exactly
+        // item 4 — a '?' SECRET stays a '?' in the live grid: TD_GEN2.measure counts it WALKABLE (so region/leak
+        // validation still sees one clean region — the hidden pocket is reachable in principle), but the
+        // controller's isFloor (=== ".") treats it as a BLOCKED, opaque wall — a HIDDEN PASSAGE — until search()
+        // flips it to floor. (The SG vault uses its own '$'->'#' wall; gen2 keeps '?' so the leak gate holds.)
+        var out = GEN2_WALL[c] ? "#" : (c === "X") ? "X" : (c === "~") ? "~" : (c === "?") ? "?" : ".";   // walkable footprint preserved exactly
         row.push(out);
         if (out === "." || out === "~") { nF++; ax += x; ay += y; }
         if (c === "+") roomDoors.push({ x: x, y: y, state: R.pick(["closed", "closed", "ajar", "open"]) });
@@ -814,7 +821,7 @@ var TD_MAP = (function () {
     // v2 (Jaquay) — sight is blocked by walls AND by CLOSED DOORS. A closed door is
     // inscrutable: you see its face but never what lies beyond it until it is opened.
     function losTransparent(x, y) {
-      if (!inb(x, y) || ctrl.grid[y][x] === "#") return false;          // walls block sight
+      if (!inb(x, y) || ctrl.grid[y][x] === "#" || ctrl.grid[y][x] === "?") return false;   // walls (and unfound '?' secret seams) block sight — a hidden passage looks like solid wall
       var rd = ctrl.roomDoors[key(x, y)]; if (rd && rd.state === "closed") return false;   // a closed room door is opaque
       var pl = ctrl.plain[key(x, y)]; if (pl && !pl.open) return false;                     // a closed plain door too
       return true;
@@ -896,7 +903,7 @@ var TD_MAP = (function () {
       s.arts.forEach(function (a) { if (a.id === it.sgId) a.taken = true; });
       // the OTHER pedestal sinks out of reach (you carry only one)
       for (var k in ctrl.items) { var o = ctrl.items[k]; if (o && o.kind === "sgart" && o.sgId !== it.sgId) { delete ctrl.items[k]; } }
-      ctrl.inventory.push({ kind: "artifact", glyph: "☥", name: it.name, sgId: it.sgId, desc: it.name + " — lifted from its pedestal; the other is lost to you now." });
+      ctrl.inventory.push({ kind: "artifact", glyph: "☥", name: it.name, sgId: it.sgId, weight: 4, desc: it.name + " — lifted from its pedestal; the other is lost to you now. It has real heft." });   // item 3 — a quest relic carries real weight (4 lb); modest so the escape-sprint calibration holds
       logMsg("You lift " + it.name + " from its pedestal. The far pedestal sinks out of reach — you may carry only the one.", true);
       senses("Stone grinds on stone the instant your fingers close: you have made your choice, and the room has noted it.", "heard", "OBJ");
       sgTrip();
@@ -1308,6 +1315,13 @@ var TD_MAP = (function () {
     function armorCarryWeight(spec) { return Math.round((spec.encumbrance || 0) * 3) + 1; }   // heft from the dial; equipped armour costs evasion, a SPARE costs this weight
     // feel-words (NEVER a number): a weapon's weight in the hand, an armour tier's heft.
     function weightWord(w) { return w <= 2 ? "light in the hand" : w <= 4 ? "a fair heft" : w <= 7 ? "heavy" : "a burden to swing"; }
+    // a short WEIGHT readout for the pickup log + tooltips: the in-world coin-mass (25 coins = 1 lb), or a stone
+    // label once it crosses a stone. Everything carries weight now (item 3), so this is never empty for real gear.
+    function itemWeightLabel(it) {
+      if (typeof TD_BURDEN === "undefined") return "—";
+      var c = TD_BURDEN.itemMassCoins(it); if (!c) return "weightless";
+      return (c < TD_BURDEN.COINS_PER_STONE) ? (c + " coins") : TD_BURDEN.massLabel(c);
+    }
     function heftWord(spec) { var e = spec.encumbrance || 0; return e <= 1 ? "barely there" : e <= 3 ? "a steady weight" : "ponderous on the shoulders"; }
     function weaponItem(spec) { var v = (GEAR && GEAR.WEAPON_TYPES[spec.type]) ? GEAR.WEAPON_TYPES[spec.type].verb : spec.verb; return { kind: "weapon", slot: "rightHand", glyph: ")", name: spec.name, weight: spec.weight, bulk: spec.bulk, type: spec.type, hands: spec.hands || 1, verb: spec.verb || v, value: spec.value, spec: spec, desc: "A " + (((spec.hands || 1) === 2) ? "two-handed " : "") + spec.type + " weapon — you " + (spec.verb || v) + " with it. It is " + weightWord(spec.weight) + "." }; }
     // GATE 7 (A): an armour piece is slot-bound (it equips to its own slot, e.g. a helm -> head).
@@ -1959,7 +1973,7 @@ var TD_MAP = (function () {
       }
       if (it.kind === "weapon" || it.kind === "armor") return equipFromFloor(it);   // GATE 2: pick up = equip; old piece -> pack (weight)
       ctrl.inventory.push(it);
-      logMsg("You take " + it.name + ".", false);
+      logMsg("You pick up " + it.name + " (" + itemWeightLabel(it) + ").", false);   // item 2 — pickup IDENTITY: name + weight, never silent
       return { got: true, item: it, event: ctrl.lastEvent };
     }
     // GATE 2 — equip a gear item off the floor; the displaced piece falls to the pack (its weight now
@@ -2027,7 +2041,7 @@ var TD_MAP = (function () {
           found.push(k);
         }
       }
-      if (found.length) { logMsg("Your fingers find a seam — a hidden pocket gives way.", false); senses(TELLS.hollow.text, TELLS.hollow.kind, TELLS.hollow.obj); }
+      if (found.length) { logMsg("Your fingers catch a seam — a hidden passage grinds open in the wall.", false); senses(TELLS.hollow.text, TELLS.hollow.kind, TELLS.hollow.obj); }
       else logMsg("You run your hands over the nearby stone and find nothing.", false);
       endTurn("step");
       return { searched: true, found: found.length, event: ctrl.lastEvent };
