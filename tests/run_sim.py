@@ -59,7 +59,14 @@ try{
   ok('CLOSE-OUT: value EV ratio combat:avoid in a sane range (FLAG: combat ~1.8x dominant -> QB ruling, not auto-tuned)', evRatio>=1.2&&evRatio<=2.6, "EV combat $"+cG.ev.toFixed(0)+" : avoid $"+aG.ev.toFixed(0)+" = "+evRatio.toFixed(2)+"x");
   ok('CLOSE-OUT: combat trades survival for loot (lower survival, higher loot|win than avoid)', cG.winRate<aG.winRate && cG.lootGivenWin>aG.lootGivenWin, "surv c<a "+(cG.winRate<aG.winRate)+", loot|win c>a "+(cG.lootGivenWin>aG.lootGivenWin));
 
-  o.textContent=report+"\n\n"+creport+"\n\n"+vreport+"\n\n"+R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SIM fail="+fails;
+  // ===== FOE-COUNT CURVE (combat re-tune step 3): SUB-LINEAR foe scaling in floor area =====
+  var fc=TD_SIM.foeCurve(), fcreport=TD_SIM.formatFoeCurve(fc);
+  var mapExp=(typeof TD_MAP!=='undefined'&&TD_MAP.FOE_EXP!=null)?TD_MAP.FOE_EXP:1;
+  ok('SUB-LINEAR foe count: doubling the floor gives < 2x foes (bigger floors are NOT twice as deadly)', fc.doubleRatioSub < 2.0, "double -> "+fc.doubleRatioSub.toFixed(2)+"x (linear would be "+fc.doubleRatioLin.toFixed(2)+"x)");
+  ok('SUB-LINEAR foe count: the biggest live floor is NOT a swarm (<= median+1 foes, and <= the linear count)', fc.maxSub <= fc.pts[1].sublinear+1 && fc.maxSub <= fc.maxLinear, "max "+fc.maxSub+" foes (median "+fc.pts[1].sublinear+", linear-max "+fc.maxLinear+")");
+  ok('the retune is live: TD_MAP.foeCount exponent is sub-linear (< 1)', mapExp < 1.0, "FOE_EXP="+mapExp);
+  ok('the small floor keeps a curated count (>=1, <= median)', fc.pts[0].sublinear>=1 && fc.pts[0].sublinear<=fc.pts[1].sublinear, "small="+fc.pts[0].sublinear+" median="+fc.pts[1].sublinear);
+  o.textContent=report+"\n\n"+creport+"\n\n"+fcreport+"\n\n"+vreport+"\n\n"+R.join('\n')+'\nSUMMARY '+(R.length-fails)+'/'+R.length; document.title="SIM fail="+fails;
 }catch(e){o.textContent="HARNESS_ERROR "+(e&&e.stack?e.stack:e);document.title="SIM harness_error";}})();</script>
 """.replace("__N__", N).replace("__SEED__", SEED)
 

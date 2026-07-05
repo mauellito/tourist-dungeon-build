@@ -65,7 +65,7 @@ var TD_MAP = (function () {
   // biggest live floor lands ~3 instead of the 4 a linear density gave — the encounter stays a curated fight,
   // never a swarm. DEPTH difficulty is orthogonal: it rides the pickFoe band mix (deeper = tougher foes), not
   // the count. Single source of truth: the live spawnCreatures AND the balance sim both read foeCount().
-  var FOE_REF = 686, FOE_EXP = 1.0, FOE_BASE = FOE_REF * CREATURE_DENSITY;   // FOE_EXP=1.0 == the old LINEAR behaviour (Step 1 plumbing; Step 2 drops the exponent < 1)
+  var FOE_REF = 686, FOE_EXP = 0.5, FOE_BASE = FOE_REF * CREATURE_DENSITY;   // FOE_EXP=0.5: foes grow with SQRT of area (sub-linear). Anchored at the median live floor (686 walk -> ~3 foes); a floor 2x bigger gets ~1.4x foes, and the biggest live floor lands ~3 instead of a linear 4. DEPTH difficulty rides pickFoe, not the count.
   function foeCount(walkable) { return Math.max(1, Math.round(FOE_BASE * Math.pow((walkable || 0) / FOE_REF, FOE_EXP))); }
   var GEAR_DENSITY = 0.004;   // GATE 2: weapon/armour drops per walkable cell (rare; a few per floor)
   // LOOT SPLIT: baseline survival loot stays OPEN; only the RICH tier sits behind secret seams. A weapon is

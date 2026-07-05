@@ -355,8 +355,39 @@
     return L.join("\n");
   }
 
+  // FOE-COUNT CURVE (combat re-tune, step 3): foes-per-floor vs floor SIZE, LINEAR(old) vs SUB-LINEAR(new),
+  // at the real live small/median/large floors — the proof that bigger floors are NOT disproportionately deadly.
+  // DEPTH is orthogonal: it raises foe TOUGHNESS via pickFoe's band mix, not the count — noted, not counted here.
+  function foeCurve() {
+    var MAP = mapMod(), dens = (MAP && MAP.CREATURE_DENSITY) ? MAP.CREATURE_DENSITY : 0.0041;
+    var W = floorPool().map(function (p) { return p.w; }).slice().sort(function (a, b) { return a - b; });
+    function lin(w) { return Math.max(1, Math.round(w * dens)); }
+    var pts = [
+      { name: "small (p10)", w: W[Math.floor(W.length * 0.1)] || 0 },
+      { name: "median", w: W[W.length >> 1] || 0 },
+      { name: "large (p90)", w: W[Math.floor(W.length * 0.9)] || 0 },
+      { name: "max", w: W[W.length - 1] || 0 },
+      { name: "2x median", w: (W[W.length >> 1] || 0) * 2 }
+    ].map(function (p) { return { name: p.name, w: p.w, linear: lin(p.w), sublinear: foeCountFor(p.w) }; });
+    var med = pts[1], dbl = pts[4];
+    return { dens: dens, exp: (MAP && MAP.FOE_EXP != null) ? MAP.FOE_EXP : 1, ref: (MAP && MAP.FOE_REF != null) ? MAP.FOE_REF : 0,
+      pts: pts, doubleRatioSub: med.sublinear ? dbl.sublinear / med.sublinear : 0, doubleRatioLin: med.linear ? dbl.linear / med.linear : 0,
+      maxLinear: pts[3].linear, maxSub: pts[3].sublinear };
+  }
+  function formatFoeCurve(fc) {
+    var L = [];
+    L.push("FOE-COUNT CURVE — SUB-LINEAR in floor area (exp=" + fc.exp + ", ref=" + fc.ref + " walkable). Depth raises foe TOUGHNESS (pickFoe band mix), NOT count.");
+    L.push(pad("floor", 14) + padL("walkable", 10) + padL("LINEAR(old)", 13) + padL("SUB-LINEAR", 12));
+    L.push(new Array(50).join("-"));
+    fc.pts.forEach(function (p) { L.push(pad(p.name, 14) + padL(p.w, 10) + padL(p.linear, 13) + padL(p.sublinear, 12)); });
+    L.push(new Array(50).join("-"));
+    L.push("DOUBLING the floor -> " + fc.doubleRatioSub.toFixed(2) + "x foes (SUB-LINEAR, target < 2.0x); LINEAR would be " + fc.doubleRatioLin.toFixed(2) + "x. Biggest floor: " + fc.maxSub + " foes (was " + fc.maxLinear + " linear) — a curated fight, not a swarm.");
+    return L.join("\n");
+  }
+
   var API = { runAll: runAll, runPolicy: runPolicy, format: format, flagsFor: flagsFor, POLICIES: POLICIES, SIM: SIM,
-              runCombat: runCombat, formatCombat: formatCombat, valueReport: valueReport, formatValue: formatValue, SIM_C: SIM_C };
+              runCombat: runCombat, formatCombat: formatCombat, valueReport: valueReport, formatValue: formatValue,
+              foeCurve: foeCurve, formatFoeCurve: formatFoeCurve, SIM_C: SIM_C };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   if (typeof window !== "undefined") window.TD_SIM = API;
 
