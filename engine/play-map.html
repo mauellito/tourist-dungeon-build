@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "d829afd2";</script>
+<script>window.__BUILD = "a66ff4ac";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1249,7 +1249,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "PLAYTEST FIXES — (1) STRAND GUARD: no reachable floor can trap you (every floor keeps an openable exit; tested + an in-engine net). (2) PICKUP IDENTITY: picking an item up now says 'You pick up <name> (<weight>).' — no silent pickups. (3) WEIGHT ON EVERYTHING: food, bandages, charms and the heavy relics all weigh on you now (consumables kept light so combat stays fair). (4) SEARCH FINDS SECRETS: '?' hidden passages are tucked in the walls — Search ('s') beside a suspicious wall and a seam grinds open into a hidden pocket. New legend keys: '?' secret passage · '$' secret door · 'S' secret room.";
+  var VERSION = "METABOLISM RE-TUNE — walking is gentler and hunger is slower, so a normal run is comfortable. Unladen walking still recovers; even a heavy pack now clears several floors before you are spent (Laden ~8 floors, Strained ~4, was ~4 / ~2), and hunger takes many more floors to turn urgent (one bun still restores over half). Heavier still tires + starves you faster (the coupling is honest), the burden slows your step, and the Smash-and-Grab escape-sprint margins are unchanged. Condition is shown as feel-words only — no numbers.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

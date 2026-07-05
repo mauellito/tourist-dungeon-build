@@ -43,12 +43,18 @@ var TD_MAP = (function () {
   // GATE 8.1: WALKING IS FREE when unencumbered — a "step" costs fatigue only via the BURDEN band (still
   // x fatigueResist). Unburdened -> 0 (you walk a floor and arrive fresh); heavier -> tiring. Fight + sprint
   // keep their costs. (A jump, if added, would cost like a sprint — reserved.)
-  var FATIGUE_STEP_BAND = { unencumbered: 0, laden: 0.4, strained: 0.9, overloaded: 1.6 };
-  // GATE 8.1: the FOOD CLOCK is LONG and BODY-SCALED. Base drain lowered (0.14 -> 0.10), then multiplied by
-  // (a) the BURDEN band (heavier = hungrier) and (b) a BODY-SIZE factor from Might+Con (big bodies burn more,
-  // small bodies less; average ~1.0). Town recovery still fully resets.
-  var SATIATION_PER_STEP = 0.115, STARVE_HP = TD_RESOLVE.COMBAT.STARVE_HP, EXHAUST_HP = TD_RESOLVE.COMBAT.EXHAUST_HP;
-  var SATIATION_BAND = { unencumbered: 1.0, laden: 1.5, strained: 2.2, overloaded: 3.0 };   // burden -> hunger multiplier
+  // RE-TUNE (metabolism pass): the BASE walk cost dropped so a normal stretch (a floor or three) never
+  // pushes you to spent from walking alone. Encumbrance STILL raises drain (heavier tires faster — the
+  // coupling stays honest), but the per-band cost is gentler: Laden ~7 floors, Strained ~4 floors to spent
+  // (was ~4 / ~2). Overloaded (over capacity) stays punishing. (was 0 / 0.4 / 0.9 / 1.6.)
+  var FATIGUE_STEP_BAND = { unencumbered: 0, laden: 0.22, strained: 0.45, overloaded: 0.9 };
+  // GATE 8.1: the FOOD CLOCK is LONG and BODY-SCALED. Base drain, then multiplied by (a) the BURDEN band
+  // (heavier = hungrier) and (b) a BODY-SIZE factor from Might+Con (big bodies burn more, small bodies less;
+  // average ~1.0). RE-TUNE (metabolism pass): base lowered (0.115 -> 0.095) and the burden multipliers
+  // GENTLED (1.0/1.3/1.7/2.2, was 1.0/1.5/2.2/3.0) so you clear SEVERAL floors before hunger is urgent even
+  // loaded, and one ration (55) still restores over half the bar. Town recovery still fully resets.
+  var SATIATION_PER_STEP = 0.095, STARVE_HP = TD_RESOLVE.COMBAT.STARVE_HP, EXHAUST_HP = TD_RESOLVE.COMBAT.EXHAUST_HP;
+  var SATIATION_BAND = { unencumbered: 1.0, laden: 1.3, strained: 1.7, overloaded: 2.2 };   // burden -> hunger multiplier
   var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
@@ -2402,6 +2408,7 @@ var TD_MAP = (function () {
       _turn: function () { return shared.turn; },
       _node: function () { return ctrl.node; },
       _hunger: function () { return hungerStage(ctrl.meters); },
+      _fatigueStage: function () { return fatigueStage(); },   // metabolism re-tune: the fatigue feel-word stage (fresh..spent)
       _enemiesVisible: function () { return enemiesVisible(); },
       _addSecret: function (x, y, kind, tell) { addSecret(x, y, kind, tell); },
       _addPlain: function (x, y) { ctrl.plain[key(x, y)] = { open: false }; },
