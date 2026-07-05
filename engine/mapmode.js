@@ -58,7 +58,15 @@ var TD_MAP = (function () {
   var FALL_DMG = TD_RESOLVE.COMBAT.FALL_DMG;   // the chasm exit: a desperate fall to the level below
   // R3 spawns are PER-WALKABLE-CELL DENSITIES (ratios, not counts) so a NODE->STANDARD floor-size
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
-  var CREATURE_DENSITY = 0.0041, COIN_DENSITY = 0.05;   // COMBAT: FINAL at 0.0041 (no win-band — that was RETIRED). Combat is governed by both-routes-viable: forced-combat (lower survival/higher loot) vs avoidance (higher survival/lower loot) measured by per-route VALUE in the sim; density is not re-tuned to a survival %. No enemy scaling. (0.012 -> 0.006 GATE 3 -> 0.0041.)
+  var CREATURE_DENSITY = 0.0041, COIN_DENSITY = 0.05;   // COMBAT: FINAL at 0.0041 (no win-band — that was RETIRED). Combat is governed by both-routes-viable: forced-combat (lower survival/higher loot) vs avoidance (higher survival/lower loot) measured by per-route VALUE in the sim; density is not re-tuned to a survival %. No enemy scaling. (0.012 -> 0.006 GATE 3 -> 0.0041.) COIN_DENSITY stays LINEAR (coin is not the deadliness lever).
+  // FOE COUNT — SUB-LINEAR in floor area (combat re-tune). A floor twice as big is NOT twice as deadly:
+  // foes grow with (walkable / FOE_REF)^FOE_EXP, EXP<1, anchored so the MEDIAN live floor (~FOE_REF walkable)
+  // keeps its calibrated count (~FOE_REF*CREATURE_DENSITY). So small floors stay ~2, the median ~3, and the
+  // biggest live floor lands ~3 instead of the 4 a linear density gave — the encounter stays a curated fight,
+  // never a swarm. DEPTH difficulty is orthogonal: it rides the pickFoe band mix (deeper = tougher foes), not
+  // the count. Single source of truth: the live spawnCreatures AND the balance sim both read foeCount().
+  var FOE_REF = 686, FOE_EXP = 1.0, FOE_BASE = FOE_REF * CREATURE_DENSITY;   // FOE_EXP=1.0 == the old LINEAR behaviour (Step 1 plumbing; Step 2 drops the exponent < 1)
+  function foeCount(walkable) { return Math.max(1, Math.round(FOE_BASE * Math.pow((walkable || 0) / FOE_REF, FOE_EXP))); }
   var GEAR_DENSITY = 0.004;   // GATE 2: weapon/armour drops per walkable cell (rare; a few per floor)
   // LOOT SPLIT: baseline survival loot stays OPEN; only the RICH tier sits behind secret seams. A weapon is
   // BASIC (open) at/under this value (dagger 35, shortsword 70, spear 90) and RICH (behind a seam) above it
@@ -1411,7 +1419,7 @@ var TD_MAP = (function () {
       // DMZ law (v20 R1): a saloon or the cafeteria is demilitarised — no hostile
       // action resolves inside, so none ever spawns. (The truce is spatial, not prose.)
       if ((world.nodes[ctrl.node] || {}).dmz) return;
-      var n = Math.max(1, Math.round(walkableCount() * CREATURE_DENSITY));   // DENSITY, not a fixed count
+      var n = foeCount(walkableCount());   // SUB-LINEAR in area (foeCount) — single source of truth, mirrored by the balance sim
       var L = curLevel();
       for (var c = 0; c < n; c++) {
         var spot = pickSpot();
@@ -2480,7 +2488,8 @@ var TD_MAP = (function () {
     _reachSet: function (grid, ox, oy) { return sgReachSet(grid, ox, oy); },
     _gen2Opts: GEN2_OPTS,
     // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
-    CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_MIX: COIN_MIX
+    CREATURE_DENSITY: CREATURE_DENSITY, COIN_DENSITY: COIN_DENSITY, COIN_MIX: COIN_MIX,
+    foeCount: foeCount, FOE_REF: FOE_REF, FOE_EXP: FOE_EXP, FOE_BASE: FOE_BASE   // combat re-tune: sub-linear foe count (single source of truth for the live floor + the balance sim)
   };
 })();
 

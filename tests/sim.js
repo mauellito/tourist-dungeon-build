@@ -186,16 +186,45 @@
   // live walkable = cells that become "." in composeNodeGen2 (wall/pillar 'o', chasm 'X', water '~' excluded —
   // matching mapmode.walkableCount which counts only ".").
   function gen2Walkable(grid) { var skip = { "#": 1, "o": 1, "X": 1, "~": 1 }, n = 0; for (var y = 0; y < grid.length; y++) { var row = grid[y]; for (var x = 0; x < row.length; x++) if (!skip[row[x]]) n++; } return n; }
+  function mapMod() { return (typeof TD_MAP !== "undefined") ? TD_MAP : (typeof require !== "undefined" ? require("../engine/mapmode.js") : null); }
+  // FOE COUNT — the SINGLE SOURCE OF TRUTH is the live TD_MAP.foeCount (sub-linear in area). The sim mirrors
+  // the game exactly by calling it; falls back to the linear density only if mapmode is unavailable (Node-lite).
+  function foeCountFor(walk) {
+    var MAP = mapMod();
+    if (MAP && typeof MAP.foeCount === "function") return MAP.foeCount(walk);
+    return Math.max(1, Math.round(walk * (MAP && MAP.CREATURE_DENSITY ? MAP.CREATURE_DENSITY : 0.0041)));
+  }
   var _floorPool = null;
   function floorPool() {
     if (_floorPool) return _floorPool;
-    var GEN2 = (typeof TD_GEN2 !== "undefined") ? TD_GEN2 : (typeof require !== "undefined" ? require("../engine/gen2.js") : null);
-    if (!GEN2) throw new Error("balance sim needs TD_GEN2 — load engine/gen2.js");
-    var pool = [];                                                // fixed seeds 1..POOL -> deterministic, captures per-floor variation
-    // COMBAT CLOSE-OUT: the win-band is RETIRED; the sim samples the ACTUAL live distribution — the gen2
-    // +-20% size spread (43..65 x 27..41, frame lifted). Density is FINAL at 0.0041. The bar is value-
-    // comparability of the two routes across this spread, not a single survival %.
-    for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked" }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h }); }
+    var pool = [];
+    // CALIBRATION R1: the pool is the ACTUAL LIVE per-sublevel floors the game builds — real worlds (TD_GEN)
+    // composed into contiguous sublevels (TD_MAP.composeSublevel), walkable counted the way the game counts it
+    // (cells === "."). This captures the reseed-for-rooms bias + multi-node packing that a raw generateLevel
+    // draw missed (live floors skew ~6% larger). Falls back to TD_GEN2.generateLevel('worked') under Node-lite.
+    var MAP = mapMod();
+    var GEN = (typeof TD_GEN !== "undefined") ? TD_GEN : (typeof require !== "undefined" ? (function () { try { return require("../engine/generator.js"); } catch (e) { return null; } })() : null);
+    if (MAP && GEN && MAP.composeSublevel) {
+      for (var seed = 1; seed <= 24; seed++) {
+        var world; try { world = GEN.generate(seed, { depth: 6 }); } catch (e) { continue; }
+        var nodeLevel = {}; Object.keys(world.nodes).forEach(function (id) { nodeLevel[id] = world.nodes[id].level; });
+        for (var lv = 1; lv <= 6; lv++) {
+          var nodes = [];
+          Object.keys(world.nodes).forEach(function (id) { var m = world.nodes[id]; if (m.level === lv && m.nodeType !== "SET-PIECE") nodes.push({ id: id, kind: (id.indexOf("hub") === 0 ? "hub" : id.indexOf("goal") === 0 ? "goal" : id.indexOf("vault") === 0 ? "vault" : "pocket"), nodeType: m.nodeType }); });
+          if (!nodes.length) continue;
+          var edges = (world.edges || []).filter(function (e) { return nodeLevel[e.from] === lv || nodeLevel[e.to] === lv; });
+          var comp; try { comp = MAP.composeSublevel(seed, lv, nodes, edges, nodeLevel); } catch (e) { continue; }
+          if (!comp || !comp.grid) continue;
+          var walk = 0; for (var y = 0; y < comp.grid.length; y++) { var row = comp.grid[y]; for (var x = 0; x < row.length; x++) if (row[x] === ".") walk++; }
+          pool.push({ w: walk, area: comp.W * comp.H, W: comp.W, H: comp.H, rooms: comp.roomCount || 0, level: lv });
+        }
+      }
+    }
+    if (!pool.length) {   // fallback — raw generateLevel 'worked' (Node CLI / engine-lite)
+      var GEN2 = (typeof TD_GEN2 !== "undefined") ? TD_GEN2 : (typeof require !== "undefined" ? require("../engine/gen2.js") : null);
+      if (!GEN2) throw new Error("balance sim needs TD_GEN2 — load engine/gen2.js");
+      for (var s = 1; s <= SIM_C.FLOOR_POOL; s++) { var lvl = GEN2.generateLevel(s, { grammar: "worked" }); pool.push({ w: gen2Walkable(lvl.grid), area: lvl.w * lvl.h, W: lvl.w, H: lvl.h, rooms: 0, level: 0, fallback: true }); }
+    }
     _floorPool = pool; return pool;
   }
   function creatureFighter(kind) {
@@ -215,7 +244,7 @@
     var kinds = Object.keys(R.COMBAT.CREATURES);
     // SOURCE the floor from gen2: a real 'worked' 54x34 floor's walkable count -> the LIVE densities.
     var floor = pool[rng.int(0, pool.length - 1)], walk = floor.w;
-    var nFoes = Math.round(walk * dens.creature);                              // live spawnCreatures density (max(1,..) is moot at this size)
+    var nFoes = foeCountFor(walk);                                             // live spawnCreatures foe count (SUB-LINEAR TD_MAP.foeCount — single source of truth)
     var heaps = rollHeaps(rng, Math.round(walk * dens.coin), dens.mix);        // live spawnCoins: DENOMINATION heaps
     // policy decides which heaps to pocket: greedy hoovers ALL (bulk -> weight); cautious takes only the
     // high-value-low-weight GOLD (stays light); random takes ~half. Coins go to the purse BY DENOMINATION.
@@ -261,8 +290,13 @@
   function runCombat(opts) {
     opts = opts || {}; var N = opts.N || 1000, seed = (opts.seed == null ? 1234 : opts.seed) >>> 0, route = opts.route || "combat";
     var dens = liveDensities(), pool = floorPool();
-    var poolW = pool.map(function (p) { return p.w; }), poolArea = pool[0] ? pool[0].area : 0;
-    var floorMeta = { W: pool[0] ? pool[0].W : 0, H: pool[0] ? pool[0].H : 0, area: poolArea, avgWalk: mean(poolW), walkPct: poolArea ? mean(poolW) / poolArea : 0, density: dens };
+    var poolW = pool.map(function (p) { return p.w; }).slice().sort(function (a, b) { return a - b; });
+    var live = pool.length && !pool[0].fallback;
+    var floorMeta = { source: live ? "live-sublevel" : "gen2-worked", n: pool.length,
+      minWalk: poolW[0] || 0, medWalk: poolW[poolW.length >> 1] || 0, maxWalk: poolW[poolW.length - 1] || 0, avgWalk: mean(poolW),
+      avgArea: mean(pool.map(function (p) { return p.area; })), avgRooms: mean(pool.map(function (p) { return p.rooms; })),
+      minFoes: foeCountFor(poolW[0] || 0), medFoes: foeCountFor(poolW[poolW.length >> 1] || 0), maxFoes: foeCountFor(poolW[poolW.length - 1] || 0),
+      density: dens };
     var bp = {}; POLICIES.forEach(function (p) { bp[p] = runCombatPolicy(p, N, seed, dens, pool, route); });
     var f = [];   // combat-model is combat-only by design (no collapse/slab) -> skip the single-death-cause flag; keep win-rate + greed-matters
     POLICIES.forEach(function (p) { var r = bp[p]; if (r.winRate > 0.95) f.push(p + ": win-rate " + pct(r.winRate) + " > 95% (trivial)"); if (r.winRate < 0.05) f.push(p + ": win-rate " + pct(r.winRate) + " < 5% (unwinnable)"); });
@@ -273,9 +307,10 @@
     var L = [];
     L.push("TOURIST DUNGEON — balance sim: NEW COMBAT MODEL (two-function + gear + encumbrance)   (N=" + res.N + ", seed=" + res.seed + ")");
     var fl = res.floor || {};
-    L.push("FLOOR sourced from TD_GEN2 'worked' " + fl.W + "x" + fl.H + ": avg walkable " + Math.round(fl.avgWalk || 0) + " cells (" + pct(fl.walkPct || 0) + " of floor), " + SIM_C.FLOOR_POOL + "-floor pool");
+    var MAP = mapMod(), fx = (MAP && MAP.FOE_EXP != null) ? MAP.FOE_EXP : 1;
+    L.push("FLOOR pool = " + fl.n + " " + (fl.source === "live-sublevel" ? "REAL LIVE per-sublevel floors (TD_GEN worlds -> TD_MAP.composeSublevel)" : "gen2 'worked' draws (fallback)") + ": walkable min/med/max " + fl.minWalk + "/" + fl.medWalk + "/" + fl.maxWalk + " (avg " + Math.round(fl.avgWalk || 0) + "), avg " + (fl.avgRooms || 0).toFixed(1) + " rooms");
     var mixStr = (fl.density && fl.density.mix) ? fl.density.mix.map(function (m) { return m.den + " x" + m.weight; }).join("/") : "?";
-    L.push("derived per floor: foes = round(walk x " + (fl.density ? fl.density.creature : "?") + ") ~ " + (res.policies.greedy ? res.policies.greedy.avgFoes.toFixed(1) : "?") + " | coin = round(walk x " + (fl.density ? fl.density.coin : "?") + ") DENOMINATION heaps [" + mixStr + "] (greedy hoovers all -> weight; cautious takes gold; real TD_RESOLVE + TD_BURDEN)");
+    L.push("foes = foeCount(walk) SUB-LINEAR exp=" + fx + " -> small/med/large floor = " + fl.minFoes + "/" + fl.medFoes + "/" + fl.maxFoes + " foes (avg " + (res.policies.greedy ? res.policies.greedy.avgFoes.toFixed(1) : "?") + ") | coin = round(walk x " + (fl.density ? fl.density.coin : "?") + ") heaps [" + mixStr + "] (real TD_RESOLVE + TD_BURDEN)");
     L.push("");
     L.push(pad("policy", 10) + padL("win%", 8) + padL("TTK(md)", 9) + padL("combat-deaths", 15) + padL("loot/life", 11));
     L.push(new Array(56).join("-"));

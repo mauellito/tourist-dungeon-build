@@ -76,16 +76,16 @@ def main():
     if not chrome:
         sys.exit("no chrome")
     os.makedirs(TMP, exist_ok=True)
-    parts = ['<!doctype html><meta charset=utf-8><title>p</title><pre id="out">p</pre>',
-             "<script>\n" + open(os.path.join(ENGINE, "rng.js"), encoding="utf-8").read() + "\n</script>",
-             "<script>\n" + open(os.path.join(ENGINE, "stats.js"), encoding="utf-8").read() + "\n</script>",
-             "<script>\n" + open(os.path.join(ENGINE, "resolve.js"), encoding="utf-8").read() + "\n</script>",
-             "<script>\n" + open(os.path.join(ENGINE, "burden.js"), encoding="utf-8").read() + "\n</script>",
-             # CALIBRATION R0: the sim now sources its floor model from the LIVE generator (gen2) and the
-             # live spawn densities (TD_MAP) — load them so TD_GEN2 + TD_MAP densities are available.
-             "<script>\n" + open(os.path.join(ENGINE, "gen2.js"), encoding="utf-8").read() + "\n</script>",
-             "<script>\n" + open(os.path.join(ENGINE, "mapmode.js"), encoding="utf-8").read() + "\n</script>",
-             "<script>\n" + open(os.path.join(TESTS, "sim.js"), encoding="utf-8").read() + "\n</script>", REP]
+    # CALIBRATION R1: the sim sources its floor model from the ACTUAL LIVE per-sublevel floors — so the FULL
+    # engine loads (TD_GEN builds real worlds; TD_MAP.composeSublevel composes the real contiguous floors).
+    engine_files = ["rng.js", "resolve.js", "stats.js", "burden.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
+                    "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js",
+                    "sg_vault.js", "mapmode.js"]
+    parts = ['<!doctype html><meta charset=utf-8><title>p</title><pre id="out">p</pre>']
+    for ef in engine_files:
+        parts.append("<script>\n" + open(os.path.join(ENGINE, ef), encoding="utf-8").read() + "\n</script>")
+    parts.append("<script>\n" + open(os.path.join(TESTS, "sim.js"), encoding="utf-8").read() + "\n</script>")
+    parts.append(REP)
     runner = os.path.join(TMP, "sim_runner.html"); open(runner, "w", encoding="utf-8").write("\n".join(parts))
     ud = tempfile.mkdtemp(prefix="td_sim_")
     try:
