@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "a66ff4ac";</script>
+<script>window.__BUILD = "1c0b750e";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1249,7 +1249,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "METABOLISM RE-TUNE — walking is gentler and hunger is slower, so a normal run is comfortable. Unladen walking still recovers; even a heavy pack now clears several floors before you are spent (Laden ~8 floors, Strained ~4, was ~4 / ~2), and hunger takes many more floors to turn urgent (one bun still restores over half). Heavier still tires + starves you faster (the coupling is honest), the burden slows your step, and the Smash-and-Grab escape-sprint margins are unchanged. Condition is shown as feel-words only — no numbers.";
+  var VERSION = "LOOT SPLIT — baseline survival loot stays out in the open (rations, common coin, basic gear), so a player who never searches still gets by. The RICH tier now hides behind the secret seams: Search ('s') a suspicious wall and a '?' seam gives up a better weapon, a heavier armour piece, or a big gold haul. In the Smash-and-Grab vault the '$' secret DOORS open the way to the 'S' secret ROOMS, and those rooms hold the rich caches. Searching is rewarded — never required.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

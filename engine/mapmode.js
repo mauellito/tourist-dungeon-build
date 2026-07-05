@@ -60,6 +60,10 @@ var TD_MAP = (function () {
   // flip never re-balances combat or greed. PLACEHOLDER densities (calibration pending).
   var CREATURE_DENSITY = 0.0041, COIN_DENSITY = 0.05;   // COMBAT: FINAL at 0.0041 (no win-band — that was RETIRED). Combat is governed by both-routes-viable: forced-combat (lower survival/higher loot) vs avoidance (higher survival/lower loot) measured by per-route VALUE in the sim; density is not re-tuned to a survival %. No enemy scaling. (0.012 -> 0.006 GATE 3 -> 0.0041.)
   var GEAR_DENSITY = 0.004;   // GATE 2: weapon/armour drops per walkable cell (rare; a few per floor)
+  // LOOT SPLIT: baseline survival loot stays OPEN; only the RICH tier sits behind secret seams. A weapon is
+  // BASIC (open) at/under this value (dagger 35, shortsword 70, spear 90) and RICH (behind a seam) above it
+  // (sabre 110 .. warhammer 220). Open ARMOUR is the light tier only; medium/heavy are the rich tier.
+  var BASIC_WEAPON_MAXVAL = 90;
   // GATE 1.1 — coin heaps come in DENOMINATIONS so hoarding has weight. Canon: 25 coins/lb (denomination-
   // blind), 1g=10s=100c by VALUE — so all-gold is the lightest way to hold a value. The floor offers mostly
   // low-denomination BULK (copper/silver: heavy per value) and a few gold heaps (light, high value). The
@@ -1092,9 +1096,14 @@ var TD_MAP = (function () {
       // v21 — room doorways carry a rendered state (closed / ajar / open) — the GENERATOR'S own door tags.
       ctrl.roomDoors = {}; (comp.roomDoors || []).forEach(function (rd) { ctrl.roomDoors[key(rd.x, rd.y)] = { state: rd.state }; });
       // SECRETS are the generator's own tag==="secret" cells (telegraphed per the Secret Grammar Law);
-      // the controller no longer invents wall-cache secrets. Each carries a tell + a small reward on search.
-      var SECK = ["ration", "bandage", "souvenir"], TELLV0 = ["draft", "rhyme", "hollow"];
-      (comp.secrets || []).forEach(function (s, i) { if (!doors[key(s.x, s.y)]) ctrl.secrets[key(s.x, s.y)] = { kind: SECK[i % SECK.length], found: false, tell: TELLV0[i % 3], gen: true }; });
+      // the controller no longer invents wall-cache secrets. Each carries a tell + a RICH reward on search.
+      // LOOT SPLIT: an ordinary '?' hidden seam holds the RICH tier (a big gold haul / better weapon / heavier
+      // armour), NOT the common consumables you already find in the open — searching is rewarded, never required.
+      // In the SG VAULT the '$' secrets are secret DOORS (passages into the 'S' rooms), so they carry NO direct
+      // reward — the rich loot lives in the 'S' room caches (seeded in the SG block below). '$'=door / 'S'=room intact.
+      var TELLV0 = ["draft", "rhyme", "hollow"], secR = nodeRng(seed, ctrl.node + ":L" + cl + ":secretloot");
+      var sgDoors = (comp.setpiece === "smashgrab");
+      (comp.secrets || []).forEach(function (s, i) { if (!doors[key(s.x, s.y)]) ctrl.secrets[key(s.x, s.y)] = { reward: sgDoors ? null : richReward(secR, cl), found: false, tell: TELLV0[i % 3], gen: true }; });
       ctrl.player = { x: comp.spawn.x, y: comp.spawn.y };
       ctrl.composition = comp;
       ctrl.featureRooms = comp.features || [];   // ARCHITECTURAL FEATURES — for the view (telegraph/voice wire in R3)
@@ -1143,7 +1152,10 @@ var TD_MAP = (function () {
       if (ctrl.sg) {
         ctrl.creatures = [];
         (comp.loot || []).forEach(function (l) { if (isFloor(l.x, l.y)) ctrl.items[key(l.x, l.y)] = makeCoins("gold", 50); });   // any legacy '$'-loot fallback (none in the operator vault; '$' there is a secret door)
-        (comp.caches || []).forEach(function (cc) { if (isFloor(cc.x, cc.y) && !ctrl.items[key(cc.x, cc.y)]) ctrl.items[key(cc.x, cc.y)] = makeCoins("gold", 50); });   // the SECRET-ROOM caches ('S'): heavy treasure with WEIGHT (the anti-greed lever)
+        // LOOT SPLIT: the SG SECRET-ROOM caches ('S', reached through a '$' secret door) hold the RICH tier —
+        // a big gold haul / better gear (deterministic per vault). Reaching them is the whole reward of searching.
+        var sgR = nodeRng(seed, ctrl.node + ":sgcaches");
+        (comp.caches || []).forEach(function (cc) { if (isFloor(cc.x, cc.y)) ctrl.items[key(cc.x, cc.y)] = richReward(sgR, Math.max(4, cl)); });   // the SECRET-ROOM caches: RICH treasure (authoritative — overrides any open scatter that landed on a cache cell); weight is the anti-greed lever
         ctrl.sg.arts.forEach(function (a) { if (isFloor(a.x, a.y)) ctrl.items[key(a.x, a.y)] = { kind: "sgart", sgId: a.id, glyph: "☥", name: a.name, desc: a.name + " on a pedestal — you may carry only ONE artifact out, and grabbing it brings the room down." }; });
       }
     }
@@ -1332,16 +1344,33 @@ var TD_MAP = (function () {
     function weaponItem(spec) { var v = (GEAR && GEAR.WEAPON_TYPES[spec.type]) ? GEAR.WEAPON_TYPES[spec.type].verb : spec.verb; return { kind: "weapon", slot: "rightHand", glyph: ")", name: spec.name, weight: spec.weight, bulk: spec.bulk, type: spec.type, hands: spec.hands || 1, verb: spec.verb || v, value: spec.value, spec: spec, desc: "A " + (((spec.hands || 1) === 2) ? "two-handed " : "") + spec.type + " weapon — you " + (spec.verb || v) + " with it. It is " + weightWord(spec.weight) + "." }; }
     // GATE 7 (A): an armour piece is slot-bound (it equips to its own slot, e.g. a helm -> head).
     function armorItem(spec) { return { kind: "armor", slot: spec.slot || "body", glyph: "[", name: spec.name, weight: spec.weight || armorCarryWeight(spec), bulk: 4, value: spec.value, spec: spec, desc: spec.name + " (" + (spec.slot || "armour") + ") — it sits " + heftWord(spec) + "." }; }
+    var ASLOTS = ["head", "body", "hands", "feet", "waist", "back"];   // GATE 7 (A): armour drops as SLOT PIECES
+    function basicWeaponKeys() { return Object.keys(GEAR.WEAPONS).filter(function (k) { return (GEAR.WEAPONS[k].value || 0) <= BASIC_WEAPON_MAXVAL; }); }
+    function richWeaponKeys() { return Object.keys(GEAR.WEAPONS).filter(function (k) { return (GEAR.WEAPONS[k].value || 0) > BASIC_WEAPON_MAXVAL; }); }
     function spawnGear() {
       if (!GEAR || !inDungeon() || (world.nodes[ctrl.node] || {}).dmz) return;
-      var wkeys = Object.keys(GEAR.WEAPONS), akeys = ["light", "medium", "heavy"], aslots = ["head", "body", "hands", "feet", "waist", "back"];   // GATE 7 (A): armour drops as SLOT PIECES
+      // LOOT SPLIT: OPEN gear is the BASIC tier ONLY — entry weapons (<= BASIC_WEAPON_MAXVAL) + light armour —
+      // so a player who never searches stays serviceably equipped. The RICH tier (better weapons, medium/heavy
+      // armour) is reserved for behind-the-seam secret caches (see richReward, revealed by search).
+      var basic = basicWeaponKeys();
       var n = Math.round(walkableCount() * GEAR_DENSITY);
       for (var i = 0; i < n; i++) {
         var spot = pickSpot();
         if (!spot || itemAt(spot.x, spot.y) || creatureAt(spot.x, spot.y)) continue;
-        if (rng.chance(0.7)) ctrl.items[key(spot.x, spot.y)] = weaponItem(GEAR.WEAPONS[rng.pick(wkeys)]);   // weapons more common than armour
-        else ctrl.items[key(spot.x, spot.y)] = armorItem(GEAR.armorPiece(rng.pick(aslots), rng.pick(akeys)));
+        if (rng.chance(0.7)) ctrl.items[key(spot.x, spot.y)] = weaponItem(GEAR.WEAPONS[rng.pick(basic)]);   // weapons more common than armour
+        else ctrl.items[key(spot.x, spot.y)] = armorItem(GEAR.armorPiece(rng.pick(ASLOTS), "light"));       // OPEN armour = the basic (light) tier only
       }
+    }
+    // LOOT SPLIT — what a hidden seam ('?') or an SG secret room ('S') yields: the RICH tier ONLY (a
+    // non-searcher never NEEDS it; a searcher is REWARDED). Weighted between a BIG coin haul, a BETTER weapon,
+    // and a HEAVIER armour piece; the gold haul scales gently with depth. Deterministic (built from a per-floor
+    // RNG at floor-build) so re-entry is stable. Returns a full item object (placed as-is on reveal).
+    function richReward(R, depth) {
+      if (!GEAR) return makeCoins("gold", R.int(50, 90) + (depth || 1) * 15);
+      var roll = R.int(1, 100), d = depth || 1;
+      if (roll <= 45) return makeCoins("gold", R.int(40, 90) + d * 15);                       // a BIG coin haul (the standout gold find)
+      if (roll <= 78) return weaponItem(GEAR.WEAPONS[R.pick(richWeaponKeys())]);              // a BETTER weapon
+      return armorItem(GEAR.armorPiece(R.pick(ASLOTS), R.pick(["medium", "heavy"])));         // a HEAVIER armour piece
     }
     // GATE 4 R4 — DEPTH-BANDED SPAWN TABLE. Danger rises with depth by shifting the foe MIX toward
     // tougher bands (NOT by inflating counts — density is unchanged). Each foe carries a `band` (1..6).
@@ -2042,7 +2071,10 @@ var TD_MAP = (function () {
         if (sec && !sec.found) {
           sec.found = true;
           ctrl.grid[y][x] = ".";                 // the seam opens
-          if (sec.kind) ctrl.items[k] = makeItem(sec.kind);
+          // LOOT SPLIT: place the RICH reward stored on the secret (full item object). Legacy secrets that
+          // still carry a bare `kind` (e.g. authored/vault secrets) fall back to makeItem(kind).
+          if (sec.reward && !ctrl.items[k]) ctrl.items[k] = sec.reward;
+          else if (sec.kind) ctrl.items[k] = makeItem(sec.kind);
           ctrl.explored.add(k);
           found.push(k);
         }
