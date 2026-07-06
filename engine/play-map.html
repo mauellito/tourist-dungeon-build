@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "413f8c83";</script>
+<script>window.__BUILD = "30e01b82";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -267,9 +267,14 @@ window.__initPlayMap = function () {
   // bounded sine (period ~2.3s) over a faint residual glow — slow, never a strobe. It runs while inside and
   // ceases on exit (the RAF is kept alive only while inRLD). FLAG: gated on isNight — no day/night cycle
   // yet, so the harbour reads as perpetual dusk (isNight=true); a real cycle that toggles this is future.
-  var TOWN_IS_NIGHT = true, rldInside = false, rldRAF = null;
+  var TOWN_IS_NIGHT = true, rldInside = false, rldRAF = null, rldPulseT0 = -1e9;
   function rldBreathe(now) { return 0.05 + 0.10 * (0.5 + 0.5 * Math.sin(now / 365)); }   // ~0.05..0.15, period ~2.3s
-  function rldTick() { rldRAF = null; if (rldInside) rldRAF = requestAnimationFrame(rldTick); draw(); }
+  // TOWN presentation phase 3 — the ENTRY PULSE: the instant you cross INTO the red-light district the neon
+  // FLARES, then settles into the continuous breathe (~750ms decay). One-shot per entry; honours reduced-motion.
+  var RLD_PULSE_MS = 750, RLD_PULSE_PEAK = 0.34;
+  function rldEntryPulse(now) { if (prefersReduced) return 0; var e = now - rldPulseT0; if (e < 0 || e >= RLD_PULSE_MS) return 0; return RLD_PULSE_PEAK * (1 - e / RLD_PULSE_MS); }
+  function rldTick() { rldRAF = null; if (rldInside || (nowMs() - rldPulseT0) < RLD_PULSE_MS) rldRAF = requestAnimationFrame(rldTick); draw(); }
+  if (typeof window !== "undefined") window.__TD_RLD = { entryPulse: function (now) { return rldEntryPulse(now); }, breathe: rldBreathe, fireEntry: function () { rldPulseT0 = nowMs(); }, now: function () { return nowMs(); }, PULSE_MS: RLD_PULSE_MS, PEAK: RLD_PULSE_PEAK };   // phase 3 test hook: the RLD neon entry-pulse
   function nowMs() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
   function feelTick() {
     var now = nowMs(); draw();
@@ -576,9 +581,11 @@ window.__initPlayMap = function () {
     // district (the same district-entry the banner uses). Crossing out and back re-triggers. Slow, not strobe.
     if (town && vw.redlightRect && TOWN_IS_NIGHT) {
       var inside = vw.district === "the Red Light District";
-      if (inside && !rldRAF) rldRAF = requestAnimationFrame(rldTick);   // keep the breathe animating only while present
+      if (inside && !rldInside) rldPulseT0 = nowMs();                    // ENTRY EDGE: crossing IN fires a one-shot neon flare (phase 3)
+      if ((inside || rldEntryPulse(nowMs()) > 0) && !rldRAF) rldRAF = requestAnimationFrame(rldTick);   // animate while inside OR while the entry pulse decays
       rldInside = inside;
-      if (inside) { var rr = vw.redlightRect; ctx.save(); ctx.globalAlpha = rldBreathe(nowMs()); ctx.fillStyle = P.redlight; ctx.fillRect(rr[0] * TS, rr[1] * TS, (rr[2] - rr[0] + 1) * TS, (rr[3] - rr[1] + 1) * TS); ctx.restore(); }
+      var glow = (inside ? rldBreathe(nowMs()) : 0) + rldEntryPulse(nowMs());   // continuous breathe (inside) + the decaying entry flare (spills a beat past the threshold)
+      if (glow > 0) { var rr = vw.redlightRect; ctx.save(); ctx.globalAlpha = Math.min(0.6, glow); ctx.fillStyle = P.redlight; ctx.fillRect(rr[0] * TS, rr[1] * TS, (rr[2] - rr[0] + 1) * TS, (rr[3] - rr[1] + 1) * TS); ctx.restore(); }
     }
     vw.creatures.forEach(function (c) {
       // P3 colour grammar — a hostile reads its THREAT BAND as its hue (the real danger signal); friendly
@@ -1249,7 +1256,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "TOWN COLOUR-CODING — every building now reads its TYPE at a glance: shops are terracotta, eateries amber, the hotel/motel lavender, civic offices municipal blue, the waterfront sea-teal, the red-light district dusty rose, and the church a pale sanctified gold. Each category owns one hue (still a coherent aged-municipal paint job, not a colour wheel), so you can read a district from across the harbour. (Interiors + moving townsfolk were already in — this pass makes the map legible.)";
+  var VERSION = "TOWN PRESENTATION — the harbour reads and lives. Buildings are now COLOUR-CODED by type (shops terracotta, eateries amber, lodging lavender, civic blue, waterfront teal, red-light rose, the church gold) so you read a district at a glance; every one of the ~104 fronts is ENTERABLE (shops, bank, kiosk, agency, RLD, rest all transact; the rest open to browse); and the streets are ALIVE — ~35 townsfolk, dockers, sailors, a Bureau patrol and a school troop wander on their own, with a one-shot NEON FLARE the moment you cross into the red-light district.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
