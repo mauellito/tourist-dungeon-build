@@ -259,17 +259,21 @@ var TD_UI = (function () {
     // everything else (store/apothecary/bodega/bookstore/fence/tailor/cobbler/barber/bakery/grocer/tattoo/blacksmith/gift…) = COMMERCE (warm tan)
   };
   var CATEGORY_COLOR = { civic: "civic", food: "food", vice: "vice", maritime: "maritime", commerce: "storefront", faith: "sanctified", lodging: "food" };
-  // TOWN palette (R1) — a RESTRAINED, DESATURATED, CLOSE-VALUED municipal set: the town reads as one
-  // coherent faded paint job, not a colour wheel. The GLYPH + door identify a building; this tint is only a
-  // soft background cue, so categories differ SUBTLY (a hint of hue, same low value). FLAG: tones tunable.
+  // TOWN palette (R2 — TOWN PRESENTATION phase 1) — a DISTINCT-but-COHERENT aged-municipal set: each building
+  // CATEGORY owns its own hue so the player reads the district + building type at a GLANCE (which was invisible
+  // under the old close-valued greys). Still Bureau-terminal — moderate saturation, one mid-value band, and the
+  // wall MASS is darkened (darkTint) so a footprint reads as a dark tinted block, not a fluorescent panel: a
+  // coordinated faded paint job, not a colour wheel. Each hue means exactly ONE category (Colour Discipline).
+  // FLAG: this reverses the earlier R1 "deliberately subtle" choice per the operator's phase-1 distinction ask
+  // — dial the saturations down if it reads too loud. Tones tunable in this one table.
   var TOWN_TONE = {
-    civic:     "#868d96",   // faded slate (cool grey)
-    commerce:  "#979080",   // faded tan (warm grey)
-    food:      "#9b9484",   // faded ochre-grey
-    lodging:   "#9b9484",
-    vice:      "#94858f",   // greyed mauve (not crimson)
-    maritime:  "#828f8c",   // greyed sea-grey
-    faith:     "#8b86a0"    // greyed lavender (church still reads via its † + footprint)
+    civic:     "#6f86ad",   // municipal blue-slate — bank, agency, customs, kiosk, Tim, the Bureau, the dungeon office
+    commerce:  "#a87c50",   // terracotta brown — the shops (the default frontage): store, apothecary, tailor, cobbler, gifts…
+    food:      "#c7a44e",   // warm amber — taverns, saloon, restaurant, coffee, the takeout window (clearly yellower than commerce)
+    lodging:   "#9d76c0",   // lavender — the hotel + motel
+    vice:      "#c25683",   // dusty rose — the red-light district (distinct from the alarm-red of criticals)
+    maritime:  "#4fa093",   // sea-teal — the waterfront: chandlery, warehouse, clam shack, the spa
+    faith:     "#cdbf7a"    // pale sanctified gold — the church landmark (also reads via its † + larger footprint)
   };
   function buildingCategory(id) { return BUILDING_KIND[id] || "commerce"; }   // commerce is the default frontage
   function townTone(cat) { return TOWN_TONE[cat] || TOWN_TONE.commerce; }     // TOWN — the muted tone for a category (mass tint + front glyph)

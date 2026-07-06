@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "ac30619a";</script>
+<script>window.__BUILD = "413f8c83";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1249,7 +1249,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "COMBAT RE-TUNE — foe count now scales SUB-LINEARLY with floor size, so a big sublevel is no longer a brawl: a floor twice as large gets about 1.3x the foes, not 2x, and the biggest floors cap at a curated three instead of four. Depth still ramps the danger — deeper means tougher foes, not more of them. The Smash-and-Grab footrace stays foe-light and unchanged. (Difficulty bands, the both-routes-viable value model, economy, metabolism and loot are all untouched.)";
+  var VERSION = "TOWN COLOUR-CODING — every building now reads its TYPE at a glance: shops are terracotta, eateries amber, the hotel/motel lavender, civic offices municipal blue, the waterfront sea-teal, the red-light district dusty rose, and the church a pale sanctified gold. Each category owns one hue (still a coherent aged-municipal paint job, not a colour wheel), so you can read a district from across the harbour. (Interiors + moving townsfolk were already in — this pass makes the map legible.)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

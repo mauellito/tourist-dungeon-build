@@ -57,6 +57,26 @@ function TD_UI_TESTS() {
     eq(P.dmgTaken, P.critical, "damage you take is critical red");
   });
 
+  // TOWN PRESENTATION phase 1 — the building-CATEGORY tones must be DISTINCT so the player reads the district +
+  // building type at a glance (they were close-valued greys before). Each category owns one hue (Colour
+  // Discipline), and any two are separated by a real perceptual gap (not a hair of hue on the same grey).
+  test("town: every building category owns a DISTINCT tone (readable at a glance)", function () {
+    var T = TD_UI.TOWN_TONE, cats = ["civic", "commerce", "food", "lodging", "vice", "maritime", "faith"];
+    function rgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+    function dist(a, b) { var p = rgb(a), q = rgb(b); return Math.sqrt(Math.pow(p[0] - q[0], 2) + Math.pow(p[1] - q[1], 2) + Math.pow(p[2] - q[2], 2)); }
+    var seen = {}, minGap = 1e9, minPair = "";
+    cats.forEach(function (c) { assert(typeof T[c] === "string" && /^#[0-9a-f]{6}$/i.test(T[c]), c + " has a hex tone"); assert(!seen[T[c]], "each category owns ONE tone (clash on " + c + ")"); seen[T[c]] = c; });
+    for (var i = 0; i < cats.length; i++) for (var j = i + 1; j < cats.length; j++) { var d = dist(T[cats[i]], T[cats[j]]); if (d < minGap) { minGap = d; minPair = cats[i] + "/" + cats[j]; } }
+    assert(minGap >= 40, "the closest two tones (" + minPair + ") are perceptibly distinct (RGB gap " + Math.round(minGap) + " >= 40)");   // was ~15 under the old greys
+    // saturation stays MODERATE (Bureau-terminal, not neon): max channel-spread capped so no tone is fluorescent
+    cats.forEach(function (c) { var p = rgb(T[c]); var spread = Math.max(p[0], p[1], p[2]) - Math.min(p[0], p[1], p[2]); assert(spread <= 130, c + " tone stays coherent/aged (channel spread " + spread + " <= 130, not neon)"); });
+    // buildingCategory routes real tenants to a tone (civic bank, food tavern, vice redlit, maritime chandlery)
+    eq(TD_UI.buildingColor("bank"), T.civic, "the bank reads civic");
+    eq(TD_UI.buildingColor("tavern"), T.food, "the tavern reads food");
+    eq(TD_UI.buildingColor("redlit"), T.vice, "the members' club reads vice");
+    eq(TD_UI.buildingColor("chandlery"), T.maritime, "the chandlery reads maritime");
+  });
+
   // =================================================== AUTO-EXPLORE ==========
   test("auto-explore refuses to start while a creature is in view", function () {
     var v = baseView({ x: 3, y: 3 }, false, { creatures: [{ x: 2, y: 3, hp: 9, maxHp: 9, dmg: 8, name: "a thing", glyph: "r" }] });
