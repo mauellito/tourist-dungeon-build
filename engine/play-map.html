@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "30e01b82";</script>
+<script>window.__BUILD = "6a47b5cf";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1256,7 +1256,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "TOWN PRESENTATION — the harbour reads and lives. Buildings are now COLOUR-CODED by type (shops terracotta, eateries amber, lodging lavender, civic blue, waterfront teal, red-light rose, the church gold) so you read a district at a glance; every one of the ~104 fronts is ENTERABLE (shops, bank, kiosk, agency, RLD, rest all transact; the rest open to browse); and the streets are ALIVE — ~35 townsfolk, dockers, sailors, a Bureau patrol and a school troop wander on their own, with a one-shot NEON FLARE the moment you cross into the red-light district.";
+  var VERSION = "STARTING LOADOUT — you now arrive with a COIN PURSE and the clothes you stand in (no pre-filled kit), and outfit yourself at the shops before diving. The purse is rolled per character within a range and shifted by your background — a moneyed Tourist or Diplomat arrives flush, a Labourer or Pilgrim lean; you see the actual coins, not a feel-word. The Outfitter now stocks a basic blade and padded jerkin, and a median purse buys a weapon + a couple of rations OR armour + rations — but not the whole kit. Choose. The Bureau recommends arriving equipped. The Bureau recommends much.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

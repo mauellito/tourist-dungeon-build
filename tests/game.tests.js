@@ -30,25 +30,33 @@ function TD_GAME_TESTS() {
     assert(sens.some(function (m) { return /Valid in Guided Zones/.test(m.text) && m.obj === "OBJ"; }), "001 is OBJ senses (said), and true");
     assert(g._shared().messages.some(function (m) { return m.ch === "event" && /Guided Package/.test(m.text); }), "the mechanical fact is an EVENT line");
   });
-  // CHARACTER B — visas are BONUSES-ONLY (never a penalty) and grant a signature aptitude + loadout
-  test("Visas are bonuses-only declarations (stat lift + signature grant + gear)", function () {
+  // CHARACTER B — visas are BONUSES-ONLY (never a penalty) and grant a signature aptitude + a PURSE shift.
+  // STARTING LOADOUT ruling: the visa NO LONGER auto-equips a full kit — the kit stays MINIMAL (you outfit at
+  // the shops); the visa gives stats + signature + a fatter/leaner coin purse.
+  test("Visas are bonuses-only declarations (stat lift + signature grant + purse shift; minimal kit)", function () {
     // bonuses-only: applyVisa only ever RAISES the listed stats
     var base = TD_STATS.create(TD_RNG.make(42)), lab = TD_STATS.create(TD_RNG.make(42));
     TD_CHARSYS.applyVisa(lab, "labourer");
     assert(lab.might >= base.might && lab.con >= base.con && lab.grit >= base.grit, "Labourer raises Might/Con/Grit, never lowers");
     assert(lab.dex === base.dex, "untouched stats are unchanged (no penalty)");
-    // declaring grants the visa's signature to the character sheet + its loadout
+    // declaring grants the visa's signature to the character sheet
     var g = game(); g._interact("agency"); g.chooseBackground("labourer");
-    var eqp = g._character().equipment;
-    eq(eqp.rightHand.name, TD_RESOLVE.GEAR.WEAPONS.mace.name);
-    eq(eqp.body.tier, "medium");
     assert(TD_CHARSYS.has(g._character().sheet, "proficiency", "impact"), "Labourer grants Impact proficiency");
     assert(TD_CHARSYS.has(g._character().sheet, "talent", "deadLift"), "Labourer grants the Dead Lift talent");
-    // a quick-start (kiosk) carries no declared visa
+    // the kit stays MINIMAL (unarmed + unarmoured — you outfit yourself at the counters)
+    var eqp = g._character().equipment;
+    assert(!eqp.rightHand && !eqp.leftHand, "no weapon at spawn (fists — buy a blade at the Outfitter)");
+    assert(!eqp.body && !eqp.head, "no armour at spawn (unarmoured — buy it at the Outfitter)");
+    // the visa shifts the coin PURSE: a hard-luck Labourer rolls LEANER than a no-bonus Scholar (deterministic)
+    assert(g._purseValue() > 0, "the visitor arrives with coin in the purse");
+    assert(g._computeStartingPurse(7, "labourer") < g._computeStartingPurse(7, "scholar"), "hard-luck Labourer rolls a leaner purse than the plain Scholar");
+    assert(g._computeStartingPurse(7, "tourist") > g._computeStartingPurse(7, "scholar"), "moneyed Tourist rolls a fatter purse than the plain Scholar");
+    // a quick-start (kiosk) carries no declared visa, and still arrives with a (base) purse
     var q = game(); q._interact("kiosk");
     eq(q._character().ticket, "standard");
     eq(q._character().visa, undefined);
     eq(q._character().background, null);
+    assert(q._purseValue() > 0, "even the quick-start arrives with a base coin purse");
   });
 
   // ----------------------------------------------- CHANNEL LAW --------------

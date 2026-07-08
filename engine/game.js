@@ -121,6 +121,44 @@ var TD_GAME = (function () {
     var NAME_FIRST = ["Aldo", "Bex", "Cass", "Dorn", "Edda", "Finn", "Gale", "Hett", "Isla", "Jor", "Kit", "Lune", "Mott", "Nell", "Osk", "Pell", "Quin", "Rute", "Sable", "Tov", "Una", "Vesh", "Wren", "Yarl"];
     var NAME_LAST = ["Quay", "Marsh", "Holt", "Vane", "Crane", "Pike", "Sloe", "Drift", "Welk", "Brine", "Cobble", "Fenn", "Garr", "Halt", "Ives"];
     function makeVisitorName(rng) { return NAME_FIRST[rng.int(0, NAME_FIRST.length - 1)] + " " + NAME_LAST[rng.int(0, NAME_LAST.length - 1)]; }
+
+    // STARTING PURSE (operator-tunable — everything below is in this ONE table). A new visitor arrives with
+    // COIN (not a pre-filled kit): a base value rolled per character (deterministic per character seed) shifted
+    // by BACKGROUND (visa). Moneyed backgrounds roll fatter; hard-luck ones roll lean. Coins are minted LIGHT
+    // (TD_ECON.mint uses the fewest, highest denominations — the coin-weight firewall is untouched). Feel-words
+    // never replace coins here: the player sees the amount. Tuned so a MEDIAN purse affords a weapon+rations OR
+    // armour+rations at the outfitter, but not the whole kit — a real both-not-all choice. FLAG: all TUNABLE.
+    var STARTING_PURSE = {
+      base: { min: 55, max: 95 },   // copper-equiv value rolled per character (before the background shift)
+      // per-BACKGROUND (visa id — the real ids from TD_CHARSYS.VISAS) modifier: flat bonus + multiplier.
+      byVisa: {
+        tourist:    { bonus: 45, mult: 1.0 },   // holiday money — a moneyed visitor (also `lucky`; see the wealth hook)
+        diplomat:   { bonus: 35, mult: 1.0 },   // an expense account, credentialed and well-connected
+        surveyor:   { bonus: 15, mult: 1.0 },   // an official per diem, sent on assignment
+        scholar:    { bonus: 0,  mult: 1.0 },
+        transit:    { bonus: 0,  mult: 1.0 },
+        naturalist: { bonus: 0,  mult: 1.0 },
+        labourer:   { bonus: -20, mult: 1.0 },  // dock wages, mostly already spent — hard-luck, lean
+        pilgrim:    { bonus: -25, mult: 1.0 }   // ascetic — walks the route with little
+      },
+      // WEALTH HOOK (wired, effect 0 — FLAG): a `lucky`/`appraise` visitor obviously reads as wealth-relevant,
+      // but there is NO canon economic modifier for signs/aptitudes yet, so this stays 0 until the red pen rules.
+      bonusForSpec: function (ch) { return 0; }
+    };
+    // deterministic per (character seed, background). PURE — the balance proof rolls this directly.
+    function computeStartingPurse(seedInt, visaId, ch) {
+      var t = STARTING_PURSE, rng = TD_RNG.make(((seedInt * 2654435761) ^ 0x9e3779b9) >>> 0 || 1);
+      var base = rng.int(t.base.min, t.base.max);
+      var mod = (visaId && t.byVisa[visaId]) ? t.byVisa[visaId] : { bonus: 0, mult: 1 };
+      return Math.max(0, Math.round(base * (mod.mult || 1) + (mod.bonus || 0) + t.bonusForSpec(ch || null)));
+    }
+    // mint the rolled value into the purse (LIGHT — fewest coins). Re-callable: picking a visa re-grants from
+    // the SAME per-character base roll, so the background shift applies cleanly and stays deterministic.
+    function grantStartingPurse(visaId) {
+      var v = computeStartingPurse(lifeN, visaId, character);
+      if (typeof TD_ECON !== "undefined") TD_ECON.setPurse(character.purse, v); return v;
+    }
+
     function freshCharacter() {
       meters = { hp: 100, hpMax: 100, fatigue: 0, fatigueMax: 100, satiation: 100, satiationMax: 100, comfort: 0 };
       character = { ticket: null, background: null, signalsSeen: new Set(), events: { clicks: [], brassRejected: false, anchorRejected: false } };
@@ -148,9 +186,13 @@ var TD_GAME = (function () {
         meters.hp = hpm; meters.hpMax = hpm;
         character.name = makeVisitorName(crng);   // CHARACTER E — stored for the pinned name Easter eggs
       }
-      // starting gear: a weapon + armour across the 11 slots (Gate 7 A).
-      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("light", "shortsword"); }
-      character.purse = { copper: 0, silver: 0, gold: 0 };   // coins picked up in the descent (weight -> encumbrance)
+      // STARTING LOADOUT (operator ruling): a MINIMAL kit — the barest clothes-on-your-back (unarmoured, unarmed
+      // — the aggregate falls back to "your fists"). The point is the SHOPPING TRIP: you walk into town with a
+      // coin purse and outfit yourself at the counters. FLAG: an unarmed start is deliberately bare (fists are
+      // weak); add a token blade here if playtest finds floor 1 too punishing before the shops.
+      if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) { character.equipment = TD_RESOLVE.GEAR.startingSet("unarmored", null); }
+      character.purse = { copper: 0, silver: 0, gold: 0 };
+      grantStartingPurse(null);   // the BASE roll (deterministic per character); a chosen visa re-grants with its shift in pickVisa
       character.vault = 0;   // GATE 4 — bank-vault balance (copper-equiv VALUE; vaulted coins weigh nothing)
       character.level = 1; character.xp = 0;   // XP + LEVELS — the progression spine (meta; kills + descent accrue)
       // the run-context shared with the dungeon controller: one inventory, one
@@ -168,6 +210,7 @@ var TD_GAME = (function () {
       spawnPopulation();                                  // per-screen actors: walkers, crowd, troop
       lastEvent = null; lastUrgent = false;
       logMsg("Welcome to the harbour. Mind the monsters; don't feed the guides.");
+      logMsg("You arrive with a coin purse and the clothes you stand in. The Bureau recommends arriving equipped. The Bureau recommends much. The shops are open.");
     }
 
     // CHARACTER E — the staged CREATION FLOW at the Agency: WELCOME -> sign -> visa -> allocate the pool
@@ -230,7 +273,10 @@ var TD_GAME = (function () {
       var v = CS.VISAS[id]; if (!v) return;
       character.visa = id; recomputeStats();
       character.sheet = CS.grantVisaSignature(CS.blankSheet(), id);
-      character.equipment = (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) ? TD_RESOLVE.GEAR.startingSet(v.armor, v.weapon) : character.equipment;
+      // STARTING LOADOUT ruling: the visa grants STATS + a fatter/leaner PURSE, NOT a pre-filled kit — the kit
+      // stays MINIMAL and you outfit yourself at the counters. (The visa's weapon/armor fields are kept as
+      // flavour / a future proficiency-or-discount hook; they no longer auto-equip a full set. FLAG.)
+      grantStartingPurse(id);   // re-grant from the same per-character base roll, now with this background's shift
       character.background = { id: id, name: v.name, disposition: v.disposition };
       alloc = { pointsLeft: CS.POOL.POINTS, deltas: {}, picks: {}, base: cloneStats(character.stats) };   // allocation rides on the post-visa stats
       intakeStage = "allocate"; intakeSel = 0;
@@ -505,7 +551,7 @@ var TD_GAME = (function () {
     // reaction hook is where a FUTURE infatuation tax would fold in — none built now). Tenants drive
     // which shops exist; the data here is freely editable. (PRICES/BUYBACK/SERVICES = RED-PEN TUNABLE.)
     var SHOP_STOCK = {
-      store:      ["lantern", "rope", "torch", "pitons", "waterskin", "sack", "incognito"],   // GATE 5 R1: camping/light/descent + the incognito coat (FLAG: belongs in a Haberdasher once one exists)
+      store:      ["out_dagger", "out_jerkin", "lantern", "rope", "torch", "pitons", "waterskin", "sack", "incognito"],   // STARTING LOADOUT: a BASIC weapon + BASIC armour lead the outfitter's stock so the shopping trip can arm you; then camping/light/descent + the incognito coat
       apothecary: ["bandage", "tincture", "antidote", "salve"],
       bodega:     ["ration", "hotdog", "biscuit", "candle"],
       bookstore:  ["book", "map_scrap", "pamphlet", "ledger"],
@@ -536,6 +582,14 @@ var TD_GAME = (function () {
       pamphlet:  { kind: "pamphlet",  glyph: "=", name: "a Bureau pamphlet", weight: 0.1, desc: "'YOUR COMMUTE & YOU.' Improving, allegedly." },
       ledger:    { kind: "ledger",    glyph: "=", name: "an old ledger",     weight: 2,   desc: "Columns of names, half struck through. Lore for the patient." }
     };
+    // STARTING LOADOUT (outfitting run): the outfitter's BASIC weapon + BASIC armour — real weapon/armour
+    // items (they equip on pick-up / from the pack, same shape as the dungeon's drops) with EXPLICIT, tunable
+    // posted prices so the purse↔price math is clean. Kept cheap so a median purse can afford ONE + rations.
+    if (typeof TD_RESOLVE !== "undefined" && TD_RESOLVE.GEAR) {
+      var _Gd = TD_RESOLVE.GEAR.WEAPONS.dagger, _Gj = TD_RESOLVE.GEAR.armorPiece("body", "light");
+      ITEM_TPL.out_dagger = { kind: "weapon", slot: "rightHand", glyph: ")", name: "a plain dagger", weight: _Gd.weight, bulk: _Gd.bulk, type: _Gd.type, hands: _Gd.hands || 1, verb: _Gd.verb, spec: _Gd, value: _Gd.value, price: 40, desc: "A blade for close, honest disagreements — the Outfitter's cheapest honest steel." };
+      ITEM_TPL.out_jerkin = { kind: "armor", slot: "body", glyph: "[", name: "a padded jerkin", weight: _Gj.weight, bulk: 4, spec: _Gj, value: _Gj.value, price: 45, desc: "Padded leather over the chest — light, and a great deal better than your own coat." };
+    }
     function makeStockItem(id) { var t = ITEM_TPL[id]; if (!t) return null; var it = {}; for (var k in t) it[k] = t[k]; return it; }
     // a coin figure as denominations (gold/silver/copper) — the in-world unit; never a bare "value".
     function coinLabel(v) { var m = TD_ECON.mint(v), s = []; if (m.gold) s.push(m.gold + "g"); if (m.silver) s.push(m.silver + "s"); if (m.copper || !s.length) s.push(m.copper + "c"); return s.join(" "); }
@@ -1653,6 +1707,10 @@ var TD_GAME = (function () {
       intakeMove: intakeMove, intakeChoose: intakeChoose, intakeCancel: intakeCancel, chooseBackground: chooseBackground,
       intakeAdjust: intakeAdjust, allocReset: allocReset, pickSign: pickSign, pickSex: pickSex, pickVisa: pickVisa,
       _intakeOpen: function () { return intakeOpen; }, _intakeStage: function () { return intakeStage; }, _backgrounds: function () { return intakeList(); },
+      _startingPurseTable: function () { return STARTING_PURSE; }, _computeStartingPurse: function (seedInt, visaId) { return computeStartingPurse(seedInt, visaId, null); },   // STARTING PURSE — the tunable table + the pure deterministic roll (the balance proof calls this directly)
+      _purse: function () { return character.purse; }, _purseValue: function () { return (typeof TD_ECON !== "undefined") ? TD_ECON.value(character.purse) : 0; },
+      _postedPrice: function (itemId) { var it = makeStockItem(itemId); return (it && typeof TD_ECON !== "undefined") ? TD_ECON.buyPrice(it, null) : null; },   // the OUTFITTER'S posted buy price for a stock item (the balance proof reads real prices)
+      _shopStock: function (kind) { return (SHOP_STOCK[kind] || []).slice(); },
       say: function (t) { logMsg(t); },   // the Bureau speaks during play (presentation flavour)
       // general host hook: append a line to the active screen's FIELD LOG (dungeon log in the dive, else the
       // town/shared log). Append-only — does NOT clobber lastEvent. Used by the play-map EMERGENCY channel so an
