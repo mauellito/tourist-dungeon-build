@@ -42,7 +42,9 @@ var TD_LATTICE = (function () {
     for (var L = 1; L < depth; L++) {   // no branch off the deepest level (nothing deeper to branch toward)
       if (!rng.chance(frac)) continue;
       var anchor = anchorAt(L); if (!anchor) continue;
-      var len = rng.int(BRANCH_MIN, BRANCH_MAX);
+      // a branch goes DEEPER than its anchor but stays WITHIN the spine's depth range (it never runs past the
+      // true bottom): cap the chain so branch levels are L+1..depth. Off the deepest eligible level this is 1.
+      var len = Math.max(1, Math.min(rng.int(BRANCH_MIN, BRANCH_MAX), depth - L));
       var quest = rng.chance(QUEST_ROUTE_CHANCE);   // QUEST_ROUTE vs DEAD_END
       var prev = anchor, chain = [];
       for (var i = 1; i <= len; i++) {

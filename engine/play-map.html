@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "6d263614";</script>
+<script>window.__BUILD = "6f63ae68";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1259,7 +1259,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "STARTING LOADOUT — you now arrive with a COIN PURSE and the clothes you stand in (no pre-filled kit), and outfit yourself at the shops before diving. The purse is rolled per character within a range and shifted by your background — a moneyed Tourist or Diplomat arrives flush, a Labourer or Pilgrim lean; you see the actual coins, not a feel-word. The Outfitter now stocks a basic blade and padded jerkin, and a median purse buys a weapon + a couple of rations OR armour + rations — but not the whole kit. Choose. The Bureau recommends arriving equipped. The Bureau recommends much.";
+  var VERSION = "THE LATTICE — the descent is no longer a single ladder. There is ONE true stair path down through the levels, but some floors now carry an EXTRA stair opening a side-route: a short chain of one to three floors that mostly DEAD-ENDS, with the occasional prospective quest-route. Every stair is HONEST — real, usable, and it leads where it leads — but which one is the true descent is never labelled. That is yours to read. (Dead-end floors run a touch richer so exploring isn't pure loss. Proven over 240 worlds: exactly one true path, every branch bounded, you can always reach the bottom.)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
