@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "74914737";</script>
+<script>window.__BUILD = "6d263614";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -357,6 +357,9 @@ window.__initPlayMap = function () {
   }
   function newGame(seed) {
     world = TD_GEN.generate(seed, { depth: 6 });   // GATE 5: the vertical slice is a 6-floor dive (uses the generator's existing depth opt; was the 3-4 default)
+    // LATTICE — hang optional DEAD-END / QUEST-ROUTE branches off ~1/3 of the spine levels: extra HONEST,
+    // unlabelled stairs to short side-chains. The true descent spine is unchanged; branches are a choice.
+    if (typeof TD_LATTICE !== "undefined") TD_LATTICE.addBranches(world, seed);
     // CONTIGUOUS FLOORS 3c — the SG returns as a stair-reached PORTAL off its sublevel: the level's contiguous
     // floor carries a down-stair (portal) to the SET-PIECE node's own floor (R11 mechanic intact); that floor's
     // continue-stair carries the dive onward. The SG is NEVER a room in the contiguous floor.
@@ -1273,7 +1276,7 @@ window.__initPlayMap = function () {
   // CURRENT ORDER PRESERVED — rng.js ... feel.js. Keep in sync with sync_build.py's self-check.
   var files = [
     "rng.js", "resolve.js", "bestiary.js", "stats.js", "charsys.js", "burden.js", "econ.js", "status.js", "vaultfmt.js", "vaultlib.js", "lawsuite.js",
-    "assembler.js", "checker.js", "vaults.js", "generator.js", "interpreter.js", "gen2.js", "sg_vault.js", "mapmode.js",
+    "assembler.js", "checker.js", "vaults.js", "generator.js", "lattice.js", "interpreter.js", "gen2.js", "sg_vault.js", "mapmode.js",
     "voices.js", "towngen.js", "townlaws.js", "towngen2.js", "townmap.js",
     "sfx.js", "game.js", "ui.js", "feel.js"
   ];
