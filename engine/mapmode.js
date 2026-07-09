@@ -414,30 +414,62 @@ var TD_MAP = (function () {
   // up-stair (the multi-stair / dead-end lattice is operator-reserved, a later round): the first cross-level
   // DOWN edge -> the one `>` (dest = the deeper node = the next sublevel's entry); the first cross-level UP
   // edge -> the one `<` (dest = the shallower node). Extra cross-level edges are FLAGGED, not built.
-  function classifySublevelEdges(level, edges, nodeLevel, downCell, upCell, setPieceSet) {
-    setPieceSet = setPieceSet || {};
-    var corridors = [], downCand = [], upCand = [], portalCand = [];
+  // LATTICE — classify a sublevel's edges into STAIRS (cross-SUBLEVEL) vs CORRIDORS (same-sublevel), by
+  // SUBLEVEL IDENTITY (`sub`), not raw level number, so BRANCH sublevels (which may share a depth with the
+  // spine) are distinct floors reached by their own stairs. One stair per DISTINCT target sublevel: same-sub
+  // targets collapse to one corridor/stair (a normal world keeps its single spine down + up); a target on a
+  // DIFFERENT sublevel is a stair (down if deeper, up if shallower). MULTI-STAIR is realised for the spine
+  // descent (nearest deeper sub) + the up + any edge marked `branch` (a dead-end / quest-route opening); other
+  // extra cross-sub edges (e.g. an express shortcut) stay FLAGGED, not built (backward-compatible). Stairs are
+  // HONEST + never labelled: which down-stair is the true descent is not marked. `symbol` stays plain >/< (the
+  // stair-symbol<->cipher glyph mapping is OPERATOR-RESERVED — the field is left, no glyphs invented).
+  function classifySublevelEdges(sub, edges, nodeSub, nodeLevel, downCell, upCell, setPieceSet, subLevel, branchCells) {
+    setPieceSet = setPieceSet || {}; branchCells = branchCells || [];
+    var corridors = [], downGroups = {}, upGroups = {}, portalGroups = {};
     (edges || []).forEach(function (e) {
-      var fl = nodeLevel[e.from], tl = nodeLevel[e.to];
-      if (fl !== level) return;   // only edges OUT of this sublevel are realised here
-      if (setPieceSet[e.to]) { portalCand.push(e); }                                      // 3c — a SET-PIECE neighbour is a PORTAL to its own floor (the SG stays separate)
-      else if (tl === level) { corridors.push({ id: e.id, from: e.from, to: e.to }); }    // same-level ordinary -> walk
-      else if (typeof tl === "number" && tl > level) { downCand.push(e); }                // descend
-      else if (typeof tl === "number" && tl < level) { upCand.push(e); }                  // climb
+      if (nodeSub[e.from] !== sub) return;   // only edges OUT of this sublevel are realised here
+      var ts = nodeSub[e.to], tl = nodeLevel[e.to];
+      if (setPieceSet[e.to]) { (portalGroups[ts] = portalGroups[ts] || []).push(e); }
+      else if (ts === sub) { corridors.push({ id: e.id, from: e.from, to: e.to }); }        // same sublevel -> walk (Model A)
+      else if (typeof tl === "number" && tl > subLevel) { (downGroups[ts] = downGroups[ts] || []).push(e); }   // a deeper sublevel -> descend
+      else if (typeof tl === "number" && tl < subLevel) { (upGroups[ts] = upGroups[ts] || []).push(e); }       // a shallower sublevel -> climb
+      else { (downGroups[ts] = downGroups[ts] || []).push(e); }   // same-depth-but-different-sub (a sibling branch) reads as a descent branch
     });
-    var stairs = [], extra = 0;
-    // 3c — a SET-PIECE PORTAL is the descent of choice (the SG sits on the spine): it takes the down-stair
-    // cell; the SG floor's own continue-stair carries the dive onward. Else the first cross-level down edge.
-    if (portalCand.length && downCell) { stairs.push({ x: downCell.x, y: downCell.y, dir: "down", dest: portalCand[0].to, edgeId: portalCand[0].id, portal: true }); extra += (portalCand.length - 1) + downCand.length; }
-    else if (downCand.length && downCell) { stairs.push({ x: downCell.x, y: downCell.y, dir: "down", dest: downCand[0].to, edgeId: downCand[0].id }); extra += (downCand.length - 1); }
-    if (upCand.length && upCell) { stairs.push({ x: upCell.x, y: upCell.y, dir: "up", dest: upCand[0].to, edgeId: upCand[0].id }); extra += (upCand.length - 1); }
-    if (extra) console.warn("composeSublevel: Sublevel " + level + " has " + extra + " extra cross-level/portal edge(s) beyond the single up/down — FLAGGED (multi-stair lattice is operator-reserved, not built).");
+    var stairs = [], extra = 0, bi = 0;
+    function branchCell() { for (; bi < branchCells.length; bi++) { var c = branchCells[bi]; if (!(downCell && c.x === downCell.x && c.y === downCell.y) && !(upCell && c.x === upCell.x && c.y === upCell.y)) { bi++; return c; } } return null; }
+    // the SPINE descent takes the down-stair cell; branches take spare room centres. The spine = the NON-branch
+    // deeper sublevel (a portal, or a plain down edge); if every down edge is branch-marked, the nearest is spine.
+    var downSubs = Object.keys(downGroups).concat(Object.keys(portalGroups));
+    var spineSub = null, spineDepth = 1e9;
+    downSubs.forEach(function (s) { var g = portalGroups[s] || downGroups[s]; var tl = nodeLevel[g[0].to]; var branchy = !portalGroups[s] && g.every(function (x) { return x.branch; }); if (!branchy && tl < spineDepth) { spineDepth = tl; spineSub = s; } });
+    if (spineSub === null) downSubs.forEach(function (s) { var g = portalGroups[s] || downGroups[s]; var tl = nodeLevel[g[0].to]; if (tl < spineDepth) { spineDepth = tl; spineSub = s; } });
+    downSubs.forEach(function (s) {
+      var portal = !!portalGroups[s], g = portal ? portalGroups[s] : downGroups[s], e = g[0];
+      var isBranch = g.some(function (x) { return x.branch; });
+      var cell = (s === spineSub) ? downCell : (isBranch ? branchCell() : null);   // spine -> the down cell; a BRANCH edge -> a spare room-centre cell; else FLAG (unbuilt)
+      if (!cell) { extra += g.length; return; }
+      stairs.push({ x: cell.x, y: cell.y, dir: "down", symbol: ">", dest: e.to, edgeId: e.id, portal: portal || undefined, branch: (s === spineSub) ? undefined : true });
+      extra += (g.length - 1);
+    });
+    // UP: the shallowest up-sublevel takes the up-stair cell (the way you came); extra up-subs flagged.
+    var upSubs = Object.keys(upGroups); var upSub = null, upDepth = -1;
+    upSubs.forEach(function (s) { var tl = nodeLevel[upGroups[s][0].to]; if (tl > upDepth) { upDepth = tl; upSub = s; } });
+    upSubs.forEach(function (s) {
+      var g = upGroups[s], e = g[0], cell = (s === upSub) ? upCell : branchCell();
+      if (!cell) { extra += g.length; return; }
+      stairs.push({ x: cell.x, y: cell.y, dir: "up", symbol: "<", dest: e.to, edgeId: e.id });
+      extra += (g.length - 1);
+    });
+    if (extra) console.warn("composeSublevel: sublevel " + sub + " has " + extra + " unrealised extra cross-sublevel edge(s) (non-spine, non-branch — e.g. express/annex) — FLAGGED, not built.");
     return { stairs: stairs, corridors: corridors, extraCrossLevel: extra };
   }
   // composeSublevel(seed, level, nodes [, edges, nodeLevel]) — nodes: [{ id, kind }] the ORDINARY nodes at
   // this sublevel (NO set-piece). edges/nodeLevel (optional, Phase 2): classify cross-level -> stairs,
   // same-level -> corridors.
-  function composeSublevel(seed, level, nodes, edges, nodeLevel, setPieceSet) {
+  function composeSublevel(seed, level, nodes, edges, nodeLevel, setPieceSet, ctx) {
+    ctx = ctx || {};
+    var sub = ctx.sub || ("L" + level);   // LATTICE — sublevel IDENTITY (defaults to "L"+level, so a normal world is byte-identical)
+    var nodeSub = ctx.nodeSub || (function () { var ns = {}; Object.keys(nodeLevel || {}).forEach(function (id) { ns[id] = "L" + nodeLevel[id]; }); return ns; })();
     nodes = (nodes || []).filter(function (n) { return n && n.nodeType !== "SET-PIECE"; });   // SG stays its own floor
     // ROOM >= NODE GUARANTEE: reseed the gen2 floor (deterministically — by varying the compose key per try)
     // until it has at least as many rooms as ordinary nodes, so EVERY node gets a real room (none on a spare
@@ -445,8 +477,11 @@ var TD_MAP = (function () {
     // -> same try sequence -> same chosen floor. If even the best (after MAXTRY) still falls short, the seam
     // FLAG below catches it (never punch).
     var need = nodes.length, MAXTRY = 10, comp = null, rooms = null;
+    // compose key: the SPINE (sub === "L"+level) keeps the NUMERIC key (byte-identical to the pre-lattice floor);
+    // a BRANCH sublevel keys by its distinct `sub` so a branch at the same depth gets its own floor.
+    var compKey = (sub === ("L" + level)) ? ("SUBLEVEL_" + level) : ("SUBLEVEL_" + sub);
     for (var t = 0; t < MAXTRY; t++) {
-      var cand = composeNodeGen2(seed, "SUBLEVEL_" + level + (t ? ":" + t : ""), Math.max(2, need), level || 1);
+      var cand = composeNodeGen2(seed, compKey + (t ? ":" + t : ""), Math.max(2, need), level || 1);
       if (!cand) continue;
       var rm = sgFloorRooms(cand.grid);
       if (!comp || rm.length > rooms.length) { comp = cand; rooms = rm; }   // keep the most-rooms floor seen
@@ -469,8 +504,12 @@ var TD_MAP = (function () {
       }
     });
     if (seam) console.warn("composeSublevel: Sublevel " + level + " had " + nodes.length + " nodes but only " + rooms.length + " rooms — " + seam + " placed on spare cells / dropped (FLAGGED, not punched).");
-    // Phase 2 — edges -> stairs (cross-level) + corridors (same-level). Off without edges (Phase 1 behaviour).
-    var edgeModel = (edges && nodeLevel) ? classifySublevelEdges(level, edges, nodeLevel, comp.downStair, comp.upStair, setPieceSet)
+    // Phase 2 / LATTICE — edges -> stairs (cross-SUBLEVEL) + corridors (same-sublevel). BRANCH stairs land on
+    // spare ROOM-CENTRE cells (distinct rooms, honest + unlabelled). Off without edges (Phase 1 behaviour).
+    var usedCells = {}; if (comp.downStair) usedCells[comp.downStair.x + "," + comp.downStair.y] = 1; if (comp.upStair) usedCells[comp.upStair.x + "," + comp.upStair.y] = 1;
+    placements.forEach(function (p) { usedCells[p.x + "," + p.y] = 1; });
+    var branchCells = rooms.map(function (r) { return { x: r.cx, y: r.cy }; }).filter(function (c) { return !usedCells[c.x + "," + c.y]; });   // spare room centres for branch stairs
+    var edgeModel = (edges && nodeLevel) ? classifySublevelEdges(sub, edges, nodeSub, nodeLevel, comp.downStair, comp.upStair, setPieceSet, level, branchCells)
                                          : { stairs: [], corridors: [], extraCrossLevel: 0 };
     return {
       grid: g, rawGrid: comp.rawGrid, source: "sublevel", level: level, W: comp.W, H: comp.H,
@@ -483,15 +522,21 @@ var TD_MAP = (function () {
   }
   // Gather the live world's ORDINARY nodes at a sublevel + the touching edges + a node->level map, then
   // compose the one contiguous floor for that sublevel (the live wiring's entry point; deterministic).
-  function composeSublevelLive(world, seed, cl) {
-    var nodeLevel = {}, nodes = [], setPieceSet = {};
+  function subOf(world, id) { var m = world.nodes[id] || {}; return m.sub || ("L" + (m.level || 0)); }   // LATTICE — sublevel identity (defaults to "L"+level: normal worlds are unchanged)
+  // compose the ONE contiguous floor for a SUBLEVEL. `sub` is the sublevel id (a normal world passes "L"+cl,
+  // identical to before; a lattice world passes a spine/branch sub). The floor's DANGER level is the sub's own
+  // nodes' level (depth-reached), tracked separately from identity so a branch at depth 4 bands like depth 4.
+  function composeSublevelLive(world, seed, sub) {
+    if (typeof sub === "number") sub = "L" + sub;   // back-compat: a numeric level arg -> the "L"+level sub
+    var nodeLevel = {}, nodeSub = {}, nodes = [], setPieceSet = {}, subLevel = 0, seen = false;
     Object.keys(world.nodes).forEach(function (id) {
-      var m = world.nodes[id]; nodeLevel[id] = m.level;
+      var m = world.nodes[id]; nodeLevel[id] = m.level; nodeSub[id] = subOf(world, id);
       if (m.nodeType === "SET-PIECE") setPieceSet[id] = 1;   // 3c — SET-PIECE neighbours become portals, not rooms
-      if (m.level === cl && m.nodeType !== "SET-PIECE") nodes.push({ id: id, kind: (id.indexOf("hub") === 0 ? "hub" : id.indexOf("goal") === 0 ? "goal" : (id.indexOf("vault") === 0 ? "vault" : "pocket")), nodeType: m.nodeType });
+      if (nodeSub[id] === sub && m.nodeType !== "SET-PIECE") { nodes.push({ id: id, kind: (id.indexOf("hub") === 0 ? "hub" : id.indexOf("goal") === 0 ? "goal" : (id.indexOf("vault") === 0 ? "vault" : "pocket")), nodeType: m.nodeType }); subLevel = m.level; seen = true; }
     });
-    var edges = (world.edges || []).filter(function (e) { return nodeLevel[e.from] === cl || nodeLevel[e.to] === cl; });
-    return composeSublevel(seed, cl, nodes, edges, nodeLevel, setPieceSet);
+    if (!seen) return null;
+    var edges = (world.edges || []).filter(function (e) { return nodeSub[e.from] === sub || nodeSub[e.to] === sub; });
+    return composeSublevel(seed, subLevel, nodes, edges, nodeLevel, setPieceSet, { sub: sub, nodeSub: nodeSub });
   }
   // R10/R11 — the §24 SMASH-AND-GRAB set-piece floor (PLACEHOLDER). DEPENDENCY FLAG: the operator's real
   // authored SG grid is NOT in the repo. This placeholder (a chamber with pedestals `$` + an escape `>` to the
@@ -960,8 +1005,9 @@ var TD_MAP = (function () {
       // renders as ONE contiguous floor: every ordinary node on that level is a ROOM joined by gen2 corridors,
       // and only the single up/down STAIRS change sublevels. The SG set-piece (3c) + the entrance (level 0) keep
       // the node-floor path. composeSublevelLive is deterministic, so re-entry renders the identical floor.
+      var curSub = subOf(world, ctrl.node);   // LATTICE — the current node's SUBLEVEL identity (spine "L"+cl, or a branch sub); "L"+cl for a normal world
       var ordinarySublevel = (cl >= 1 && nodeType !== "SET-PIECE" && !meta.authored && !meta.vault && typeof TD_GEN2 !== "undefined");
-      var comp = ordinarySublevel ? composeSublevelLive(world, seed, cl) : null;
+      var comp = ordinarySublevel ? composeSublevelLive(world, seed, curSub) : null;
       if (!comp) { comp = composeNode(seed, ctrl.node, v.options.length, cl, nodeType, authoredData); ordinarySublevel = false; }   // depth -> features; nodeType + authored -> registry
       // R6 — STAIR ARRIVAL CONTINUITY: the floor is identical per node (deterministic seed, untouched); only
       // WHICH existing stair cell we spawn on changes. Climbing BACK up to a floor (arrivedVia "up") lands you
@@ -1122,7 +1168,7 @@ var TD_MAP = (function () {
       // on top at render; what you've seen stays remembered when you leave and return.
       // MAP MEMORY persists per FLOOR — keyed by SUBLEVEL for the contiguous floors (all the level's nodes
       // share one floor), else per node (SET-PIECE / authored / entrance).
-      var exKey = (comp.source === "sublevel") ? ("L" + cl) : ctrl.node;
+      var exKey = (comp.source === "sublevel") ? ("SUB:" + curSub) : ctrl.node;   // LATTICE — map memory keyed by SUBLEVEL identity (branches remember separately)
       ctrl.explored = ctrl.exploredByNode[exKey] || (ctrl.exploredByNode[exKey] = new Set());
       reveal(comp.spawn.x, comp.spawn.y);
       ctrl.pendingDoor = null;
@@ -2484,7 +2530,8 @@ var TD_MAP = (function () {
     registerAuthored: function (level) { return registerAuthored(level); },
     authoredLevel: function (id) { return AUTHORED_LEVELS[id] || null; },
     // CONTIGUOUS FLOORS (Model A) Phase 1 — the offline sublevel composer + a reachability probe (test hooks).
-    composeSublevel: function (seed, level, nodes, edges, nodeLevel) { return composeSublevel(seed, level, nodes, edges, nodeLevel); },
+    composeSublevel: function (seed, level, nodes, edges, nodeLevel, setPieceSet, ctx) { return composeSublevel(seed, level, nodes, edges, nodeLevel, setPieceSet, ctx); },
+    composeSublevelLive: function (world, seed, sub) { return composeSublevelLive(world, seed, sub); }, subOf: function (world, id) { return subOf(world, id); },
     _reachSet: function (grid, ox, oy) { return sgReachSet(grid, ox, oy); },
     _gen2Opts: GEN2_OPTS,
     // live spawn densities + coin denomination mix — the SINGLE SOURCE the balance sim reads (no re-hardcoding).
