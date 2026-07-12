@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "cc6e0272";</script>
+<script>window.__BUILD = "5af61c0c";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1259,7 +1259,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "FLOORS THAT READ — walking should be fun. The floor generator is rebuilt CORRIDOR-FIRST: a broad municipal circuit (a 2-wide concourse with looping side-halls) carries the traffic, and legible CHAMBERS bud OFF it — rect halls, pillared halls, rotundas — each a destination you enter on purpose through a single door. No more organic blobs bleeding into dithering tunnels; a room reads as a room, a hall as a hall. (Proven over 220 floors: >=55% room, <=35% corridor, >=80% single-door, looping circulation, no dithering, no unpaid dead-ends — and every KEEP law still holds.)";
+  var VERSION = "THE JOURNEY FLOOR — floors are now TRAVERSE: the up and down stairs sit in halls on OPPOSITE sides, and single-file corridors loop between them so the walk crosses the whole floor with real choices (the true route is unknown from the start). Chambers of varying shape bud off the halls, MOSTLY single-door but with two-door pass-throughs and NESTED SUITES — an office behind an office, very Bureau. (Proven over 220 floors: rooms >=55%, corridor <=35% and single-file, ~70% single-door with no room over two, room-off-room suites on most floors, looping circulation, no dithering, no unpaid dead-ends, every KEEP law held. The other archetypes — circuit/labyrinth/warren/cavern — are the next rounds.)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

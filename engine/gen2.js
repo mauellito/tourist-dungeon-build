@@ -388,19 +388,26 @@ function carveHRun(G,x0,x1,y){var s=x1>=x0?1:-1;for(var x=x0;x!==x1+s;x+=s)if(in
 function carveVRun(G,y0,y1,x){var s=y1>=y0?1:-1;for(var y=y0;y!==y1+s;y+=s)if(inb(G,x,y))G[y][x]='.';}
 function carveCircuit(G,r){
   var W=G[0].length,H=G.length,m=2;
+  // the ladder spans most of the floor so its corner rooms sit far apart (traverse separation); the bands above
+  // y1 / below y2 hold the NW / SE stair halls.
   var y1=Math.max(m+2,Math.min(H-m-3,Math.round(H*0.30)+ri(r,-1,1)));
   var y2=Math.max(y1+5,Math.min(H-m-3,Math.round(H*0.72)+ri(r,-1,1)));
   var xL=m+2,xR=W-m-3;
-  var nrails=(W>=64)?4:3, xs=[];   // >=3 rails -> >=2 enclosed loops (cycles>=2 by construction)
+  var nrails=3, xs=[];   // exactly 3 rails -> 2 enclosed loops (cycles>=2) while keeping corridor cells low
   for(var i=0;i<nrails;i++){var xv=Math.round(xL+(xR-xL)*(i/(nrails-1)));xv=Math.max(xL+1,Math.min(xR-1,xv+ri(r,-1,1)));xs.push(xv);}
   xs.sort(function(a,b){return a-b;});
   // the avenues span EXACTLY between the outer rails -> a CLOSED ladder (no overhang stubs, no naked dead-ends).
-  // BOTH avenues are 2-WIDE: the extra lane gives routing redundancy (an edge door on one lane never chokes the
-  // circuit) and reads as broad municipal halls. Rails stay 1-wide. Still zero wiggle, still loopy.
-  carveHRun(G,xs[0],xs[xs.length-1],y1);carveHRun(G,xs[0],xs[xs.length-1],y1+1);
-  carveHRun(G,xs[0],xs[xs.length-1],y2);carveHRun(G,xs[0],xs[xs.length-1],y2-1);
+  // SINGLE-FILE by default (operator rule): the two avenues + rails are 1-wide. Routing redundancy comes from
+  // OPTIONALITY (two edge-disjoint routes + rails), not from width. A SHORT 2-wide CONCOURSE flourish remains on
+  // one avenue stretch (a landmark, kept well under 10% of corridor cells).
+  carveHRun(G,xs[0],xs[xs.length-1],y1);
+  carveHRun(G,xs[0],xs[xs.length-1],y2);
   xs.forEach(function(xv){carveVRun(G,y1,y2,xv);});
-  var concourse={y:y1,row2:y1+1,x0:xs[0],x1:xs[xs.length-1]};
+  // the concourse: a SHORT 2-wide flourish (~5 cells) on the top avenue near a rail — a landmark, kept well
+  // under 10% of corridor cells (corridors are single-file by default).
+  var ci=xs[0]+2, cj=Math.min(xs[1]-2,ci+2);   // 3-cell interior flourish, clear of both rails (no junction 2x2s)
+  if(cj>ci)carveHRun(G,ci,cj,y1+1);
+  var concourse={y:y1,row2:y1+1,x0:ci,x1:cj};
   return {y1:y1,y2:y2,xs:xs,xL:xL,xR:xR,concourse:concourse};
 }
 
@@ -433,23 +440,56 @@ function genArch(W,H,r,roomTarget,skin,depth){
     [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(dd){var dx=dd[0],dy=dd[1];var wx=x+dx,wy=y+dy,bx=x+2*dx,by=y+2*dy;if(inb(G,bx,by)&&G[wy][wx]==='#'&&G[by][bx]==='#')sites.push({x:x,y:y,dx:dx,dy:dy});});
   }
   for(var i=sites.length-1;i>0;i--){var j=ri(r,0,i),t=sites[i];sites[i]=sites[j];sites[j]=t;}
-  // the HUB hall buds first, biggest, near the concourse (it may later earn a 2nd door — Round 2 rule).
-  var target=Math.max(6,roomTarget), si=0, guard=sites.length*3;
-  var hubShape='great';
+  // rooms bud off the circuit (varied shapes) — destinations along + off the two routes.
+  var target=Math.max(8,roomTarget+2), si=0, guard=sites.length*3;
   while(rooms.length<target && si<sites.length && guard-->0){
     var s=sites[si++];
     if(G[s.y][s.x]!=='.')continue;   // the site's corridor cell may have been consumed
-    var shape=(rooms.length===0)?hubShape:pickShape(r,budget);
-    var rm=tryBud(G,s.x,s.y,s.dx,s.dy,shape,r);
-    if(rm){ if(rooms.length===0)rm.landmark=true,rm.hub=true; rooms.push(rm); }
+    var rm=tryBud(G,s.x,s.y,s.dx,s.dy,pickShape(r,budget),r);
+    if(rm)rooms.push(rm);
   }
-  // STAIRS AT ROOM CENTRES (KEEP): up '@' at the hub, down '>' at the farthest room's centre.
-  if(rooms.length){
-    G[rooms[0].cy][rooms[0].cx]='@';
-    var far=rooms[0],fd=-1;rooms.forEach(function(rr){if(rr===rooms[0])return;var dd=Math.abs(rr.cx-rooms[0].cx)+Math.abs(rr.cy-rooms[0].cy);if(dd>fd){fd=dd;far=rr;}});
-    if(far!==rooms[0])G[far.cy][far.cx]='>';
+  // TRAVERSE — the up + down stairs go in the most-NW and most-SE rooms (opposite sides of the floor, a long
+  // journey), so the walk crosses the whole floor via the ladder's two routes. The true route is unknown from
+  // the start; no vantage reveals it.
+  var upRoom=null,downRoom=null,uMin=1e9,dMax=-1e9;
+  rooms.forEach(function(rm){var a=rm.cx+rm.cy;if(a<uMin){uMin=a;upRoom=rm;}if(a>dMax){dMax=a;downRoom=rm;}});
+  if(upRoom){upRoom.hub=true;upRoom.landmark=true;}
+  // ROOMS OFF ROOMS (nested suites — an office behind an office, very Bureau): bud an INNER chamber off a
+  // room's FAR wall (away from its door), joined by one more door. Depth up to 3. Inner rooms are destinations
+  // + loot sites too. Try on a fraction of rooms so most floors carry at least one suite.
+  function budInner(outer){
+    var sides=[[0,-1],[0,1],[-1,0],[1,0]];
+    for(var i=sides.length-1;i>0;i--){var j=ri(r,0,i),t=sides[i];sides[i]=sides[j];sides[j]=t;}
+    for(var k=0;k<4;k++){
+      var dx=sides[k][0],dy=sides[k][1];
+      // a corridor cell just outside this wall means it's the door side (skip — inner rooms go into rock)
+      var midx=outer.cx+dx*((outer.w>>1)+1),midy=outer.cy+dy*((outer.h>>1)+1);
+      if(!inb(G,midx,midy)||G[midy][midx]!=='#')continue;
+      var w=ri(r,3,5),h=ri(r,3,4),nx,ny,doorX,doorY;   // inner suite chambers are SMALL, so they fit behind the outer often
+      if(dx!==0){nx=(dx>0)?(outer.x+outer.w+1):(outer.x-1-w);ny=outer.cy-(h>>1);doorX=(dx>0)?(outer.x+outer.w):(outer.x-1);doorY=outer.cy;}
+      else{ny=(dy>0)?(outer.y+outer.h+1):(outer.y-1-h);nx=outer.cx-(w>>1);doorY=(dy>0)?(outer.y+outer.h):(outer.y-1);doorX=outer.cx;}
+      if(!boxClear(G,nx,ny,w,h))continue;
+      if(dx!==0){if(doorY<ny||doorY>ny+h-1)doorY=ny+(h>>1);}else{if(doorX<nx||doorX>nx+w-1)doorX=nx+(w>>1);}
+      var inner={x:nx,y:ny,w:w,h:h,cx:nx+(w>>1),cy:ny+(h>>1),shape:'rect',doors:1,nested:(outer.nested||1)+1};
+      paintShape(G,inner,r);G[doorY][doorX]='+';outer.doors=(outer.doors||1)+1;   // the outer room now has 2 doors (its corridor door + the inner passage) -> it reads as a suite, capped
+      return inner;
+    }
+    return null;
   }
-  return {grid:G,rooms:rooms,circuit:circuit};
+  // DOOR MIX via NESTING (the two-door rooms are the SUITE OUTERS — corridor door + nested passage — so the
+  // 2-door cap is guaranteed BY CONSTRUCTION: a room budded off a corridor gets at most its corridor door + one
+  // inner-suite door). Most rooms stay single-door; ~30% of eligible rooms open a suite -> ~25% two-door.
+  var suites=0;
+  rooms.slice().forEach(function(rm){
+    if(rm===upRoom||rm===downRoom||(rm.nested||1)>=3||(rm.doors||1)>=2)return;
+    if(r()<0.42){ var inner=budInner(rm); if(inner){rooms.push(inner);suites++; if(r()<0.30&&inner.nested<3){var i2=budInner(inner);if(i2)rooms.push(i2);}} }
+  });
+  // STAIRS AT ROOM CENTRES (KEEP): up '@' in the NW room, down '>' in the SE room (opposite sides).
+  var uR=upRoom||rooms[0], dR=downRoom;
+  if(!dR){var fd=-1;rooms.forEach(function(rr){if(rr===uR)return;var dd=Math.abs(rr.cx-uR.cx)+Math.abs(rr.cy-uR.cy);if(dd>fd){fd=dd;dR=rr;}});}
+  if(uR)G[uR.cy][uR.cx]='@';
+  if(dR&&dR!==uR)G[dR.cy][dR.cx]='>';
+  return {grid:G,rooms:rooms,circuit:circuit,upRoom:uR,downRoom:dR,suites:suites};
 }
 
 function generateLevel(seed,opts){
