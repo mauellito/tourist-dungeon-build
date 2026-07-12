@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "6f63ae68";</script>
+<script>window.__BUILD = "cc6e0272";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -902,7 +902,7 @@ window.__initPlayMap = function () {
   }
 
   // =========================================================== MESSAGE LOG ==
-  var NOTE_RE = /(You take|You eat|You apply|You strike|serve .* notice|amends your itinerary|swings open|inner door shut|find a seam|hidden pocket|present your ticket|Standard Admission|Guided Package|wake wonderfully|grow |Enter to accept|set down|put down|the Bureau)/i;
+  var NOTE_RE = /(You take|You pick up|You buy|You open the door|You eat|You apply|You strike|serve .* notice|amends your itinerary|swings open|inner door shut|find a seam|hidden pocket|grinds open|present your ticket|Standard Admission|Guided Package|wake wonderfully|grow |Enter to accept|set down|put down|the Bureau)/i;
   function tierOf(m) { if (m.urgent) return "crit"; if (NOTE_RE.test(m.text)) return "note"; return "routine"; }
   function renderLog(vw) {
     var msgs = vw.messages || [];
@@ -1259,7 +1259,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "THE LATTICE — the descent is no longer a single ladder. There is ONE true stair path down through the levels, but some floors now carry an EXTRA stair opening a side-route: a short chain of one to three floors that mostly DEAD-ENDS, with the occasional prospective quest-route. Every stair is HONEST — real, usable, and it leads where it leads — but which one is the true descent is never labelled. That is yours to read. (Dead-end floors run a touch richer so exploring isn't pure loss. Proven over 240 worlds: exactly one true path, every branch bounded, you can always reach the bottom.)";
+  var VERSION = "FLOORS THAT READ — walking should be fun. The floor generator is rebuilt CORRIDOR-FIRST: a broad municipal circuit (a 2-wide concourse with looping side-halls) carries the traffic, and legible CHAMBERS bud OFF it — rect halls, pillared halls, rotundas — each a destination you enter on purpose through a single door. No more organic blobs bleeding into dithering tunnels; a room reads as a room, a hall as a hall. (Proven over 220 floors: >=55% room, <=35% corridor, >=80% single-door, looping circulation, no dithering, no unpaid dead-ends — and every KEEP law still holds.)";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world

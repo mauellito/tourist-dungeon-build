@@ -326,6 +326,132 @@ function measure(G){
 // R2 (labyrinth): FEW rooms — most of the floor is corridor. Rooms are joined and threaded by long winding
 // halls + dead-end spurs (carveSpurs), pushing the hallway:room tile ratio past ~0.4:1.
 var SIZES={suite:{W:28,H:18,rooms:5},regular:{W:54,H:34,rooms:14},large:{W:68,H:42,rooms:20}};
+
+// ============================ NEW WORKED SHAPER — rooms & corridors + ACCRETION ============================
+// "Walking should be fun." Legible CHAMBERS placed by accretion (Brogue-style: attach a new room to an
+// existing room's wall via a door site), skinned as TD's failing civic architecture. Rooms are first-class
+// SHAPES with real walls + doorways. Single-region BY CONSTRUCTION (each room attaches to the cluster through
+// exactly one door). Round 2 adds corridor discipline (a concourse, loops, paid dead-ends); Round 3 landmarks.
+// Gate: ALLOW_LEGACY swaps back to the old winding-corridor shaper (loud debug floor on total failure).
+var ALLOW_LEGACY = false;
+function carveBox(G,x,y,w,h,ch){ for(var yy=y;yy<y+h;yy++)for(var xx=x;xx<x+w;xx++)if(inb(G,xx,yy))G[yy][xx]=ch; }
+// the rect [x..x+w-1,y..y+h-1] plus a 1-cell wall border (minus the anchor side) must be all '#', and stay
+// >=1 from the map edge. `skipSide`: 0=N 1=S 2=W 3=E (the side facing the anchor — its border may be the shared wall).
+function boxClear(G,x,y,w,h){
+  if(x<2||y<2||x+w>G[0].length-2||y+h>G.length-2)return false;
+  for(var yy=y-1;yy<y+h+1;yy++)for(var xx=x-1;xx<x+w+1;xx++)if(!inb(G,xx,yy)||G[yy][xx]!=='#')return false;
+  return true;
+}
+// SHAPE vocabulary — each returns bounding dims [w,h]. Node kinds map to shapes in generateLevel/mapmode.
+function pickShape(r,budget){
+  var t=r();
+  if(budget.cave>0 && t<0.03){budget.cave--;return 'cave';}                 // RARE — the works failing (<=1/floor)
+  if(t<0.16)return 'great';                                                  // great hall (large; >=2 exits)
+  if(t<0.32)return 'pillared';                                               // pillared hall (interior columns — landmark)
+  if(t<0.44)return 'rotunda';                                               // rotunda (rounded — corner-clipped + pillar ring)
+  return 'rect';                                                             // the workhorse chamber
+}
+function shapeDims(r,shape){
+  if(shape==='great')return [ri(r,9,12),ri(r,6,8)];
+  if(shape==='pillared')return [ri(r,8,11),ri(r,6,8)];
+  if(shape==='rotunda'){var d=ri(r,7,9);return [d,d];}
+  if(shape==='cave')return [ri(r,6,9),ri(r,5,7)];
+  return [ri(r,4,7),ri(r,4,6)];   // rect chamber (varied) — bigger than the legacy blobs, for room coverage
+}
+// paint a room's floor + interior TEXTURE. Footprint stays RECT (the zero-open-corner law forbids diagonal
+// wall edges — a real octagon/cave outline would be sealed flat by fixLeaks, spawning stubs), so shapes read
+// through INTERIOR texture: pillar columns (pillared), a circular pillar RING (rotunda), scattered rubble
+// (cave). All 'o' pillars sit >=1 from the wall so no floor pinch -> zero open corners -> fixLeaks is a no-op.
+function paintShape(G,rm,r){
+  var x=rm.x,y=rm.y,w=rm.w,h=rm.h,cx=rm.cx,cy=rm.cy;
+  carveBox(G,x,y,w,h,'.');
+  // pillars sit >=1 from the wall AND keep the room-CENTRE cross clear (a stair/node lands at the centre and
+  // must have walkable orthogonal neighbours — a pillar-ringed centre would wall the stair in).
+  function pil(px,py){if(inb(G,px,py)&&G[py][px]==='.'&&px>x&&px<x+w-1&&py>y&&py<y+h-1&&(Math.abs(px-cx)>1||Math.abs(py-cy)>1))G[py][px]='o';}
+  if(rm.shape==='rotunda'){                                    // a circular pillar RING (reads round in a rect hall)
+    var rx=(w-1)/2-1, ry=(h-1)/2-1;
+    for(var py=y+1;py<y+h-1;py++)for(var px=x+1;px<x+w-1;px++){var dx=(px-cx)/Math.max(1,rx),dy=(py-cy)/Math.max(1,ry),dd=dx*dx+dy*dy;if(dd>0.72&&dd<1.05)pil(px,py);}
+    rm.landmark=true;
+  } else if(rm.shape==='pillared'){                            // interior pillar columns (instant landmark)
+    for(var qy=y+2;qy<y+h-2;qy+=2)for(var qx=x+2;qx<x+w-2;qx+=2)pil(qx,qy);
+    rm.landmark=true;
+  } else if(rm.shape==='cave'){                                // scattered rubble (the works failing)
+    var n=ri(r,3,6);for(var b=0;b<n;b++)pil(x+1+ri(r,0,Math.max(0,w-3)),y+1+ri(r,0,Math.max(0,h-3)));
+  }
+}
+// ---------- ROUND 1: the CORRIDOR SKELETON (circulation first) ----------
+// A LADDER circuit: two horizontal avenues joined by 2-3 vertical rails -> straight, 90-degree, and LOOPY by
+// construction (each pair of adjacent rails encloses a cycle -> cycles>=2). One horizontal stretch is widened
+// to a 2-wide CONCOURSE (the municipal main hall). All axis-aligned, so ZERO wiggle and no open corners. The
+// corridors are the traffic; rooms bud OFF them (Round 2). No naked dead-ends: the circuit is a closed ladder.
+function carveHRun(G,x0,x1,y){var s=x1>=x0?1:-1;for(var x=x0;x!==x1+s;x+=s)if(inb(G,x,y))G[y][x]='.';}
+function carveVRun(G,y0,y1,x){var s=y1>=y0?1:-1;for(var y=y0;y!==y1+s;y+=s)if(inb(G,x,y))G[y][x]='.';}
+function carveCircuit(G,r){
+  var W=G[0].length,H=G.length,m=2;
+  var y1=Math.max(m+2,Math.min(H-m-3,Math.round(H*0.30)+ri(r,-1,1)));
+  var y2=Math.max(y1+5,Math.min(H-m-3,Math.round(H*0.72)+ri(r,-1,1)));
+  var xL=m+2,xR=W-m-3;
+  var nrails=(W>=64)?4:3, xs=[];   // >=3 rails -> >=2 enclosed loops (cycles>=2 by construction)
+  for(var i=0;i<nrails;i++){var xv=Math.round(xL+(xR-xL)*(i/(nrails-1)));xv=Math.max(xL+1,Math.min(xR-1,xv+ri(r,-1,1)));xs.push(xv);}
+  xs.sort(function(a,b){return a-b;});
+  // the avenues span EXACTLY between the outer rails -> a CLOSED ladder (no overhang stubs, no naked dead-ends).
+  // BOTH avenues are 2-WIDE: the extra lane gives routing redundancy (an edge door on one lane never chokes the
+  // circuit) and reads as broad municipal halls. Rails stay 1-wide. Still zero wiggle, still loopy.
+  carveHRun(G,xs[0],xs[xs.length-1],y1);carveHRun(G,xs[0],xs[xs.length-1],y1+1);
+  carveHRun(G,xs[0],xs[xs.length-1],y2);carveHRun(G,xs[0],xs[xs.length-1],y2-1);
+  xs.forEach(function(xv){carveVRun(G,y1,y2,xv);});
+  var concourse={y:y1,row2:y1+1,x0:xs[0],x1:xs[xs.length-1]};
+  return {y1:y1,y2:y2,xs:xs,xL:xL,xR:xR,concourse:concourse};
+}
+
+// ---------- ROUND 2: rooms BUD OFF the corridor (one door by default) ----------
+// A room hangs off a corridor wall, extending AWAY into open rock, joined by EXACTLY ONE door -> a room is a
+// DESTINATION you enter on purpose, not a hallway with furniture. dir points outward from the corridor.
+function tryBud(G,cx,cy,dx,dy,shape,r){
+  var d=shapeDims(r,shape),w=d[0],h=d[1],nx,ny,doorX=cx+dx,doorY=cy+dy;   // door = the wall cell just outside the corridor
+  if(dx!==0){ // horizontal bud (east/west): room to the side of the corridor
+    nx=(dx>0)?(cx+2):(cx-1-w); ny=cy-(h>>1);
+  } else {    // vertical bud (north/south)
+    ny=(dy>0)?(cy+2):(cy-1-h); nx=cx-(w>>1);
+  }
+  if(!boxClear(G,nx,ny,w,h))return null;
+  // the door must sit in the wall BETWEEN the corridor cell and the room, aligned to a room floor cell.
+  if(dx!==0){ doorY=cy; if(doorY<ny||doorY>ny+h-1)doorY=ny+(h>>1); }
+  else { doorX=cx; if(doorX<nx||doorX>nx+w-1)doorX=nx+(w>>1); }
+  var rm={x:nx,y:ny,w:w,h:h,cx:nx+(w>>1),cy:ny+(h>>1),shape:shape,doors:1};
+  paintShape(G,rm,r);
+  G[doorY][doorX]='+';
+  return rm;
+}
+function genArch(W,H,r,roomTarget,skin,depth){
+  var G=fill(W,H,'#'),rooms=[],budget={cave:1};
+  var circuit=carveCircuit(G,r);
+  // gather BUD SITES: a corridor '.' cell with a wall neighbour that opens onto rock (room space beyond).
+  function corridorAt(x,y){return inb(G,x,y)&&G[y][x]==='.';}
+  var sites=[];
+  for(var y=1;y<H-1;y++)for(var x=1;x<W-1;x++){ if(G[y][x]!=='.')continue;
+    [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(dd){var dx=dd[0],dy=dd[1];var wx=x+dx,wy=y+dy,bx=x+2*dx,by=y+2*dy;if(inb(G,bx,by)&&G[wy][wx]==='#'&&G[by][bx]==='#')sites.push({x:x,y:y,dx:dx,dy:dy});});
+  }
+  for(var i=sites.length-1;i>0;i--){var j=ri(r,0,i),t=sites[i];sites[i]=sites[j];sites[j]=t;}
+  // the HUB hall buds first, biggest, near the concourse (it may later earn a 2nd door — Round 2 rule).
+  var target=Math.max(6,roomTarget), si=0, guard=sites.length*3;
+  var hubShape='great';
+  while(rooms.length<target && si<sites.length && guard-->0){
+    var s=sites[si++];
+    if(G[s.y][s.x]!=='.')continue;   // the site's corridor cell may have been consumed
+    var shape=(rooms.length===0)?hubShape:pickShape(r,budget);
+    var rm=tryBud(G,s.x,s.y,s.dx,s.dy,shape,r);
+    if(rm){ if(rooms.length===0)rm.landmark=true,rm.hub=true; rooms.push(rm); }
+  }
+  // STAIRS AT ROOM CENTRES (KEEP): up '@' at the hub, down '>' at the farthest room's centre.
+  if(rooms.length){
+    G[rooms[0].cy][rooms[0].cx]='@';
+    var far=rooms[0],fd=-1;rooms.forEach(function(rr){if(rr===rooms[0])return;var dd=Math.abs(rr.cx-rooms[0].cx)+Math.abs(rr.cy-rooms[0].cy);if(dd>fd){fd=dd;far=rr;}});
+    if(far!==rooms[0])G[far.cy][far.cx]='>';
+  }
+  return {grid:G,rooms:rooms,circuit:circuit};
+}
+
 function generateLevel(seed,opts){
   opts=opts||{};var size=opts.size||'regular',grammar=opts.grammar||'worked',skin=opts.skin||'stone';
   var sz=SIZES[size]||SIZES.regular,r=mulberry32((seed>>>0)||1),G;
@@ -339,12 +465,12 @@ function generateLevel(seed,opts){
     rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H)));
   } else if(opts.maxSize){ W=Math.round(sz.W*1.2); H=Math.round(sz.H*1.2); rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H))); }   // sim worst case: the LARGEST floor (most foes)
   var rmList=null;
-  if(grammar==='worked'){var wk2=genWorked(W,H,r,rooms,skin); G=wk2.grid; rmList=wk2.rooms;}
+  if(grammar==='worked'){var wk2=ALLOW_LEGACY?genWorked(W,H,r,rooms,skin):genArch(W,H,r,rooms,skin,opts.depth||1); G=wk2.grid; rmList=wk2.rooms;}
   else if(grammar==='cave')G=genCave(W,H,r);
   else if(grammar==='spine')G=genSpine(W,H,r);
   else G=genWarren(W,H,r);
   if(skin==='ruin')applyRuin(G,r);if(skin==='flooded')applyFlood(G,r);
-  ensureConnected(G);if(typeof cleanDoors==='function')cleanDoors(G,r);
+  ensureConnected(G);if(ALLOW_LEGACY&&typeof cleanDoors==='function')cleanDoors(G,r);   // the new shaper keeps its '+' doors (one per room); cleanDoors is legacy-only
   var got=plantSecretsFromDeadEnds(G,r,2);if(got<1)carveAlcoveAnywhere(G,r);
   fixLeaks(G);   // AFTER the corridor logic AND the secret/alcove carving (both add floor) -> seals every pinch; stairs below add no new walkable, so they can't reopen one (and fixLeaks must precede them: it would overwrite a '<' which is non-WALK)
   var up=null,down=null,y,x;
