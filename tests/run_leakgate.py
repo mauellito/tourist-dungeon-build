@@ -67,6 +67,12 @@ try{
   // requiring the corridor-first STANDARD floor to manufacture one.
   var connCode=(typeof TD_MAP._composeType==='function');
   ok('SECTION D R4: the dead-end connector mechanism is intact (housing moved to lattice deadEnd branches; corridor dead-ends retired)', connCode, 'connector hook present; corridor-first floors carry zero unpaid dead-ends by design');
+  // ARCHETYPE SCAFFOLD (live) — QB reads comp.archetype OFF LIVE COMPOSITIONS: every floor type's composition
+  // must carry a defined archetype (never undefined). STANDARD gen2 floors record their macro-shape family
+  // (traverse-dominant); non-gen2 types stub it (authored/set-piece/legacy). Read it off _composeType directly.
+  var archBad={};types.forEach(function(t){ for(var sa=1;sa<=Math.min(N,60);sa++){ var ca=TD_MAP._composeType(t,sa); if(!ca||typeof ca.archetype!=='string'||!ca.archetype){archBad[t]=(archBad[t]||0)+1;} } });
+  var archAllOK=Object.keys(archBad).length===0, archSample=TD_MAP._composeType(types[0],1);
+  ok('ARCHETYPE SCAFFOLD (live): comp.archetype is DEFINED on every live composition (never undefined)', archAllOK, archAllOK?('e.g. type '+types[0]+' -> "'+(archSample&&archSample.archetype)+'"'):JSON.stringify(archBad));
   R.push('');
   R.push('TABLE (seeds 1..'+N+', live params '+JSON.stringify(opts)+')');
   R.push('  BASELINE ungated : leaks='+bLeak+' ('+(100*bLeak/N).toFixed(2)+'%, first@seed '+firstLeak+') · regions!=1='+bRegion+' · stairless='+bStair);

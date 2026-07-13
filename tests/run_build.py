@@ -43,6 +43,10 @@ SUITES = [
     ("LIVE-FLOOR LEAK GATE (0 open corners / single region / both stairs)", "run_leakgate.py"),
     ("ARCHITECTURAL FEATURES voice (examine + hazard pre-commit telegraph)", "run_featvoice.py"),
     ("LIVE-PLAY WALK (both generators live, spawn->descend)", "walk_liveplay.py"),
+    # PROOF SUITES (engine-only, mirror-safe) — now verifiable on the public mirror:
+    ("GEN2 TRAVERSE-SHAPE TOPOLOGY CHECKER — ring ban / straight-run / orientation / archetype (220 seeds)", "run_topology.py"),
+    ("LATTICE CHECKER — one spine, bounded branches, one-true-run, stairs (240 worlds)", "run_lattice_checker.py"),
+    ("STARTING LOADOUT — coin purse (range+background), minimal kit, outfitting affordability", "run_starting_loadout.py"),
 ]
 
 

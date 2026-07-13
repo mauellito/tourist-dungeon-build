@@ -253,7 +253,8 @@ var TD_MAP = (function () {
       corrLens: [], corrWidths: [], comX: nF ? ax / nF : spawn.x, comY: nF ? ay / nF : spawn.y, floorDensity: sw * sh ? nF / (sw * sh) : 0, source: "gen2", W: sw, H: sh,
       features: lvl.features || [],   // ARCHITECTURAL FEATURES: depth-selected feature-room records {type,rect,depth} (geometry already in the grid via $/X)
       stairs: stairsArray(upStair, downStair),   // SECTION D R2 — multi-stair model (additive; up/down still drive the live dive)
-      connectors: connectors   // SECTION D R4 — dead-end connector tiles (flagged stub; placement = operator canon)
+      connectors: connectors,   // SECTION D R4 — dead-end connector tiles (flagged stub; placement = operator canon)
+      archetype: lvl.archetype || "traverse"   // ARCHETYPE SCAFFOLD: the gen2 floor's macro-shape family (recorded on EVERY composition, never undefined)
     };
   }
   // SECTION D R2 — MULTI-STAIR model: stairs:[{x,y,dir,symbol,dest,opens,shuts}]. N up + M down per floor.
@@ -283,7 +284,8 @@ var TD_MAP = (function () {
       roomDoors: [], secrets: [], loot: [], deadEnds: [], tag: "authored-stub", rooms: 1, roomList: [],
       corridorCells: 0, corrLens: [], corrWidths: [], comX: W2 >> 1, comY: H2 >> 1, floorDensity: 1, source: "authored",
       W: W2, H: H2, features: [{ type: "bureau", x: 5, y: 5, w: 6, h: 5, cx: 8, cy: 7, depth: depth || 1, _stub: true }],
-      stairs: stairsArray({ x: up.x, y: up.y }, { x: down.x, y: down.y })
+      stairs: stairsArray({ x: up.x, y: up.y }, { x: down.x, y: down.y }),
+      archetype: "authored"   // ARCHETYPE SCAFFOLD: non-gen2 floors record their own family (never undefined)
     };
   }
   // R10 — AUTHORED-LEVEL TABLE: hand-made floors keyed by id, resolved from a graph node's `authored` ref
@@ -374,7 +376,8 @@ var TD_MAP = (function () {
       comX: nF ? ax / nF : (W2 >> 1), comY: nF ? ay / nF : (H2 >> 1), floorDensity: (W2 * H2 ? nF / (W2 * H2) : 0),
       source: "authored", W: W2, H: H2, features: levelData.features || [], stairs: stairs,
       setpiece: levelData.setpiece || null,   // R10 R3 — SET-PIECE hook (e.g. "smashgrab")
-      sg: levelData.sg || null   // R11 — the SG artifact spec ({ arts:[{id,x,y,name}] }) the live set-piece reads (grid-agnostic)
+      sg: levelData.sg || null,   // R11 — the SG artifact spec ({ arts:[{id,x,y,name}] }) the live set-piece reads (grid-agnostic)
+      archetype: levelData.setpiece ? "set-piece" : "authored"   // ARCHETYPE SCAFFOLD: never undefined
     };
   }
 
@@ -561,7 +564,8 @@ var TD_MAP = (function () {
       rooms: rooms, placements: placements, roomCount: rooms.length, nodeCount: nodes.length, seam: seam,
       sublevelStairs: edgeModel.stairs, corridors: edgeModel.corridors, extraCrossLevel: edgeModel.extraCrossLevel,
       stairs: comp.stairs, secrets: comp.secrets, loot: comp.loot, features: comp.features,
-      roomDoors: comp.roomDoors, connectors: [], comX: comp.comX, comY: comp.comY, doorPts: comp.doorPts
+      roomDoors: comp.roomDoors, connectors: [], comX: comp.comX, comY: comp.comY, doorPts: comp.doorPts,
+      archetype: comp.archetype || "traverse"   // ARCHETYPE SCAFFOLD: propagate the gen2 floor's family onto the sublevel composition
     };
   }
   // Gather the live world's ORDINARY nodes at a sublevel + the touching edges + a node->level map, then
@@ -650,7 +654,7 @@ var TD_MAP = (function () {
       grid: g, spawn: spawn, doorPts: edge, roomDoors: [], deadEnds: [],
       tag: "debug", rooms: 1, roomList: [], corridorCells: 0, corrLens: [], corrWidths: [],
       comX: CX, comY: CY, floorDensity: 0, source: "debug",
-      sign: { key: signKey, text: "FLOOR UNAVAILABLE — see console" }
+      sign: { key: signKey, text: "FLOOR UNAVAILABLE — see console" }, archetype: "debug"
     };
   }
   function composeNodeOld(seed, nodeKey, numDoors) {
@@ -773,7 +777,8 @@ var TD_MAP = (function () {
       roomList: rooms.map(function (rm) { return { tag: rm.tag, aspect: rm.aspect, area: rm.area, x0: rm.x0, y0: rm.y0, x1: rm.x1, y1: rm.y1, door: rm.door }; }),
       corridorCells: Object.keys(corr).length, corrLens: corrLens, corrWidths: corrWidths,
       comX: all.length ? ax2 / all.length : spawn.x, comY: all.length ? ay2 / all.length : spawn.y,
-      floorDensity: all.length / (W * H)
+      floorDensity: all.length / (W * H),
+      archetype: "legacy"   // ARCHETYPE SCAFFOLD: never undefined
     };
   }
   function DIRS4(x, y) { return [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]; }
