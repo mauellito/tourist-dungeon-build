@@ -220,6 +220,9 @@ var TD_MAP = (function () {
     // LEVEL TRANSITIONS use gen2's OWN stairs: descent = its down-stair, ascent = its up-stair.
     var downStair = lvl.down ? { x: lvl.down.x, y: lvl.down.y, kind: "down" } : null;
     var upStair = lvl.up ? { x: lvl.up.x, y: lvl.up.y, kind: "up" } : null;
+    // Open the doors along the route between the up-stair (arrival) and the down-stair, so a single-file floor is
+    // always navigable to its stairs; composeSublevel opens routes to the lattice edge-stairs too.
+    openStairDoors(g, roomDoors, secrets, upStair || spawn, [downStair]);
     // SAME-LEVEL (breadth) edges sit on EXISTING floor cells (dead-ends first, then far cells) — NEVER
     // carved (operator ruling). gen2 invents no geometry for graph edges; the seam is flagged, not punched.
     var stairKeys = {}; if (downStair) stairKeys[downStair.x + "," + downStair.y] = 1; if (upStair) stairKeys[upStair.x + "," + upStair.y] = 1;
@@ -423,8 +426,22 @@ var TD_MAP = (function () {
   // extra cross-sub edges (e.g. an express shortcut) stay FLAGGED, not built (backward-compatible). Stairs are
   // HONEST + never labelled: which down-stair is the true descent is not marked. `symbol` stays plain >/< (the
   // stair-symbol<->cipher glyph mapping is OPERATOR-RESERVED — the field is left, no glyphs invented).
-  function classifySublevelEdges(sub, edges, nodeSub, nodeLevel, downCell, upCell, setPieceSet, subLevel, branchCells) {
+  function classifySublevelEdges(sub, edges, nodeSub, nodeLevel, downCell, upCell, setPieceSet, subLevel, branchCells, grid) {
     setPieceSet = setPieceSet || {}; branchCells = branchCells || [];
+    // A stair cell can't be WALKED THROUGH (you take it), so on a single-file floor a branch stair placed on the
+    // sole approach to another stair would strand it. reachOK(extra) = can the arrival (up) stair still reach the
+    // spine DOWN stair over floor cells (secrets are treated passable — the descent route reveals them) WITHOUT
+    // stepping on any chosen stair cell (incl. `extra`)? branch cells that break this invariant are skipped.
+    function reachOK(chosen, extra) {
+      if (!grid || !upCell || !downCell) return true;
+      var block = {}; chosen.forEach(function (c) { block[c.x + "," + c.y] = 1; }); if (extra) block[extra.x + "," + extra.y] = 1;
+      delete block[upCell.x + "," + upCell.y];   // stand ON the arrival stair to start
+      var seen = {}, q = [[upCell.x, upCell.y]]; seen[upCell.x + "," + upCell.y] = 1;
+      while (q.length) { var c = q.shift(); if (Math.abs(c[0] - downCell.x) + Math.abs(c[1] - downCell.y) === 1) return true;
+        for (var d = 0; d < DIR4.length; d++) { var nx = c[0] + DIR4[d][0], ny = c[1] + DIR4[d][1], k = nx + "," + ny; if (seen[k] || block[k]) continue; var ch = grid[ny] && grid[ny][nx]; if (ch === "." || ch === "~" || ch === "?") { seen[k] = 1; q.push([nx, ny]); } } }
+      return false;
+    }
+    var chosenStairs = []; if (downCell) chosenStairs.push(downCell); if (upCell) chosenStairs.push(upCell);
     var corridors = [], downGroups = {}, upGroups = {}, portalGroups = {};
     (edges || []).forEach(function (e) {
       if (nodeSub[e.from] !== sub) return;   // only edges OUT of this sublevel are realised here
@@ -436,7 +453,8 @@ var TD_MAP = (function () {
       else { (downGroups[ts] = downGroups[ts] || []).push(e); }   // same-depth-but-different-sub (a sibling branch) reads as a descent branch
     });
     var stairs = [], extra = 0, bi = 0;
-    function branchCell() { for (; bi < branchCells.length; bi++) { var c = branchCells[bi]; if (!(downCell && c.x === downCell.x && c.y === downCell.y) && !(upCell && c.x === upCell.x && c.y === upCell.y)) { bi++; return c; } } return null; }
+    // pick the next spare room centre that is NOT a stair already AND does not strand the spine down-stair.
+    function branchCell() { for (; bi < branchCells.length; bi++) { var c = branchCells[bi]; if ((downCell && c.x === downCell.x && c.y === downCell.y) || (upCell && c.x === upCell.x && c.y === upCell.y)) continue; if (!reachOK(chosenStairs, c)) continue; bi++; chosenStairs.push(c); return c; } return null; }
     // the SPINE descent takes the down-stair cell; branches take spare room centres. The spine = the NON-branch
     // deeper sublevel (a portal, or a plain down edge); if every down edge is branch-marked, the nearest is spine.
     var downSubs = Object.keys(downGroups).concat(Object.keys(portalGroups));
@@ -466,6 +484,28 @@ var TD_MAP = (function () {
   // composeSublevel(seed, level, nodes [, edges, nodeLevel]) — nodes: [{ id, kind }] the ORDINARY nodes at
   // this sublevel (NO set-piece). edges/nodeLevel (optional, Phase 2): classify cross-level -> stairs,
   // same-level -> corridors.
+  // Open every door that lies ON the route from `from` (the arrival stair) to each stair. A single-file traverse
+  // floor has one way between rooms, so a randomly-CLOSED door anywhere on that route would strand a stair from a
+  // door-blocking planner (a real player just bumps each door open as they walk it). We BFS the floor treating
+  // doors as passable (they ARE '.' in the grid), then force OPEN only the doors on the shortest path to each
+  // stair — the critical descent route stands open; every side-room door keeps its rolled state (door variety intact).
+  function openStairDoors(grid, roomDoors, secrets, from, stairs) {
+    if (!grid || !roomDoors || !from || !stairs) return; var doorAt = {}; roomDoors.forEach(function (d) { doorAt[d.x + "," + d.y] = d; });
+    // For EACH stair, BFS from the arrival stair to it treating floor/doors ('.') AND secret seams ('?') as
+    // passable but AVOIDING every OTHER stair cell (you can't walk THROUGH a stair) — the same rule the live
+    // planner obeys. On that stair-avoiding route, REVEAL any '?' it must cross (a secret on the critical descent
+    // route shouldn't be secret at all; off-route seams stay hidden). Room DOORS are left in their rolled state —
+    // they don't block navigation (a player bumps them open) and force-opening the spawn-room door confuses the
+    // deliberate open/close keys. If no stair-avoiding route exists, the stair was rejected at placement.
+    var allK = {}; if (from) allK[from.x + "," + from.y] = 1; stairs.forEach(function (s) { if (s) allK[s.x + "," + s.y] = 1; });
+    var revealed = {};
+    stairs.forEach(function (st) { if (!st) return;
+      var block = {}; for (var kk in allK) block[kk] = 1; delete block[from.x + "," + from.y]; delete block[st.x + "," + st.y];
+      var prev = {}, q = [[from.x, from.y]], sk = from.x + "," + from.y; prev[sk] = "root"; var tk = st.x + "," + st.y, hit = false;
+      while (q.length) { var c = q.shift(); var ck = c[0] + "," + c[1]; if (ck === tk) { hit = true; break; } DIR4.forEach(function (d) { var nx = c[0] + d[0], ny = c[1] + d[1], k = nx + "," + ny; if (prev[k] || block[k]) return; var ch = grid[ny] && grid[ny][nx]; if (ch === "." || ch === "~" || ch === "?") { prev[k] = ck; q.push([nx, ny]); } }); }
+      if (!hit) return; var k = tk; while (prev[k] && prev[k] !== "root") { var pp = k.split(","), px = +pp[0], py = +pp[1]; if (grid[py] && grid[py][px] === "?") { grid[py][px] = "."; revealed[k] = 1; } k = prev[k]; } });
+    if (secrets && Object.keys(revealed).length) { for (var i = secrets.length - 1; i >= 0; i--) if (revealed[secrets[i].x + "," + secrets[i].y]) secrets.splice(i, 1); }
+  }
   function composeSublevel(seed, level, nodes, edges, nodeLevel, setPieceSet, ctx) {
     ctx = ctx || {};
     var sub = ctx.sub || ("L" + level);   // LATTICE — sublevel IDENTITY (defaults to "L"+level, so a normal world is byte-identical)
@@ -476,7 +516,7 @@ var TD_MAP = (function () {
     // cell). Keep the best (most-rooms) candidate; stop early once it suffices. Deterministic: same seed+level
     // -> same try sequence -> same chosen floor. If even the best (after MAXTRY) still falls short, the seam
     // FLAG below catches it (never punch).
-    var need = nodes.length, MAXTRY = 10, comp = null, rooms = null;
+    var need = nodes.length, MAXTRY = 24, comp = null, rooms = null;
     // compose key: the SPINE (sub === "L"+level) keeps the NUMERIC key (byte-identical to the pre-lattice floor);
     // a BRANCH sublevel keys by its distinct `sub` so a branch at the same depth gets its own floor.
     var compKey = (sub === ("L" + level)) ? ("SUBLEVEL_" + level) : ("SUBLEVEL_" + sub);
@@ -509,8 +549,12 @@ var TD_MAP = (function () {
     var usedCells = {}; if (comp.downStair) usedCells[comp.downStair.x + "," + comp.downStair.y] = 1; if (comp.upStair) usedCells[comp.upStair.x + "," + comp.upStair.y] = 1;
     placements.forEach(function (p) { usedCells[p.x + "," + p.y] = 1; });
     var branchCells = rooms.map(function (r) { return { x: r.cx, y: r.cy }; }).filter(function (c) { return !usedCells[c.x + "," + c.y]; });   // spare room centres for branch stairs
-    var edgeModel = (edges && nodeLevel) ? classifySublevelEdges(sub, edges, nodeSub, nodeLevel, comp.downStair, comp.upStair, setPieceSet, level, branchCells)
+    var edgeModel = (edges && nodeLevel) ? classifySublevelEdges(sub, edges, nodeSub, nodeLevel, comp.downStair, comp.upStair, setPieceSet, level, branchCells, comp.grid)
                                          : { stairs: [], corridors: [], extraCrossLevel: 0 };
+    // open the doors along the routes from the arrival (up) stair to EVERY stair — gen2's own down-stair AND the
+    // lattice edge (spine/branch) stairs that land on spare room centres — so a door-blocking planner can always
+    // navigate to each stair on a single-file floor.
+    openStairDoors(comp.grid, comp.roomDoors, comp.secrets, comp.upStair || comp.spawn, [comp.downStair].concat(edgeModel.stairs || []));
     return {
       grid: g, rawGrid: comp.rawGrid, source: "sublevel", level: level, W: comp.W, H: comp.H,
       spawn: comp.spawn, upStair: comp.upStair, downStair: comp.downStair, breadthCells: comp.breadthCells,
@@ -1087,8 +1131,20 @@ var TD_MAP = (function () {
         // breadth cell; else FLAG. This makes the climb-home / flee-up retreat ALWAYS available.
         var hasBack = Object.keys(doors).some(function (k) { return doors[k].to === back; });
         if (back && !hasBack) {
-          var cell = (comp.upStair && !doors[key(comp.upStair.x, comp.upStair.y)]) ? comp.upStair : null;
-          if (!cell) { for (var ci = comp.breadthCells.length - 1; ci >= 0; ci--) { var bc = comp.breadthCells[ci]; if (!doors[key(bc.x, bc.y)]) { cell = bc; break; } } }
+          // A stair can't be walked THROUGH, so the return-stair cell must NOT sever the down-stair from the
+          // arrival on a single-file floor. keepsDown(cell) = down-stair still reachable from the up-stair over
+          // floor cells, avoiding every stair cell (incl. `cell`). Prefer the up-stair cell, else the first spare
+          // breadth cell that keeps the descent open.
+          function keepsDown(cell) {
+            if (!comp.downStair || !comp.upStair) return true;
+            var block = {}; Object.keys(doors).forEach(function (k) { block[k] = 1; }); block[key(cell.x, cell.y)] = 1; delete block[key(comp.upStair.x, comp.upStair.y)];
+            var tgt = comp.downStair, seen = {}, q = [[comp.upStair.x, comp.upStair.y]]; seen[key(comp.upStair.x, comp.upStair.y)] = 1;
+            while (q.length) { var c = q.shift(); if (Math.abs(c[0] - tgt.x) + Math.abs(c[1] - tgt.y) === 1) return true; for (var d = 0; d < DIR4.length; d++) { var nx = c[0] + DIR4[d][0], ny = c[1] + DIR4[d][1], k = key(nx, ny); if (seen[k] || block[k]) continue; var ch = g[ny] && g[ny][nx]; if (ch === "." || ch === "~") { seen[k] = 1; q.push([nx, ny]); } } }
+            return false;
+          }
+          var cell = (comp.upStair && !doors[key(comp.upStair.x, comp.upStair.y)] && keepsDown(comp.upStair)) ? comp.upStair : null;
+          if (!cell) { for (var ci = comp.breadthCells.length - 1; ci >= 0; ci--) { var bc = comp.breadthCells[ci]; if (!doors[key(bc.x, bc.y)] && keepsDown(bc)) { cell = bc; break; } } }
+          if (!cell) { for (var ci2 = comp.breadthCells.length - 1; ci2 >= 0; ci2--) { var bc2 = comp.breadthCells[ci2]; if (!doors[key(bc2.x, bc2.y)]) { cell = bc2; break; } } }   // fallback: any spare cell (keeps the climb-home guarantee even if it can't be placed clear)
           if (cell) doors[key(cell.x, cell.y)] = { type: "stair_up", returnTo: back, takeable: true, to: back, label: "a stair up (the way you came)", tells: [] };
           else console.warn("GATE 5: no spare cell for the return stair at " + ctrl.node + " (FLAGGED).");
         }

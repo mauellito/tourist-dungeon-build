@@ -379,36 +379,172 @@ function paintShape(G,rm,r){
     var n=ri(r,3,6);for(var b=0;b<n;b++)pil(x+1+ri(r,0,Math.max(0,w-3)),y+1+ri(r,0,Math.max(0,h-3)));
   }
 }
-// ---------- ROUND 1: the CORRIDOR SKELETON (circulation first) ----------
-// A LADDER circuit: two horizontal avenues joined by 2-3 vertical rails -> straight, 90-degree, and LOOPY by
-// construction (each pair of adjacent rails encloses a cycle -> cycles>=2). One horizontal stretch is widened
-// to a 2-wide CONCOURSE (the municipal main hall). All axis-aligned, so ZERO wiggle and no open corners. The
-// corridors are the traffic; rooms bud OFF them (Round 2). No naked dead-ends: the circuit is a closed ladder.
-function carveHRun(G,x0,x1,y){var s=x1>=x0?1:-1;for(var x=x0;x!==x1+s;x+=s)if(inb(G,x,y))G[y][x]='.';}
-function carveVRun(G,y0,y1,x){var s=y1>=y0?1:-1;for(var y=y0;y!==y1+s;y+=s)if(inb(G,x,y))G[y][x]='.';}
-function carveCircuit(G,r){
-  var W=G[0].length,H=G.length,m=2;
-  // the ladder spans most of the floor so its corner rooms sit far apart (traverse separation); the bands above
-  // y1 / below y2 hold the NW / SE stair halls.
-  var y1=Math.max(m+2,Math.min(H-m-3,Math.round(H*0.30)+ri(r,-1,1)));
-  var y2=Math.max(y1+5,Math.min(H-m-3,Math.round(H*0.72)+ri(r,-1,1)));
-  var xL=m+2,xR=W-m-3;
-  var nrails=3, xs=[];   // exactly 3 rails -> 2 enclosed loops (cycles>=2) while keeping corridor cells low
-  for(var i=0;i<nrails;i++){var xv=Math.round(xL+(xR-xL)*(i/(nrails-1)));xv=Math.max(xL+1,Math.min(xR-1,xv+ri(r,-1,1)));xs.push(xv);}
-  xs.sort(function(a,b){return a-b;});
-  // the avenues span EXACTLY between the outer rails -> a CLOSED ladder (no overhang stubs, no naked dead-ends).
-  // SINGLE-FILE by default (operator rule): the two avenues + rails are 1-wide. Routing redundancy comes from
-  // OPTIONALITY (two edge-disjoint routes + rails), not from width. A SHORT 2-wide CONCOURSE flourish remains on
-  // one avenue stretch (a landmark, kept well under 10% of corridor cells).
-  carveHRun(G,xs[0],xs[xs.length-1],y1);
-  carveHRun(G,xs[0],xs[xs.length-1],y2);
-  xs.forEach(function(xv){carveVRun(G,y1,y2,xv);});
-  // the concourse: a SHORT 2-wide flourish (~5 cells) on the top avenue near a rail — a landmark, kept well
-  // under 10% of corridor cells (corridors are single-file by default).
-  var ci=xs[0]+2, cj=Math.min(xs[1]-2,ci+2);   // 3-cell interior flourish, clear of both rails (no junction 2x2s)
-  if(cj>ci)carveHRun(G,ci,cj,y1+1);
-  var concourse={y:y1,row2:y1+1,x0:ci,x1:cj};
-  return {y1:y1,y2:y2,xs:xs,xL:xL,xR:xR,concourse:concourse};
+// ---------- ARCHETYPE SCAFFOLD (Round A owed) — seeded weighted selection ----------
+// The floor's macro-shape family. Only TRAVERSE is BUILT; the rest are STUBS that route back through the
+// traverse shaper for now (so every floor is a valid traverse until the other shapers land). The weights are
+// the operator's traverse-dominant distribution; the selection is seeded so a given seed yields a stable
+// archetype and the mix is reproducible. comp.archetype is recorded on every composition (mapmode reads
+// generateLevel().archetype).
+var ARCHETYPES=[
+  {key:'traverse', w:60, built:true},
+  {key:'circuit',  w:15, built:false},
+  {key:'labyrinth',w:12, built:false},
+  {key:'warren',   w:8,  built:false},
+  {key:'cavern',   w:5,  built:false}
+];
+function pickArchetype(r){
+  var tot=0,i;for(i=0;i<ARCHETYPES.length;i++)tot+=ARCHETYPES[i].w;
+  var roll=r()*tot,acc=0;
+  for(i=0;i<ARCHETYPES.length;i++){acc+=ARCHETYPES[i].w;if(roll<acc)return ARCHETYPES[i].key;}
+  return 'traverse';
+}
+
+// ---------- THE TRAVERSE SKELETON — a GROWN crooked route, NOT a grid ----------
+// Scatter 4-7 waypoints across the floor (Poisson-ish), thread a CROOKED spanning route up -> waypoints ->
+// down (short bounded segments, forced axis-alternation -> no long straight run, no parallel bands), then add
+// 2-4 SHORTCUT links between non-adjacent waypoints for optionality (cycles). The traverse ORIENTATION varies
+// by seed (horizontal / vertical / diagonal). No perimeter ring: waypoints live in the interior. Single-file.
+function isFloorCell(G,x,y){return inb(G,x,y)&&G[y][x]==='.';}
+// would setting (x,y)='.' COMPLETE a 2x2 all-floor block? (keeps corridors single-file, kills thick/parallel runs)
+function makes2x2(G,x,y){
+  function f(px,py){return (px===x&&py===y)||isFloorCell(G,px,py);}
+  var offs=[[0,0],[-1,0],[0,-1],[-1,-1]];
+  for(var i=0;i<4;i++){var ox=x+offs[i][0],oy=y+offs[i][1];if(f(ox,oy)&&f(ox+1,oy)&&f(ox,oy+1)&&f(ox+1,oy+1))return true;}
+  return false;
+}
+// Thread a->b as a GROWN, single-file, jagged corridor: one cell at a time, biased toward the target, forced to
+// JOG perpendicular after `cap` cells in one direction (so no long straight run EVEN when a,b share a row/col),
+// and refusing steps that would thicken it into a 2x2 (so no parallel bands, no ladder). Returns the ordered
+// cell list so callers can add LOCAL shortcuts. cap is small vs the floor -> runs stay well under 50%.
+// stopAtTree: when set, capture the corridor cells that ALREADY exist at call time; the moment a freshly-carved
+// cell touches one of them, STOP. Threading each waypoint to the growing network and stopping on FIRST contact
+// makes the spine a strict TREE (one join per waypoint, never two) -> no floor-dominating loop can form.
+function threadCrooked(G,a,b,r,stopAtTree){
+  var W=G[0].length,H=G.length,x=a.x,y=a.y,guard=1500,dir=null,seg=0,path=[[x,y]];
+  var cap=Math.max(2,Math.round(Math.min(W,H)*0.20));   // straight-run allowance per segment (jog breaks longer runs; a touch straighter -> shorter, less corridor)
+  var pre=null;
+  if(stopAtTree){pre={};for(var yy=0;yy<H;yy++)for(var xx=0;xx<W;xx++)if(G[yy][xx]==='.')pre[xx+','+yy]=1;delete pre[a.x+','+a.y];}
+  function touches(){if(!pre)return false;var t=false;[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){if(pre[(x+d[0])+','+(y+d[1])])t=true;});return t;}
+  G[y][x]='.';
+  var done=false;
+  function step(ax,s){var nx=x+(ax==='x'?s:0),ny=y+(ax==='y'?s:0);if(!inb(G,nx,ny))return false;x=nx;y=ny;G[y][x]='.';path.push([x,y]);if(ax===dir)seg++;else{dir=ax;seg=1;}if(touches())done=true;return true;}
+  function stepClean(ax,s){var nx=x+(ax==='x'?s:0),ny=y+(ax==='y'?s:0);if(inb(G,nx,ny)&&makes2x2(G,nx,ny))return false;return step(ax,s);}
+  while(!done&&(x!==b.x||y!==b.y)&&guard-->0){
+    var dx=b.x-x,dy=b.y-y;
+    if(seg>=cap){                                                   // FORCED perpendicular jog -> breaks straight runs
+      var perp=(dir==='x')?'y':'x', pd=(perp==='x')?dx:dy, sgn=pd!==0?(pd>0?1:-1):(r()<0.5?1:-1);
+      if(stepClean(perp,sgn))continue; if(stepClean(perp,-sgn))continue;
+    }
+    var primary=(Math.abs(dx)>=Math.abs(dy))?'x':'y';
+    if(dx===0)primary='y'; if(dy===0)primary='x';
+    if(dx!==0&&dy!==0&&r()<0.30)primary=(primary==='x')?'y':'x';    // organic wander
+    var ps=(primary==='x')?(dx>0?1:-1):(dy>0?1:-1);
+    if(stepClean(primary,ps))continue;
+    var other=(primary==='x')?'y':'x', od=(other==='x')?dx:dy;
+    if(od!==0&&stepClean(other,od>0?1:-1))continue;                 // primary blocked -> other axis
+    var moved=false;                                                // last resort: allow a thickening step
+    [['x',dx],['y',dy]].forEach(function(pr){if(moved||pr[1]===0)return;if(step(pr[0],pr[1]>0?1:-1))moved=true;});
+    if(!moved)break;
+  }
+  return path;
+}
+function carveRoute(G,r){
+  var W=G[0].length,H=G.length,m=4;
+  // ORIENTATION (varies by seed): 0 W->E (horizontal), 1 N->S (vertical), 2 NW->SE, 3 NE->SW (diagonals).
+  // Waypoints PROGRESS along the axis with only bounded PERPENDICULAR jitter, so the traverse FLOW genuinely
+  // matches the seeded axis (a vertical floor reads vertical even though the floor is wider than tall).
+  var axis=ri(r,0,3);
+  var A={x:m,y:m},B={x:W-1-m,y:H-1-m};                                   // default NW->SE
+  if(axis===0){A={x:m,y:ri(r,m,H-1-m)};B={x:W-1-m,y:ri(r,m,H-1-m)};}     // W->E
+  else if(axis===1){A={x:ri(r,m,W-1-m),y:m};B={x:ri(r,m,W-1-m),y:H-1-m};}// N->S
+  else if(axis===3){A={x:m,y:H-1-m};B={x:W-1-m,y:m};}                    // NE->SW
+  // waypoint COUNT scales with floor size: a small floor with 7 waypoints makes a proportionally long, winding
+  // route (too much corridor); fewer waypoints keep the corridor share honest on small floors.
+  var n=ri(r,4,Math.max(4,Math.min(7,Math.round(Math.min(W,H)/5)))), jit=Math.max(3,Math.round(Math.min(W,H)*0.16)), wps=[];
+  for(var i=0;i<n;i++){
+    var t=(i+(r()-0.5)*0.5)/(n-1);t=Math.max(0,Math.min(1,t));
+    var bx=A.x+(B.x-A.x)*t, by=A.y+(B.y-A.y)*t;
+    // jitter PERPENDICULAR to the travel: horizontal spine jitters y, vertical spine jitters x, diagonals both.
+    if(axis===0)by+=(r()-0.5)*2*jit; else if(axis===1)bx+=(r()-0.5)*2*jit; else{bx+=(r()-0.5)*jit;by+=(r()-0.5)*jit;}
+    var x=Math.max(m,Math.min(W-1-m,Math.round(bx))), y=Math.max(m,Math.min(H-1-m,Math.round(by)));
+    wps.push({x:x,y:y});
+  }
+  while(wps.length<3){wps.push({x:ri(r,m,W-1-m),y:ri(r,m,H-1-m)});}
+  // order the waypoints along the traverse axis (up -> down), then grow a TREE: each waypoint threads to the
+  // NEAREST already-connected waypoint and stops on first contact with the network (one join each -> acyclic).
+  var avv=[[1,0],[0,1],[1,1],[1,-1]][axis];
+  wps.sort(function(p,q){return (avv[0]*p.x+avv[1]*p.y)-(avv[0]*q.x+avv[1]*q.y);});
+  G[wps[0].y][wps[0].x]='.';
+  // CHAIN the waypoints (wp[i] -> wp[i-1]) rather than to the nearest hub: a path-like spine keeps most waypoints
+  // at degree 2 (few thick junctions), and stop-at-tree still guarantees acyclicity.
+  for(i=1;i<wps.length;i++)threadCrooked(G,wps[i],wps[i-1],r,true);
+  thinCorridors(G);   // pare the (loop-free) spine to single-file; shortcuts are added LATER (after rooms bud and
+                      // dead-ends are culled) so their loop bound is measured against the FINAL corridor size.
+  return {waypoints:wps, up:wps[0], down:wps[wps.length-1], axis:axis};
+}
+// SHORTCUTS = LOCAL loops of BOUNDED size, added on the FINAL corridor (after budding + cullDeadEnds, so the
+// corridor size is settled). Pick a corridor cell p; find a cell q FAR in corridor-graph distance (the arc) but
+// NEAR in space, and join them with a short, STRAIGHT/L, single-file chord that ABORTS rather than make a 2x2.
+// The loop it closes = chord + arc; accepted ONLY if that is < 40% of the corridor -> never a floor-dominating
+// loop, never a perimeter ring. Straight chord => length == span (no jog inflation).
+function addShortcuts(G,r){
+  var W=G[0].length,H=G.length,cap=Math.max(3,Math.round(Math.min(W,H)*0.20)),nShort=ri(r,2,4),made=0,tr=nShort*30,minArc=8;
+  function corridorList(){var a=[];for(var yy=0;yy<H;yy++)for(var xx=0;xx<W;xx++)if(G[yy][xx]==='.')a.push([xx,yy]);return a;}
+  function carveCleanChord(p,q){
+    var orders=[['x','y'],['y','x']];
+    for(var oi=0;oi<orders.length;oi++){
+      var cx=p[0],cy=p[1],cells=[],ok=true;
+      orders[oi].forEach(function(ax){var tgt=(ax==='x')?q[0]:q[1];while((ax==='x'?cx:cy)!==tgt){var s=(ax==='x')?(q[0]>cx?1:-1):(q[1]>cy?1:-1);if(ax==='x')cx+=s;else cy+=s;if(cx===q[0]&&cy===q[1])return;cells.push([cx,cy]);}});
+      for(var i=0;i<cells.length&&ok;i++){var xx=cells[i][0],yy=cells[i][1];if(!inb(G,xx,yy)||G[yy][xx]!=='#'){ok=false;break;}}
+      if(!ok)continue;
+      var carved=[];for(i=0;i<cells.length;i++){var xx=cells[i][0],yy=cells[i][1];if(makes2x2(G,xx,yy)){ok=false;break;}G[yy][xx]='.';carved.push([xx,yy]);}
+      if(ok)return true; carved.forEach(function(c){G[c[1]][c[0]]='#';});
+    }
+    return false;
+  }
+  var corrSize=corridorList().length;
+  while(made<nShort && corrSize>=28 && tr-->0){
+    var cl=corridorList();if(!cl.length)break;
+    var p=cl[ri(r,0,cl.length-1)];
+    var dist={},q0=[p];dist[p[0]+','+p[1]]=0;var head=0;
+    while(head<q0.length){var c=q0[head++];var dc=dist[c[0]+','+c[1]];[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var nx=c[0]+d[0],ny=c[1]+d[1],k=nx+','+ny;if(G[ny]&&G[ny][nx]==='.'&&dist[k]===undefined){dist[k]=dc+1;q0.push([nx,ny]);}});}
+    var best=null,bestg=-1;
+    for(var qi=0;qi<cl.length;qi++){var qq=cl[qi],gd=dist[qq[0]+','+qq[1]];if(gd===undefined||gd<minArc)continue;var span=Math.abs(qq[0]-p[0])+Math.abs(qq[1]-p[1]);if(span<2||span>cap)continue;if((gd+span)>0.40*corrSize)continue;if(gd>bestg){bestg=gd;best=qq;}}
+    if(!best||!carveCleanChord(p,best))continue;
+    made++;
+  }
+}
+// THIN every 2x2 corridor widening (junctions included) back to single-file: remove any corridor cell that is
+// part of a 2x2 all-floor block WHEN its removal keeps the corridor connected (a flood proves it). 1-wide loops
+// survive (they are never 2x2); only thick blobs get pared. Run BEFORE rooms bud, while corridors are the only
+// floor, so it never touches room interiors.
+function thinCorridors(G){
+  var W=G[0].length,H=G.length;
+  function inA(x,y){return x>=0&&x<W&&y>=0&&y<H;}
+  function in2x2(x,y){for(var q=0;q<4;q++){var ax=x-[0,1,0,1][q],ay=y-[0,0,1,1][q];if(inA(ax,ay)&&inA(ax+1,ay+1)&&G[ay][ax]==='.'&&G[ay][ax+1]==='.'&&G[ay+1][ax]==='.'&&G[ay+1][ax+1]==='.')return true;}return false;}
+  function floors(){var t=0;for(var y=0;y<H;y++)for(var x=0;x<W;x++)if(G[y][x]==='.')t++;return t;}
+  function floodCount(){var sx=-1,sy=-1,y,x;for(y=0;y<H&&sx<0;y++)for(x=0;x<W;x++)if(G[y][x]==='.'){sx=x;sy=y;break;}if(sx<0)return 0;
+    var seen={},st=[[sx,sy]],cnt=0;seen[sx+','+sy]=1;while(st.length){var c=st.pop();cnt++;[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var nx=c[0]+d[0],ny=c[1]+d[1],k=nx+','+ny;if(inA(nx,ny)&&G[ny][nx]==='.'&&!seen[k]){seen[k]=1;st.push([nx,ny]);}});}return cnt;}
+  var fl=floors(),changed=true,pass=0;
+  while(changed&&pass++<40){changed=false;
+    for(var y=1;y<H-1;y++)for(var x=1;x<W-1;x++){
+      if(G[y][x]!=='.'||!in2x2(x,y))continue;
+      G[y][x]='#'; if(floodCount()===fl-1){fl--;changed=true;} else G[y][x]='.';
+    }
+  }
+}
+// prune any NAKED corridor dead-end (a 1-wide tip whose terminus is unpaid — no room door and no secret tell
+// beside it); iterate to a fixed point. A tip that ends at a '+' door, a secret ('$'/'?'/'/'), or a stair is
+// PAID and preserved. Safe to run after fixLeaks: removing a degree-1 tip can never open a corner (it only
+// removes floor) and never disconnects the region (a leaf).
+function cullDeadEnds(G){
+  var W=G[0].length,H=G.length,changed=true,pass=0;
+  while(changed&&pass++<40){changed=false;
+    for(var y=1;y<H-1;y++)for(var x=1;x<W-1;x++){ if(G[y][x]!=='.')continue;
+      var nb=0,paid=false;[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var c=G[y+d[1]][x+d[0]];if(c==='.'||c==='+'||c==='@'||c==='>'||c==='<'||c==='~')nb++;if(c==='+'||c==='$'||c==='?'||c==='/'||c==='>'||c==='<'||c==='@')paid=true;});
+      if(nb<=1&&!paid){G[y][x]='#';changed=true;}
+    }
+  }
 }
 
 // ---------- ROUND 2: rooms BUD OFF the corridor (one door by default) ----------
@@ -430,29 +566,30 @@ function tryBud(G,cx,cy,dx,dy,shape,r){
   G[doorY][doorX]='+';
   return rm;
 }
-function genArch(W,H,r,roomTarget,skin,depth){
+function genArch(W,H,r,roomTarget,skin,depth,archetype){
   var G=fill(W,H,'#'),rooms=[],budget={cave:1};
-  var circuit=carveCircuit(G,r);
+  var route=carveRoute(G,r);   // (carveRoute thins the spine to single-file internally, then adds bounded loops)
   // gather BUD SITES: a corridor '.' cell with a wall neighbour that opens onto rock (room space beyond).
-  function corridorAt(x,y){return inb(G,x,y)&&G[y][x]==='.';}
   var sites=[];
   for(var y=1;y<H-1;y++)for(var x=1;x<W-1;x++){ if(G[y][x]!=='.')continue;
     [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(dd){var dx=dd[0],dy=dd[1];var wx=x+dx,wy=y+dy,bx=x+2*dx,by=y+2*dy;if(inb(G,bx,by)&&G[wy][wx]==='#'&&G[by][bx]==='#')sites.push({x:x,y:y,dx:dx,dy:dy});});
   }
   for(var i=sites.length-1;i>0;i--){var j=ri(r,0,i),t=sites[i];sites[i]=sites[j];sites[j]=t;}
-  // rooms bud off the circuit (varied shapes) — destinations along + off the two routes.
-  var target=Math.max(8,roomTarget+2), si=0, guard=sites.length*3;
+  // rooms bud off the route (varied shapes) — destinations along + off it. Target scales UP with corridor length
+  // so a long winding route stays ROOM-dominant (keeps the corridor share honest), capped by available sites.
+  var corrLen=0;for(y=0;y<H;y++)for(x=0;x<W;x++)if(G[y][x]==='.')corrLen++;
+  var target=Math.max(8,roomTarget+2,Math.round(corrLen/4.5)), si=0, guard=sites.length*3;
   while(rooms.length<target && si<sites.length && guard-->0){
     var s=sites[si++];
     if(G[s.y][s.x]!=='.')continue;   // the site's corridor cell may have been consumed
     var rm=tryBud(G,s.x,s.y,s.dx,s.dy,pickShape(r,budget),r);
     if(rm)rooms.push(rm);
   }
-  // TRAVERSE — the up + down stairs go in the most-NW and most-SE rooms (opposite sides of the floor, a long
-  // journey), so the walk crosses the whole floor via the ladder's two routes. The true route is unknown from
-  // the start; no vantage reveals it.
-  var upRoom=null,downRoom=null,uMin=1e9,dMax=-1e9;
-  rooms.forEach(function(rm){var a=rm.cx+rm.cy;if(a<uMin){uMin=a;upRoom=rm;}if(a>dMax){dMax=a;downRoom=rm;}});
+  // TRAVERSE — the up + down stairs go in the room NEAREST the up-waypoint and the room NEAREST the down-
+  // waypoint (the two ends of the crooked route, on OPPOSITE sides of the floor by the seeded orientation).
+  function nearestRoom(pt){var best=1e9,br=null;rooms.forEach(function(rm){var d=Math.abs(rm.cx-pt.x)+Math.abs(rm.cy-pt.y);if(d<best){best=d;br=rm;}});return br;}
+  var upRoom=nearestRoom(route.up), downRoom=nearestRoom(route.down);
+  if(upRoom===downRoom){var dMax=-1;rooms.forEach(function(rm){if(rm===upRoom)return;var d=Math.abs(rm.cx-upRoom.cx)+Math.abs(rm.cy-upRoom.cy);if(d>dMax){dMax=d;downRoom=rm;}});}
   if(upRoom){upRoom.hub=true;upRoom.landmark=true;}
   // ROOMS OFF ROOMS (nested suites — an office behind an office, very Bureau): bud an INNER chamber off a
   // room's FAR wall (away from its door), joined by one more door. Depth up to 3. Inner rooms are destinations
@@ -484,44 +621,105 @@ function genArch(W,H,r,roomTarget,skin,depth){
     if(rm===upRoom||rm===downRoom||(rm.nested||1)>=3||(rm.doors||1)>=2)return;
     if(r()<0.42){ var inner=budInner(rm); if(inner){rooms.push(inner);suites++; if(r()<0.30&&inner.nested<3){var i2=budInner(inner);if(i2)rooms.push(i2);}} }
   });
-  // STAIRS AT ROOM CENTRES (KEEP): up '@' in the NW room, down '>' in the SE room (opposite sides).
+  cullDeadEnds(G);   // prune any naked corridor stub the route left (rooms + their doors are protected)
+  addShortcuts(G,r); // NOW add the bounded optionality loops, sized against the SETTLED corridor (post-cull) so
+                     // no shortcut loop can ever exceed the RING-BAN threshold
+  // STAIRS AT ROOM CENTRES (KEEP): up '@' at the up-waypoint room, down '>' at the down-waypoint room.
   var uR=upRoom||rooms[0], dR=downRoom;
   if(!dR){var fd=-1;rooms.forEach(function(rr){if(rr===uR)return;var dd=Math.abs(rr.cx-uR.cx)+Math.abs(rr.cy-uR.cy);if(dd>fd){fd=dd;dR=rr;}});}
   if(uR)G[uR.cy][uR.cx]='@';
   if(dR&&dR!==uR)G[dR.cy][dR.cx]='>';
-  return {grid:G,rooms:rooms,circuit:circuit,upRoom:uR,downRoom:dR,suites:suites};
+  return {grid:G,rooms:rooms,route:route,archetype:archetype||'traverse',upRoom:uR,downRoom:dR,suites:suites};
 }
 
+// TOPOLOGY VALIDATOR — the SAME hard bars the checker (tests/run_gen2_shaper.py) enforces, ported so a worked
+// floor can VALIDATE ITSELF and a bad candidate can be rejected + reseeded (the generate-and-reject pattern, like
+// the leak gate). Thresholds carry HEADROOM under the checker's so tiny measurement differences never leak a
+// failing floor. Returns null (accept) or a short reason string (reject).
+function _workedReject(G){
+  var H=G.length,W=G[0].length,y,x;
+  function cp(px,py){var c=G[py]&&G[py][px];return c==='.'||c==='~'||c==='<'||c==='>'||c==='@';}
+  var seen={},comps=[];
+  for(y=0;y<H;y++)for(x=0;x<W;x++){ if(!cp(x,y)||seen[x+','+y])continue; var st=[[x,y]],cs=[];seen[x+','+y]=1;
+    while(st.length){var c=st.pop();cs.push(c);[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var nx=c[0]+d[0],ny=c[1]+d[1],k=nx+','+ny;if(cp(nx,ny)&&!seen[k]){seen[k]=1;st.push([nx,ny]);}});}
+    comps.push(cs); }
+  var cset={},corr=[],roomCells=0,maxRoom=0;
+  comps.forEach(function(cc){var mnx=1e9,mxx=-1,mny=1e9,mxy=-1;cc.forEach(function(c){if(c[0]<mnx)mnx=c[0];if(c[0]>mxx)mxx=c[0];if(c[1]<mny)mny=c[1];if(c[1]>mxy)mxy=c[1];});
+    var bw=mxx-mnx+1,bh=mxy-mny+1,fill=cc.length/(bw*bh);
+    if(bw>=3&&bh>=3&&fill>=0.45){roomCells+=cc.length;if(cc.length>maxRoom)maxRoom=cc.length;}
+    else cc.forEach(function(c){cset[c[0]+','+c[1]]=1;corr.push(c);}); });
+  var walk=0;for(y=0;y<H;y++)for(x=0;x<W;x++){var c=G[y][x];if(c==='.'||c==='~'||c==='<'||c==='>'||c==='@'||c==='+')walk++;}
+  var V=corr.length; if(!walk)return 'nowalk';
+  if(Math.round(100*roomCells/walk)<63)return 'cover';                 // rooms dominate (checker: >=60)
+  if(maxRoom<22)return 'land';                                         // a hall landmark (checker: >=18)
+  var wide=0;corr.forEach(function(c){var xx=c[0],yy=c[1],b=false;[[0,0],[-1,0],[0,-1],[-1,-1]].forEach(function(o){if(cset[(xx+o[0])+','+(yy+o[1])]&&cset[(xx+o[0]+1)+','+(yy+o[1])]&&cset[(xx+o[0])+','+(yy+o[1]+1)]&&cset[(xx+o[0]+1)+','+(yy+o[1]+1)])b=true;});if(b)wide++;});
+  if(V&&Math.round(100*wide/V)>6)return 'wide';                        // single-file (checker: <10%)
+  var naked=0;corr.forEach(function(c){var xx=c[0],yy=c[1],nb=0,paid=false;[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){if(cset[(xx+d[0])+','+(yy+d[1])])nb++;var gc=G[yy+d[1]]&&G[yy+d[1]][xx+d[0]];if(gc==='+'||gc==='$'||gc==='?'||gc==='/'||gc==='<'||gc==='>'||gc==='@')paid=true;});if(nb<=1&&!paid)naked++;});
+  if(naked>0)return 'naked';
+  var over50=0,over70=false;
+  for(y=0;y<H;y++){var run=0;for(x=0;x<=W;x++){if(x<W&&cset[x+','+y])run++;else{if(run>0.50*W)over50++;if(run>0.70*W)over70=true;run=0;}}}
+  for(x=0;x<W;x++){var rv=0;for(y=0;y<=H;y++){if(y<H&&cset[x+','+y])rv++;else{if(rv>0.50*H)over50++;if(rv>0.70*H)over70=true;rv=0;}}}
+  if(over50>1||over70)return 'straightrun';
+  // RING BAN — minimal cycle per non-tree edge (delete edge, shortest path + 1). Reject a floor-dominating loop
+  // (>44% of corridor) or a floor-spanning wall-hugging perimeter ring.
+  function inPerim(px,py){return px<4||px>=W-4||py<4||py>=H-4;}
+  var par={},sp={};
+  if(V){var root=corr[0][0]+','+corr[0][1],q2=[corr[0]];par[root]='';sp[root]=1;while(q2.length){var c=q2.shift();[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var nx=c[0]+d[0],ny=c[1]+d[1],k=nx+','+ny;if(cset[k]&&!sp[k]){sp[k]=1;par[k]=c[0]+','+c[1];q2.push([nx,ny]);}});}}
+  function pathKeys(ak,bk){var q=[ak.split(',').map(Number)],pv={};pv[ak]=1;while(q.length){var c=q.shift(),ck=c[0]+','+c[1];if(ck===bk){var out=[ck],k=ck;while(pv[k]!==1){out.push(pv[k]);k=pv[k];}return out;}for(var d4=0;d4<4;d4++){var dd=[[1,0],[-1,0],[0,1],[0,-1]][d4],nx=c[0]+dd[0],ny=c[1]+dd[1],nk=nx+','+ny;if(!cset[nk]||pv[nk])continue;if((ck===ak&&nk===bk)||(ck===bk&&nk===ak))continue;pv[nk]=ck;q.push([nx,ny]);}}return null;}
+  var edgeSeen={},bad=null;
+  corr.forEach(function(c){if(bad)return;var xk=c[0]+','+c[1];[[1,0],[0,1]].forEach(function(d){if(bad)return;var nx=c[0]+d[0],ny=c[1]+d[1],nk=nx+','+ny;if(!cset[nk])return;var ek=xk+'|'+nk;if(edgeSeen[ek])return;edgeSeen[ek]=1;if(par[nk]===xk||par[xk]===nk)return;
+    var pth=pathKeys(xk,nk);if(!pth)return;var len=pth.length;if(V&&len/V>0.44){bad='ring';return;}
+    var pin=0,mnx=1e9,mxx=-1,mny=1e9,mxy=-1;pth.forEach(function(k){var pp=k.split(',');var px=+pp[0],py=+pp[1];if(inPerim(px,py))pin++;if(px<mnx)mnx=px;if(px>mxx)mxx=px;if(py<mny)mny=py;if(py>mxy)mxy=py;});
+    if(len>=0.25*V&&(mxx-mnx+1)>0.50*W&&(mxy-mny+1)>0.50*H&&len&&pin/len>0.40){bad='perimring';} });});
+  return bad;
+}
 function generateLevel(seed,opts){
   opts=opts||{};var size=opts.size||'regular',grammar=opts.grammar||'worked',skin=opts.skin||'stone';
-  var sz=SIZES[size]||SIZES.regular,r=mulberry32((seed>>>0)||1),G;
+  var sz=SIZES[size]||SIZES.regular;
   // SIZE VARIATION: roll the floor dims TRUE +-20% around native BOTH ways (regular -> ~43..65 x 27..41),
   // rooms scale with area, so footprints visibly vary run to run. The frame is LIFTED: mapmode's
   // composeNodeGen2 adopts the grid's actual dims (no fixed 54x34 read-frame), so larger floors render in
   // full. fixedSize pins native 54x34 (sim reference); maxSize forces the +20% extreme.
-  var W=sz.W,H=sz.H,rooms=sz.rooms;
-  if(!opts.fixedSize){
-    W=ri(r,Math.round(sz.W*0.8),Math.round(sz.W*1.2)); H=ri(r,Math.round(sz.H*0.8),Math.round(sz.H*1.2));   // TRUE +-20% around native (frame lifted: mapmode reads the real dims)
-    rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H)));
-  } else if(opts.maxSize){ W=Math.round(sz.W*1.2); H=Math.round(sz.H*1.2); rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H))); }   // sim worst case: the LARGEST floor (most foes)
-  var rmList=null;
-  if(grammar==='worked'){var wk2=ALLOW_LEGACY?genWorked(W,H,r,rooms,skin):genArch(W,H,r,rooms,skin,opts.depth||1); G=wk2.grid; rmList=wk2.rooms;}
-  else if(grammar==='cave')G=genCave(W,H,r);
-  else if(grammar==='spine')G=genSpine(W,H,r);
-  else G=genWarren(W,H,r);
-  if(skin==='ruin')applyRuin(G,r);if(skin==='flooded')applyFlood(G,r);
-  ensureConnected(G);if(ALLOW_LEGACY&&typeof cleanDoors==='function')cleanDoors(G,r);   // the new shaper keeps its '+' doors (one per room); cleanDoors is legacy-only
-  var got=plantSecretsFromDeadEnds(G,r,2);if(got<1)carveAlcoveAnywhere(G,r);
-  fixLeaks(G);   // AFTER the corridor logic AND the secret/alcove carving (both add floor) -> seals every pinch; stairs below add no new walkable, so they can't reopen one (and fixLeaks must precede them: it would overwrite a '<' which is non-WALK)
-  var up=null,down=null,y,x;
-  for(y=0;y<H;y++)for(x=0;x<W;x++){if(G[y][x]==='@'){G[y][x]='<';up={x:x,y:y};}else if(G[y][x]==='>')down={x:x,y:y};}
-  if(!up){for(y=0;y<H&&!up;y++)for(x=0;x<W;x++)if(G[y][x]==='.'){G[y][x]='<';up={x:x,y:y};break;}}
-  if(!down&&up){var bd=-1;for(y=0;y<H;y++)for(x=0;x<W;x++)if(G[y][x]==='.'){var d=Math.abs(x-up.x)+Math.abs(y-up.y);if(d>bd){bd=d;down={x:x,y:y};}}if(down)G[down.y][down.x]='>';}
-  // FEATURES stamped AFTER stairs (so they avoid '<'/'>') — depth-selected, sparse, law-safe. The live leak
-  // gate (mapmode gen2Clean) re-measures the final grid and reseeds any feature that breaks leaks/regions/stairs.
-  var features=(rmList && grammar==='worked') ? stampFeatures(G,rmList,r,opts.depth||1,{up:up,down:down}) : [];
-  return {grid:G,w:W,h:H,up:up,down:down,features:features};
+  // BUILD one candidate from a given rng; the worked grammar VALIDATES it (below) and reseeds a rejected floor.
+  function build(r){
+    var W=sz.W,H=sz.H,rooms=sz.rooms,G;
+    if(!opts.fixedSize){
+      W=ri(r,Math.round(sz.W*0.8),Math.round(sz.W*1.2)); H=ri(r,Math.round(sz.H*0.8),Math.round(sz.H*1.2));   // TRUE +-20% around native (frame lifted: mapmode reads the real dims)
+      rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H)));
+    } else if(opts.maxSize){ W=Math.round(sz.W*1.2); H=Math.round(sz.H*1.2); rooms=Math.max(6,Math.round(sz.rooms*(W*H)/(sz.W*sz.H))); }   // sim worst case: the LARGEST floor (most foes)
+    var rmList=null,archetype='traverse';
+    if(grammar==='worked'){archetype=pickArchetype(r); var wk2=ALLOW_LEGACY?genWorked(W,H,r,rooms,skin):genArch(W,H,r,rooms,skin,opts.depth||1,archetype); G=wk2.grid; rmList=wk2.rooms;}
+    else if(grammar==='cave')G=genCave(W,H,r);
+    else if(grammar==='spine')G=genSpine(W,H,r);
+    else G=genWarren(W,H,r);
+    if(skin==='ruin')applyRuin(G,r);if(skin==='flooded')applyFlood(G,r);
+    ensureConnected(G);if(ALLOW_LEGACY&&typeof cleanDoors==='function')cleanDoors(G,r);   // the new shaper keeps its '+' doors (one per room); cleanDoors is legacy-only
+    var got=plantSecretsFromDeadEnds(G,r,2);if(got<1)carveAlcoveAnywhere(G,r);
+    fixLeaks(G);   // AFTER the corridor logic AND the secret/alcove carving (both add floor) -> seals every pinch; stairs below add no new walkable, so they can't reopen one (and fixLeaks must precede them: it would overwrite a '<' which is non-WALK)
+    if(grammar==='worked'&&!ALLOW_LEGACY)cullDeadEnds(G);   // fixLeaks can leave a fresh 1-cell stub; prune any UNPAID tip it made (removing floor can't reopen a corner; secrets/doors/stairs are preserved)
+    var up=null,down=null,y,x;
+    for(y=0;y<H;y++)for(x=0;x<W;x++){if(G[y][x]==='@'){G[y][x]='<';up={x:x,y:y};}else if(G[y][x]==='>')down={x:x,y:y};}
+    if(!up){for(y=0;y<H&&!up;y++)for(x=0;x<W;x++)if(G[y][x]==='.'){G[y][x]='<';up={x:x,y:y};break;}}
+    if(!down&&up){var bd=-1;for(y=0;y<H;y++)for(x=0;x<W;x++)if(G[y][x]==='.'){var d=Math.abs(x-up.x)+Math.abs(y-up.y);if(d>bd){bd=d;down={x:x,y:y};}}if(down)G[down.y][down.x]='>';}
+    // FEATURES stamped AFTER stairs (so they avoid '<'/'>') — depth-selected, sparse, law-safe. The live leak
+    // gate (mapmode gen2Clean) re-measures the final grid and reseeds any feature that breaks leaks/regions/stairs.
+    var features=(rmList && grammar==='worked') ? stampFeatures(G,rmList,r,opts.depth||1,{up:up,down:down}) : [];
+    return {grid:G,w:W,h:H,up:up,down:down,features:features,archetype:archetype};
+  }
+  var base=(seed>>>0)||1;
+  // worked grammar: generate-and-REJECT — try reseeds until the floor passes the topology bars (attempt 0 uses
+  // the plain seed so the vast majority of floors are UNCHANGED; only the rare outlier gets a different draw).
+  if(grammar==='worked'&&!ALLOW_LEGACY){
+    var res=null,K=24;
+    for(var att=0;att<K;att++){
+      var rv=mulberry32(att===0?base:((base^((att*0x9E3779B1)>>>0))>>>0||1));
+      res=build(rv);
+      if(!_workedReject(res.grid)){res._tries=att+1;return res;}
+    }
+    res._tries=K;return res;   // exhausted (vanishingly rare): return the last candidate rather than nothing
+  }
+  return build(mulberry32(base));
 }
-return { generateLevel: generateLevel, SIZES: SIZES, measure: measure };
+return { generateLevel: generateLevel, SIZES: SIZES, measure: measure, ARCHETYPES: ARCHETYPES, _workedReject: _workedReject };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = TD_GEN2;

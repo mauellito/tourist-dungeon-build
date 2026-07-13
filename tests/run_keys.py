@@ -76,7 +76,7 @@ F.onload = function(){
   function clearMore(){ var n=0; while(moreShown()&&n++<6){ pk('Escape'); } }
   function floorNeighbor(){ var v=view(),p=v.player,ds=[['right',1,0],['left',-1,0],['up',0,-1],['down',0,1]];
     for(var i=0;i<ds.length;i++){ var nx=p.x+ds[i][1],ny=p.y+ds[i][2],k=nx+','+ny;
-      if(v.grid[ny]&&v.grid[ny][nx]==='.'&&!(v.doors&&v.doors[k])&&!(v.plain&&v.plain[k])&&!(v.items&&v.items[k])) return {dir:ds[i][0],x:nx,y:ny}; } return null; }
+      if(v.grid[ny]&&v.grid[ny][nx]==='.'&&!(v.doors&&v.doors[k])&&!(v.plain&&v.plain[k])&&!(v.roomDoors&&v.roomDoors[k])&&!(v.items&&v.items[k])) return {dir:ds[i][0],x:nx,y:ny}; } return null; }
   function wallNeighbor(){ var v=view(),p=v.player,ds=[[1,0],[-1,0],[0,-1],[0,1],[1,1],[-1,-1],[1,-1],[-1,1]];
     for(var i=0;i<ds.length;i++){ var nx=p.x+ds[i][0],ny=p.y+ds[i][1]; if(v.grid[ny]&&v.grid[ny][nx]==='#') return {x:nx,y:ny}; } return null; }
   function findDoor(to){ var d=view().doors||{}; for(var k in d){ if(d[k].to===to){ var p=k.split(','); return [+p[0],+p[1]]; } } return null; }
@@ -303,6 +303,19 @@ F.onload = function(){
       ok('antidote CURES poison (clears the curable status)', !win.TD_STATUS.has(Mc,'poison')); }
 
     // ============================ DOORS: open / close (plain) ============
+    // relocate to a floor cell whose neighbourhood has NO OTHER inner door: the deliberate 'o'/'c' act on the
+    // nearest door, so a room door that rolled OPEN adjacent to the player would hijack the close (a single-file
+    // floor can spawn the visitor beside its room's door). Re-check with a fresh (now-revealed) view after moving.
+    (function(){
+      function adjClean(){ var v=view(),p=v.player,fn=false;
+        for(var i=0;i<4;i++){ var d=[[1,0],[-1,0],[0,-1],[0,1]][i],nx=p.x+d[0],ny=p.y+d[1],k=nx+','+ny;
+          if(v.grid[ny]&&v.grid[ny][nx]==='.'&&!(v.roomDoors&&v.roomDoors[k])&&!(v.doors&&v.doors[k])&&!(v.plain&&v.plain[k])) fn=true; }
+        var any=false; for(var ax=-1;ax<=1;ax++)for(var ay=-1;ay<=1;ay++){ var k=(p.x+ax)+','+(p.y+ay);
+          if((v.roomDoors&&v.roomDoors[k])||(v.doors&&v.doors[k])||(v.plain&&v.plain[k])) any=true; }
+        return fn&&!any; }
+      if(adjClean())return;
+      var v0=view(); for(var yy=1;yy<v0.h-1;yy++){ for(var xx=1;xx<v0.w-1;xx++){ if(v0.grid[yy][xx]!=='.')continue; if(goTo(xx,yy)&&adjClean()){ yy=99; break; } } }
+    })();
     var pn=floorNeighbor(); var pkk=pn.x+','+pn.y; DUN._addPlain(pn.x,pn.y);
     pk('o'); var vo=view();
     ok('o opens the adjacent inner door', vo.plain && vo.plain[pkk] && vo.plain[pkk].open);

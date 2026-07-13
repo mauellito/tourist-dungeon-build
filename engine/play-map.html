@@ -235,7 +235,7 @@
 <div class="vstamp" id="vstamp"></div>
 
 <!-- Single build token, stamped from git HEAD by scripts/stamp_build.py (NEVER bump by hand). -->
-<script>window.__BUILD = "5af61c0c";</script>
+<script>window.__BUILD = "ce3bfda9";</script>
 <script>
 // Page init: DEFINED here, but CALLED only after every engine script has loaded (see the loader
 // block at the end of <body>). The body assumes the engine globals (TD_UI, TD_MAP, ...) exist, so
@@ -1259,7 +1259,7 @@ window.__initPlayMap = function () {
   document.getElementById("reroll").addEventListener("click", function () { newGame(randSeed()); });
   Array.prototype.forEach.call(reviewEl.querySelectorAll(".rv-f"), function (b) { b.addEventListener("click", function () { setReviewFilter(b.getAttribute("data-f")); }); });
 
-  var VERSION = "THE JOURNEY FLOOR — floors are now TRAVERSE: the up and down stairs sit in halls on OPPOSITE sides, and single-file corridors loop between them so the walk crosses the whole floor with real choices (the true route is unknown from the start). Chambers of varying shape bud off the halls, MOSTLY single-door but with two-door pass-throughs and NESTED SUITES — an office behind an office, very Bureau. (Proven over 220 floors: rooms >=55%, corridor <=35% and single-file, ~70% single-door with no room over two, room-off-room suites on most floors, looping circulation, no dithering, no unpaid dead-ends, every KEEP law held. The other archetypes — circuit/labyrinth/warren/cavern — are the next rounds.)";
+  var VERSION = "THE GROWN TRAVERSE — the floor skeleton now looks GROWN, not gridded. A crooked single-file route threads 4–7 scattered waypoints from the up-stair to the down-stair (orientation set by the floor seed — some floors drift across, some down, some on the diagonal), with a few short shortcut loops budded in for real route choice. Chambers of varying shape hang OFF the route, MOSTLY single-door with the odd nested SUITE — an office behind an office, very Bureau. BANNED by machine check: the square perimeter ring, any floor-dominating loop, parallel full-width halls (the ladder/office-bands shape). Every composition records its ARCHETYPE (traverse-dominant weighted roll; the other four stubbed to the traverse shaper for now). Proven over 220 floors AND self-validated per floor (bad floors are reseeded): no perimeter ring, no cycle over half the corridor, at most one long straight run and none over 70%, horizontal/vertical/diagonal drift all appear, rooms the majority, single-file corridors, ~70% single-door with no room over two, suites on most floors, zero unpaid dead-ends, every KEEP law held.";
   var BUILD = window.__BUILD || "dev";   // single source of truth: the git-stamped token in <head>
   document.getElementById("vstamp").textContent = VERSION + " · build " + BUILD;
   newGame(urlSeed() || randSeed());   // explicit ?seed= reproduces exactly (tests/seed-sharing depend on it); no seed = a fresh world
